@@ -1,0 +1,98 @@
+@import "tailwindcss";
+.finder-glow {
+  animation: glow 2s infinite ease-in-out;
+}
+
+
+@keyframes glow {
+
+0% {
+  text-shadow: 0 0 2px #9333ea;
+}
+
+50% {
+  text-shadow:
+  0 0 8px #a855f7,
+  0 0 15px #9333ea;
+}
+
+100% {
+  text-shadow: 0 0 2px #9333ea;
+}
+
+}
+
+/* ---------- Toast Animation ---------- */
+
+@keyframes toastSlideIn {
+  from {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-slide-in {
+  animation: toastSlideIn 0.35s ease-out;
+}
+
+/* ---------- Progress Bar ---------- */
+
+@keyframes toastProgress {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
+}
+
+.toast-progress {
+  animation: toastProgress 2.5s linear forwards;
+}
+
+.ProseMirror {
+  min-height: 220px;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ProseMirror p {
+  margin: 0;
+}
+
+.ProseMirror ul {
+  list-style: disc;
+  padding-left: 20px;
+}
+
+.ProseMirror ol {
+  list-style: decimal;
+  padding-left: 20px;
+}
+
+.ProseMirror strong {
+  font-weight: bold;
+}
+
+.ProseMirror em {
+  font-style: italic;
+}
+
+/* ---------- Notion Hover ---------- */
+
+.ProseMirror p {
+  position: relative;
+}
+
+.ProseMirror p.notion-hover {
+  background: rgba(55, 53, 47, 0.03);
+  border-radius: 6px;
+  transition: .15s;
+}

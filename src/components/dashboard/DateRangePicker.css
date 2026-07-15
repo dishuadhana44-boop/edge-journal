@@ -1,0 +1,96 @@
+/* Popup */
+.rdp {
+    --rdp-accent-color: #7c3aed;
+    --rdp-accent-background-color: #ede9fe;
+    margin: 0;
+    font-size: 14px;
+  }
+  
+  .rdp-months {
+    display: flex;
+    gap: 32px;
+  }
+  
+  .rdp-month {
+    background: white;
+  }
+  
+  /* Caption */
+  .rdp-caption {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  
+  .rdp-caption_label {
+    font-weight: 600;
+    font-size: 15px;
+    color: #111827;
+  }
+  
+  /* Dropdowns */
+  .rdp-dropdown {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 4px 8px;
+    background: white;
+    cursor: pointer;
+  }
+  
+  /* Weekdays */
+  .rdp-head_cell {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    padding-bottom: 10px;
+  }
+  
+  /* Day Cells */
+  .rdp-day {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    transition: .2s;
+  }
+  
+  .rdp-day:hover {
+    background: #ede9fe;
+  }
+  
+  .rdp-day_selected,
+  .rdp-day_selected:hover {
+    background: #7c3aed;
+    color: white;
+  }
+  
+  .rdp-day_today {
+    border: 2px solid #7c3aed;
+  }
+  
+  /* Navigation */
+  .rdp-nav_button {
+    border-radius: 10px;
+    transition: .2s;
+  }
+  
+  .rdp-nav_button:hover {
+    background: #f3f4f6;
+  }
+  
+  /* Popup animation */
+  .date-popup {
+    animation: popup .18s ease;
+  }
+  
+  @keyframes popup {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+  
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
