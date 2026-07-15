@@ -18,6 +18,7 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import BlockToolbar from "./toolbar/BlockToolbar";
+import MenuController from "./controllers/MenuController";
 
 
 function Editor() {
@@ -122,27 +123,15 @@ function Editor() {
     onGripClick={() => setShowBlockMenu(true)}
   />
 )}
-{showSlashMenu && (
-  <div
-    ref={menuRef}
-    className="absolute left-0 top-10 z-50"
-  >
-    <SlashMenu
+<MenuController
+  showSlashMenu={showSlashMenu}
+  showBlockMenu={showBlockMenu}
+  menuRef={menuRef}
+  blockMenuRef={blockMenuRef}
   editor={editor}
-  onClose={() => setShowSlashMenu(false)}
+  onCloseSlash={() => setShowSlashMenu(false)}
+  onCloseBlock={() => setShowBlockMenu(false)}
 />
-  </div>
-)}
-{showBlockMenu && (
-  <div
-    ref={blockMenuRef}
-    className="absolute left-10 top-10 z-50"
-  >
-    <BlockMenu
-      onClose={() => setShowBlockMenu(false)}
-    />
-  </div>
-)}
 
   <EditorContent editor={editor} />
 </div>
