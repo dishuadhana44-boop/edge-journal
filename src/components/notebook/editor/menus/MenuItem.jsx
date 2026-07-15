@@ -10,12 +10,13 @@ function MenuItem({
 }) {
 
   const handleClick = (e) => {
-    
     e.preventDefault();
   
     if (!editor) return;
   
     editor.commands.focus();
+  
+    console.log("Clicked:", title);
   
     const command = commandItems.find(
       (item) => item.title === title
@@ -24,12 +25,13 @@ function MenuItem({
     if (command) {
       command.command({
         editor,
+        range: editor.state.selection,
       });
     }
   
     onClose?.();
   };
-
+  
   return (
     <motion.button
     onMouseDown={(e) => e.preventDefault()}

@@ -17,11 +17,11 @@ export const commandItems = [
       title: "Heading 1",
       description: "Large section heading",
       icon: "H1",
-      command: ({ editor, range }) => {
+    
+      command: ({ editor }) => {
         editor
           .chain()
           .focus()
-          .deleteRange(range)
           .toggleHeading({ level: 1 })
           .run();
       },
