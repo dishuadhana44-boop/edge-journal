@@ -18,12 +18,19 @@ export const commandItems = [
       description: "Large section heading",
       icon: "H1",
     
-      command: ({ editor }) => {
-        editor
+      command: ({ editor, range }) => {
+    
+        console.log("Before:", editor.getHTML());
+    
+        const result = editor
           .chain()
           .focus()
+          .deleteRange(range)
           .toggleHeading({ level: 1 })
           .run();
+    
+        console.log("Run Result:", result);
+        console.log("After:", editor.getHTML());
       },
     },
   

@@ -14,7 +14,7 @@ function MenuItem({
   
     if (!editor) return;
   
-    editor.commands.focus();
+    editor.chain().focus().run();
   
     console.log("Clicked:", title);
   
@@ -23,9 +23,20 @@ function MenuItem({
     );
   
     if (command) {
+
+      console.log("Selection:", editor.state.selection);
+    
+      console.log({
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+      });
+      
       command.command({
         editor,
-        range: editor.state.selection,
+        range: {
+          from: editor.state.selection.from,
+          to: editor.state.selection.to,
+        },
       });
     }
   

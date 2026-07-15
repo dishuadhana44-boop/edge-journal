@@ -41,7 +41,7 @@ function Editor() {
         nested: true,
       }),
     
-      HorizontalRule,
+      
     
       Image,
     
