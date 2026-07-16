@@ -3,34 +3,35 @@ export const commandItems = [
       title: "Text",
       description: "Just start writing with plain text.",
       icon: "📝",
-      command: ({ editor, range }) => {
-        editor
+      command: ({ editor }) => {
+        const result = editor
           .chain()
           .focus()
-          .deleteRange(range)
-          .setParagraph()
+          .setHeading({ level: 1 })
           .run();
+      
+        console.log("HTML:", editor.getHTML());
+        console.log(
+          "Current Node:",
+          editor.state.selection.$from.parent.type.name
+        );
+      
+        return result;
       },
     },
-  
     {
       title: "Heading 1",
       description: "Large section heading",
       icon: "H1",
     
-      command: ({ editor, range }) => {
-    
-        console.log("Before:", editor.getHTML());
-    
-        const result = editor
+      command: ({ editor }) => {
+        return editor
           .chain()
           .focus()
-          .deleteRange(range)
-          .toggleHeading({ level: 1 })
+          .setHeading({ level: 1 })
           .run();
-    
-        console.log("Run Result:", result);
-        console.log("After:", editor.getHTML());
+          console.log(editor.getHTML());
+console.log(editor.state.selection.$from.parent.type.name);
       },
     },
   

@@ -20,6 +20,10 @@ import { TableCell } from "@tiptap/extension-table-cell";
 import BlockToolbar from "./toolbar/BlockToolbar";
 import MenuController from "./controllers/MenuController";
 
+import { useMemo } from "react";
+import EditorEngine from "./core/EditorEngine";
+import EditorContext from "./core/EditorContext";
+
 
 function Editor() {
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -101,11 +105,22 @@ function Editor() {
     };
   }, []);
 
-
+  const engine = useMemo(() => {
+    if (!editor) return null;
+  
+    return new EditorEngine(editor);
+  }, [editor]);
 
   if (!editor) return null;
 
   return (
+    <EditorContext.Provider
+      value={{
+        editor,
+        engine,
+      }}
+    >
+
     <div className="relative group">
   
       {/* Notion Block Handle */}
@@ -137,6 +152,8 @@ function Editor() {
 </div>
   
     </div>
+    </EditorContext.Provider>
+
   );
 }
 

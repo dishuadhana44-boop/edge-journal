@@ -9,40 +9,40 @@ function MenuItem({
   onClose,
 }) {
 
+ 
   const handleClick = (e) => {
     e.preventDefault();
+    e.stopPropagation();
   
     if (!editor) return;
   
-    editor.chain().focus().run();
+    // Save current selection
+    const { from, to } = editor.state.selection;
   
-    console.log("Clicked:", title);
+    // Focus editor before command
+    editor.commands.focus();
   
     const command = commandItems.find(
       (item) => item.title === title
     );
   
-    if (command) {
-
-      console.log("Selection:", editor.state.selection);
-    
-      console.log({
-        from: editor.state.selection.from,
-        to: editor.state.selection.to,
-      });
-      
-      command.command({
-        editor,
-        range: {
-          from: editor.state.selection.from,
-          to: editor.state.selection.to,
-        },
-      });
-    }
+    if (!command) return;
   
-    onClose?.();
+    const executed = command.command({
+      editor,
+      range: { from, to },
+    });
+  
+    console.log("Executed:", title, executed);
+  
+    // Close menu AFTER command
+    requestAnimationFrame(() => {
+      onClose?.();
+      editor.commands.focus();
+    });
   };
-  
+
+    
   return (
     <motion.button
     onMouseDown={(e) => e.preventDefault()}

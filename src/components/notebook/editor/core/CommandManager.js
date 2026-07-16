@@ -1,34 +1,34 @@
 class CommandManager {
-    constructor() {
-      this.commands = new Map();
-    }
-  
-    register(name, callback) {
-      this.commands.set(name, callback);
-    }
-  
-    execute(name, ...args) {
-      const command = this.commands.get(name);
-  
-      if (!command) {
-        console.warn(`Command "${name}" not found.`);
-        return;
-      }
-  
-      return command(...args);
-    }
-  
-    has(name) {
-      return this.commands.has(name);
-    }
-  
-    unregister(name) {
-      this.commands.delete(name);
-    }
-  
-    clear() {
-      this.commands.clear();
-    }
+  constructor(editor) {
+    this.editor = editor;
+    this.commands = new Map();
   }
-  
-  export default CommandManager;
+
+  register(name, command) {
+    this.commands.set(name, command);
+  }
+
+  execute(name, payload = {}) {
+    const command = this.commands.get(name);
+
+    if (!command) {
+      console.warn(`Command "${name}" not found.`);
+      return false;
+    }
+
+    return command({
+      editor: this.editor,
+      ...payload,
+    });
+  }
+
+  has(name) {
+    return this.commands.has(name);
+  }
+
+  getAll() {
+    return [...this.commands.keys()];
+  }
+}
+
+export default CommandManager;
