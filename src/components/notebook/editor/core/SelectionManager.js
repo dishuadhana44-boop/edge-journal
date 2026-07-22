@@ -1,23 +1,34 @@
 class SelectionManager {
-    constructor() {
-      this.selectedBlockId = null;
-    }
-  
-    select(blockId) {
-      this.selectedBlockId = blockId;
-    }
-  
-    clear() {
-      this.selectedBlockId = null;
-    }
-  
-    getSelected() {
-      return this.selectedBlockId;
-    }
-  
-    isSelected(blockId) {
-      return this.selectedBlockId === blockId;
-    }
+  constructor() {
+    this.selection = null;
   }
-  
-  export default SelectionManager;
+
+  save(editor) {
+    if (!editor) return;
+
+    this.selection = {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    };
+  }
+
+  restore(editor) {
+    if (!editor || !this.selection) return;
+
+    editor
+      .chain()
+      .focus()
+      .setTextSelection(this.selection)
+      .run();
+  }
+
+  clear() {
+    this.selection = null;
+  }
+
+  get() {
+    return this.selection;
+  }
+}
+
+export default SelectionManager;

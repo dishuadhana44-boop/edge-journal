@@ -25,13 +25,21 @@ export const commandItems = [
       icon: "H1",
     
       command: ({ editor }) => {
-        return editor
+    
+        const result = editor
           .chain()
           .focus()
           .setHeading({ level: 1 })
+          .insertContent("TEST")
           .run();
-          console.log(editor.getHTML());
-console.log(editor.state.selection.$from.parent.type.name);
+    
+        console.log("HTML:", editor.getHTML());
+        console.log(
+          "Node:",
+          editor.state.selection.$from.parent.type.name
+        );
+    
+        return result;
       },
     },
   

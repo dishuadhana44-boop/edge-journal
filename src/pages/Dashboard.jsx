@@ -1,14 +1,10 @@
 import { useState } from "react";
 import DashboardHeader from "../components/dashboard/DashboardHeader";
 import StatCards from "../components/dashboard/StatCards";
-import BalanceCurve from "../components/dashboard/BalanceCurve";
-import DisciplineCard from "../components/dashboard/DisciplineCard";
-import RecentTrades from "../components/dashboard/RecentTrades";
-import PnlByDay from "../components/dashboard/PnlByDay";
-import SetupPerformance from "../components/dashboard/SetupPerformance";
-import MetricsOverview from "../components/dashboard/MetricsOverview";
-import CalendarHeatmap from "../components/dashboard/CalendarHeatmap";
-import AIInsights from "../components/dashboard/AIInsights";
+import EquityCurve from "../components/dashboard/EquityCurve";
+import RecentTradesCard from "../components/dashboard/RecentTrades/RecentTradesCard";
+import DisciplineCard from "../components/dashboard/Discipline/DisciplineCard";
+
 
 function Dashboard() {
   const [accounts, setAccounts] = useState([
@@ -46,7 +42,7 @@ function Dashboard() {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-2 py-0 space-y-5">
+    <div className="w-full h-[calc(100vh-78px)] px-1 py-2 ">
 
 <DashboardHeader
       accounts={accounts}
@@ -59,55 +55,29 @@ function Dashboard() {
       <StatCards account={currentAccount} />
 </div>
 
-      {/* Row 1 */}
-      <div className="grid grid-cols-12 gap-6">
+<div className="grid grid-cols-12 gap-x-3 ">
 
-        <div className="col-span-8">
-          <BalanceCurve />
-        </div>
+  {/* Top Row */}
+  <div className="col-span-8">
+    <EquityCurve />
+  </div>
 
-        <div className="col-span-4">
-          <DisciplineCard />
-        </div>
+  <div className="col-span-4">
+    <DisciplineCard />
+  </div>
 
-      </div>
+  {/* Bottom Row */}
+  <div className="col-span-8 -mt-57 ">
+    <RecentTradesCard />
+  </div>
 
-      {/* Row 2 */}
-      <div className="grid grid-cols-12 gap-6">
+</div>
 
-        <div className="col-span-7">
-          <RecentTrades />
-        </div>
+</div>
 
-        <div className="col-span-5">
-          <PnlByDay />
-        </div>
 
-      </div>
 
-      {/* Row 3 */}
-      <div className="grid grid-cols-12 gap-6">
-
-        <div className="col-span-4">
-          <SetupPerformance />
-        </div>
-
-        <div className="col-span-4">
-          <MetricsOverview />
-        </div>
-
-        <div className="col-span-4">
-          <CalendarHeatmap />
-        </div>
-
-      </div>
-
-      {/* Row 4 */}
-
-      <AIInsights />
-
-    </div>
-     
+        
   );
 }
 

@@ -1,5 +1,9 @@
 import { motion } from "framer-motion";
+import { useContext } from "react";
+import EditorContext from "../core/EditorContext";
 import { commandItems } from "../commands";
+
+
 
 function MenuItem({
   icon: Icon,
@@ -9,38 +13,26 @@ function MenuItem({
   onClose,
 }) {
 
+const { engine } = useContext(EditorContext);
  
-  const handleClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+ const handleClick = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (!editor || !engine) return;
+
+  engine.selectionManager.save(editor);
+
+  editor.commands.focus();
   
-    if (!editor) return;
+  engine.selectionManager.restore(editor);
   
-    // Save current selection
-    const { from, to } = editor.state.selection;
-  
-    // Focus editor before command
-    editor.commands.focus();
-  
-    const command = commandItems.find(
-      (item) => item.title === title
-    );
-  
-    if (!command) return;
-  
-    const executed = command.command({
-      editor,
-      range: { from, to },
-    });
-  
-    console.log("Executed:", title, executed);
-  
-    // Close menu AFTER command
-    requestAnimationFrame(() => {
-      onClose?.();
-      editor.commands.focus();
-    });
-  };
+  const executed = engine.execute(title);
+
+  console.log("Executed:", title, executed);
+
+  onClose?.();
+};
 
     
   return (

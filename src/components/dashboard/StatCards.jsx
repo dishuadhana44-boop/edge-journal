@@ -14,7 +14,7 @@
         title: "Account Balance",
         value: 18427.59,
         display: "$18,427.59",
-        change: "+$1,250.75",
+        
         color: "text-green-600",
         icon: Wallet,
         bg: "bg-purple-100",
@@ -41,7 +41,7 @@
             ? "text-green-600"
             : "text-red-600",
       
-        change: "-$480.20",
+        
       color: "text-red-600",
       icon: TrendingDown,
       bg: "bg-red-100",
@@ -65,7 +65,7 @@
         28.21 >= 40
           ? "text-green-600"
           : "text-red-600",
-        change: "-2.35%",
+        
         icon: Target,
         bg: "bg-green-100",
         iconColor: "text-green-600",
@@ -75,7 +75,7 @@
     {
       title: "Avg R Per Trade",
       value: "+0.42R",
-      change: "+0.12R",
+      
       color: "text-green-600",
       icon: BarChart3,
       bg: "bg-blue-100",
@@ -95,7 +95,7 @@
   title: "Profit Factor",
   value: 1.15,
   display: "1.15",
-  change: "+0.23",
+  
   icon: PieChart,
   bg: "bg-purple-100",
   iconColor: "text-purple-600",
@@ -105,7 +105,7 @@
     {
       title: "Expectancy",
       value: "-$12.45",
-      change: "-$5.34",
+      
       color: "text-red-600",
       icon: Activity,
       bg: "bg-red-100",
@@ -132,7 +132,7 @@
           return (
             <div
                  key={card.title}
-                 className="bg-white rounded-xl border border-gray-200 px-3 py-2 h-[90px]"
+                 className="bg-white rounded-xl border border-gray-200 px-3 py-2 h-[70px]"
                 >
               <div className="flex items-start justify-between">
                 <div>

@@ -5,7 +5,7 @@ import JournalLayout from "../components/trade/JournalLayout";
 function TradeJournal() {
 
   const { id } = useParams();
-  
+  console.log(id);
   const navigate = useNavigate();
 
   const trades =

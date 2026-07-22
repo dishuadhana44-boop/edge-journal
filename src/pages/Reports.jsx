@@ -1,11 +1,11 @@
-function Reports(){
+import OverviewPage from "../components/reports/overview/OverviewPage";
 
-    return(
-    <h1>
-    Reports Page
-    </h1>
-    )
-    
-    }
-    
-    export default Reports;
+export default function Reports() {
+  return (
+    <div className="w-full min-h-screen bg-gray-50 px-4 py-4">
+
+      <OverviewPage />
+
+    </div>
+  );
+}
