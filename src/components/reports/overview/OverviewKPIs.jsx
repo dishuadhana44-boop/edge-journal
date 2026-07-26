@@ -78,12 +78,12 @@ const kpis = [
   export default function OverviewKPIs() {
     return (
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-6 gap-1">
         
         <StatCard
         title="Net P&L"
         value="+$8,427"
-        change="+12.6%"
+        
         positive={true}
         color="text-green-600"
         />
@@ -91,7 +91,7 @@ const kpis = [
         <StatCard
         title="Gross Profit"
         value="$18,240"
-        change="+5.2%"
+        
         positive={true}
         color="text-green-600"
         />
@@ -99,7 +99,7 @@ const kpis = [
         <StatCard
         title="Gross Loss"
         value="-$9,813"
-        change="-2.4%"
+        
         positive={false}
         color="text-red-500"
         />
@@ -107,7 +107,7 @@ const kpis = [
         <StatCard
         title="Win Rate"
         value="68%"
-        change="+3.8%"
+        
         positive={true}
         color="text-green-600"
         />
@@ -115,7 +115,7 @@ const kpis = [
         <StatCard
         title="Profit Factor"
         value="2.14"
-        change="+0.18"
+        
         positive={true}
         color="text-violet-600"
         />
@@ -123,7 +123,7 @@ const kpis = [
         <StatCard
         title="Expectancy"
         value="$84"
-        change="+7%"
+        
         positive={true}
         color="text-green-600"
         />
@@ -131,7 +131,7 @@ const kpis = [
         <StatCard
         title="Average RR"
         value="2.35R"
-        change="+0.12R"
+        
         positive={true}
         color="text-blue-600"
         />

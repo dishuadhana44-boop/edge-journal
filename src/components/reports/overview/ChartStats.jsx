@@ -54,12 +54,12 @@ import {
           return (
             <div
               key={item.title}
-              className="px-5 py-4 border-r last:border-r-0 hover:bg-gray-50 transition"
+              className="px-5 py-2 border-r last:border-r-0 hover:bg-gray-50 transition"
             >
               <div className="flex items-center gap-3">
   
                 <div
-                  className={`w-11 h-11 rounded-xl flex items-center justify-center ${item.bg}`}
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${item.bg}`}
                 >
                   <Icon
                     size={20}

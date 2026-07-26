@@ -1,5 +1,5 @@
 import { useState } from "react";
-import NotebookSidebar from "../components/notebook/NotebookSidebar";
+
 import NotebookHeader from "../components/notebook/NotebookHeader";
 import TemplateGrid from "../components/notebook/TemplateGrid";
 
@@ -18,12 +18,7 @@ function Notebook() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* Sidebar */}
-        <div className={`${sidebarOpen ? "w-55" : "w-20"} pt-0 px-2 transition-all duration-300`}>
-  <NotebookSidebar
-    isOpen={sidebarOpen}
-    setIsOpen={setSidebarOpen}
-  />
-</div>
+   
         {/* Main */}
         <div className="flex-1 pl-2 pr-4 pt-2 overflow-auto">
     <TemplateGrid />

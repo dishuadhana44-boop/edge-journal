@@ -51,7 +51,7 @@ function Dashboard() {
       onSaveAccount={handleSaveAccount}
     />
 
-    <div className="-mt-4">
+    <div className="-mt-1">
       <StatCards account={currentAccount} />
 </div>
 
@@ -67,7 +67,7 @@ function Dashboard() {
   </div>
 
   {/* Bottom Row */}
-  <div className="col-span-8 -mt-57 ">
+  <div className="col-span-8 -mt-40 ">
     <RecentTradesCard />
   </div>
 

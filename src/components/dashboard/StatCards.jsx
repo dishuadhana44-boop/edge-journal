@@ -125,18 +125,18 @@
   
   function StatCards() {
     return (
-        <div className="grid grid-cols-6 gap-2 max-w-[1320px] mx-auto">
+        <div className="grid grid-cols-6 gap-1 max-w-[1320px] mx-auto">
         {cards.map((card) => {
           const Icon = card.icon;
   
           return (
             <div
                  key={card.title}
-                 className="bg-white rounded-xl border border-gray-200 px-3 py-2 h-[70px]"
+                 className="bg-white rounded-xl border border-gray-200 px-3 py-3 h-[90px]"
                 >
               <div className="flex items-start justify-between">
                 <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-700">
+                <p className="text-[12px] font-bold uppercase tracking-wide text-gray-700">
                    {card.title}
                    </p>
   

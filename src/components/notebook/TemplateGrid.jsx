@@ -1,28 +1,72 @@
+import { useState } from "react";
 import TemplateCard from "./TemplateCard";
+import WeeklyReview from "./review/WeeklyReview";
 
 function TemplateGrid() {
+
+  const [activeTemplate, setActiveTemplate] = useState(null);
+
+console.log("Current template:", activeTemplate);
+console.log("Render check:", activeTemplate);
+  if (activeTemplate === "weekly") {
+
+    return (
+
+      <WeeklyReview
+        onBack={() => setActiveTemplate(null)}
+      />
+
+    );
+
+  }
+
   return (
-    <div>
-<div className="-mt-2"></div>
-      <h2 className="bg-white rounded-2xl border font-bold border-gray-200 p-3 px-4 py-3 flex flex-col">
-        Templates
-      </h2>
 
-      <div className="grid grid-cols-4 gap-2 mt-3">
+    <div className="grid grid-cols-4 gap-2 mt-3">
 
-        <TemplateCard title="Morning Routine" />
-        <TemplateCard title="Daily Planner" />
-        <TemplateCard title="Goal Tracker" />
-        <TemplateCard title="Habit Tracker" />
-        <TemplateCard title="Weekly Review" />
-        <TemplateCard title="Monthly Review" />
-        <TemplateCard title="Quarterly Review" />
-        <TemplateCard title="Yearly Review" />
+      <TemplateCard
+        title="Morning Routine"
+      />
 
-      </div>
+      <TemplateCard
+        title="Daily Planner"
+      />
+
+      <TemplateCard
+        title="Goal Tracker"
+      />
+
+      <TemplateCard
+        title="Habit Tracker"
+      />
+
+      <TemplateCard
+        title="Weekly Review"
+        onClick={() => {
+
+          console.log("Setting weekly");
+      
+          setActiveTemplate("weekly");
+      
+      }}
+      />
+
+      <TemplateCard
+        title="Monthly Review"
+      />
+
+      <TemplateCard
+        title="Quarterly Review"
+      />
+
+      <TemplateCard
+        title="Yearly Review"
+      />
 
     </div>
+
   );
+
 }
 
 export default TemplateGrid;

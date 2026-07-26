@@ -51,7 +51,7 @@ export default function EquityCurve() {
       {/* Header */}
 {/* Header */}
 
-<div className="flex items-center justify-between px-5 py-3 border-b">
+<div className="flex items-center justify-between px-5 py-4 border-b">
 
   <div>
 
@@ -183,7 +183,7 @@ export default function EquityCurve() {
 
       {/* Chart */}
 
-      <div className="h-[220px] px-3 pt-1 pb-0">
+      <div className="h-[280px] px-3 pt-1 pb-0">
 
       <ResponsiveContainer width="100%" height="100%">
 

@@ -22,7 +22,7 @@ export default function ChartHeader() {
   ];
 
   return (
-    <div className="flex items-center justify-between px-6 py-4 border-b">
+    <div className="flex items-center justify-between px-6 py-2 border-b">
 
       {/* Left */}
 
@@ -32,10 +32,7 @@ export default function ChartHeader() {
           Overview Equity
         </h2>
 
-        <p className="text-sm text-gray-500 mt-1">
-          Balance, equity and drawdown over time
-        </p>
-
+       
       </div>
 
       {/* Right */}
