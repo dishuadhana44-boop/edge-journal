@@ -65,6 +65,7 @@ const [folders, setFolders] = useState(
 function saveStrategy(selectedFolder) {
 
         console.log("SAVE BUTTON CLICKED");
+        console.log("Strategy Before Save:", strategy);
       
         const allStrategies =
           JSON.parse(localStorage.getItem("edgeStrategies")) || [];
@@ -132,7 +133,7 @@ const updatedFolders = allFolders.map((folder) => {
 
       ...folder,
 
-      plans: [...folder.plans, newStrategy],
+      plans: [...folder.plans, newStrategy.id],
 
     };
 

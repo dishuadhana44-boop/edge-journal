@@ -44,7 +44,7 @@ export default function EdgeSidebar({
   return (
  <aside
   className={`
-    ${collapsed ? "w-[72px]" : "w-[250px]"}
+    ${collapsed ? "w-[72px]" : "w-[200px]"}
     h-full
     bg-white
     border-r

@@ -1,138 +1,263 @@
 import { useState } from "react";
-
-const emotions = [
-  "😌 Patient",
-  "😨 Fear",
-  "😡 Revenge",
-  "🔥 FOMO",
-  "😤 Overtrading",
-  "😎 Confident",
-  "🧘 Calm",
-  "🎯 Disciplined",
-];
+import {
+Smile,
+Frown,
+Flame,
+Brain,
+Zap,
+Shield,
+Heart,
+Moon,
+Sun,
+Coffee,
+AlertTriangle,
+CheckCircle2,
+} from "lucide-react";
 
 export default function WeeklyPsychology() {
 
-  const [selected, setSelected] = useState([]);
-  const [notes, setNotes] = useState("");
+const emotions = [
 
-  function toggle(item) {
+{ label:"Calm", icon:Smile },
 
-    if (selected.includes(item)) {
+{ label:"Confident", icon:Shield },
 
-      setSelected(selected.filter(i => i !== item));
+{ label:"Focused", icon:Brain },
 
-    } else {
+{ label:"Patient", icon:CheckCircle2 },
 
-      setSelected([...selected, item]);
+{ label:"FOMO", icon:Zap },
 
-    }
+{ label:"Fear", icon:AlertTriangle },
 
-  }
+{ label:"Greedy", icon:Flame },
 
-  return (
+{ label:"Revenge", icon:Frown },
 
-    <div className="bg-white rounded-3xl border border-gray-200 p-8 hover:shadow-xl transition-all duration-500">
+{ label:"Happy", icon:Heart },
 
-      <h2 className="text-2xl font-bold">
+{ label:"Tired", icon:Moon },
 
-        Psychology Review
+{ label:"Energetic", icon:Sun },
 
-      </h2>
+{ label:"Distracted", icon:Coffee },
 
-      <p className="text-gray-500 mt-2">
+];
 
-        Which emotions affected your trading this week?
+const [selected,setSelected]=useState("Calm");
 
-      </p>
+const [intensity,setIntensity]=useState(7);
 
-      {/* Emotion Chips */}
+const [notes,setNotes]=useState("");
 
-      <div className="grid grid-cols-2 gap-4 mt-8">
+return(
 
-        {emotions.map((item) => {
+<div className="bg-white rounded-[30px] border border-gray-200 p-8">
 
-          const active = selected.includes(item);
+{/* Header */}
 
-          return (
+<div className="flex items-center justify-between">
 
-            <button
+<div>
 
-              key={item}
+<h2 className="text-3xl font-black">
 
-              onClick={() => toggle(item)}
+Trading Psychology
 
-              className={`
-                rounded-2xl
-                border
-                p-5
-                text-left
-                transition-all
-                duration-300
-                hover:-translate-y-1
-                hover:shadow-lg
+</h2>
 
-                ${
-                  active
-                    ? "bg-purple-600 text-white border-purple-600 scale-105 shadow-xl"
-                    : "bg-white border-gray-200 hover:border-purple-400"
-                }
-              `}
-            >
 
-              <span className="font-semibold text-lg">
 
-                {item}
+</div>
 
-              </span>
+<div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-600 to-violet-500 flex items-center justify-center">
 
-            </button>
+<Brain className="text-white"/>
 
-          );
+</div>
 
-        })}
+</div>
 
-      </div>
+{/* Emotion Grid */}
 
-      {/* Notes */}
+<div className="grid grid-cols-4 gap-4 mt-8">
 
-      <div className="mt-8">
+{emotions.map((item,index)=>{
 
-        <label className="block text-sm font-semibold mb-3">
+const Icon=item.icon;
 
-          Psychology Notes
+const active=selected===item.label;
 
-        </label>
+return(
 
-        <textarea
+<button
 
-          rows={6}
+key={index}
 
-          value={notes}
+onClick={()=>setSelected(item.label)}
 
-          onChange={(e)=>setNotes(e.target.value)}
+className={`
 
-          placeholder="Write about your emotions, discipline and mindset..."
+rounded-2xl
 
-          className="
-          w-full
-          rounded-2xl
-          border
-          border-gray-300
-          p-5
-          resize-none
-          outline-none
-          focus:ring-2
-          focus:ring-purple-500
-          transition
-          "
+border
 
-        />
+p-5
 
-      </div>
+transition-all
 
-    </div>
+duration-300
 
-  );
+hover:-translate-y-1
+
+${active
+
+? "border-purple-500 bg-purple-50 shadow-lg"
+
+: "border-gray-200 hover:border-purple-400"}
+
+`}
+
+>
+
+<div className="flex flex-col items-center">
+
+<div
+
+className={`
+
+w-14
+
+h-14
+
+rounded-2xl
+
+flex
+
+items-center
+
+justify-center
+
+${active
+
+? "bg-purple-600 text-white"
+
+: "bg-gray-100 text-gray-600"}
+
+`}
+
+>
+
+<Icon size={24}/>
+
+</div>
+
+<p className="mt-4 font-semibold">
+
+{item.label}
+
+</p>
+
+</div>
+
+</button>
+
+)
+
+})}
+
+</div>
+
+{/* Intensity */}
+
+<div className="mt-10">
+
+<div className="flex justify-between">
+
+<h3 className="font-bold">
+
+Emotion Intensity
+
+</h3>
+
+<span className="font-black text-purple-600">
+
+{intensity}/10
+
+</span>
+
+</div>
+
+<input
+
+type="range"
+
+min="1"
+
+max="10"
+
+value={intensity}
+
+onChange={(e)=>setIntensity(Number(e.target.value))}
+
+className="w-full mt-5 accent-purple-600"
+
+/>
+
+</div>
+
+{/* Reflection */}
+
+<div className="mt-10">
+
+<h3 className="font-bold">
+
+Reflection
+
+</h3>
+
+<textarea
+
+value={notes}
+
+onChange={(e)=>setNotes(e.target.value)}
+
+placeholder="Write about your emotions during trading..."
+
+className="mt-4 w-full min-h-[140px] rounded-2xl border border-gray-200 p-5 outline-none focus:border-purple-500 resize-none"
+
+/>
+
+</div>
+
+{/* AI Insight */}
+
+<div className="mt-8 rounded-3xl bg-gradient-to-r from-purple-50 to-violet-50 p-6 border border-purple-100">
+
+<h3 className="font-bold text-purple-700">
+
+AI Insight
+
+</h3>
+
+<p className="mt-3 text-gray-600 leading-8">
+
+Your dominant emotion is
+
+<strong> {selected}</strong>.
+
+Intensity level is
+
+<strong> {intensity}/10</strong>.
+
+Maintaining emotional consistency is one of the strongest indicators of long-term trading success.
+
+</p>
+
+</div>
+
+</div>
+
+)
 
 }

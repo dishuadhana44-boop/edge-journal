@@ -6,10 +6,12 @@ import {
   } from "lucide-react";
   
   export default function StatisticsHeader({
+    plan,
     onBack,
   }) {
+    
     return (
-      <div className="bg-white border-b border-gray-200 px-8 py-5">
+      <div className="bg-white border-b border-gray-200 px-2 py-2">
   
         <div className="flex items-center justify-between">
   
@@ -37,9 +39,13 @@ import {
   
             <div>
   
-              <h1 className="text-2xl font-bold">
-                Plan Statistics
-              </h1>
+            <h1 className="text-2xl font-bold">
+  {plan?.title || "Plan Statistics"}
+</h1>
+
+<p className="text-sm text-gray-500 mt-1">
+  {plan?.type || "Trading Plan"}
+</p>
   
               
   

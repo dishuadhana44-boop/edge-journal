@@ -5,42 +5,156 @@ import {
     Activity,
   } from "lucide-react";
   
-  const sections = [
-    {
-      title: "Performance",
-      rows: [
-        ["Net Profit", "$12,540"],
-        ["Gross Profit", "$18,230"],
-        ["Gross Loss", "-$5,690"],
-        ["Profit Factor", "3.20"],
-        ["Expectancy", "$182"],
-      ],
-    },
+
   
-    {
-      title: "Trades",
-      rows: [
-        ["Total Trades", "148"],
-        ["Winning Trades", "101"],
-        ["Losing Trades", "47"],
-        ["Win Rate", "68.2%"],
-        ["Average RR", "2.4R"],
-      ],
-    },
+  export default function PerformanceTable({ plan }) {
+
+    const allTrades =
+    JSON.parse(localStorage.getItem("trades")) || [];
   
-    {
-      title: "Risk",
-      rows: [
-        ["Average Win", "$420"],
-        ["Average Loss", "-$175"],
-        ["Max Win", "$1,820"],
-        ["Max Loss", "-$690"],
-        ["Max Drawdown", "-3.1%"],
-      ],
-    },
-  ];
+  const planTrades = allTrades.filter(
+    (trade) =>
+      trade?.reflection?.selectedPlanId === plan?.id
+  );
   
-  export default function PerformanceTable() {
+  const totalTrades = planTrades.length;
+  
+  const wins = planTrades.filter(
+    (t) => t.result === "Win"
+  );
+  
+  const losses = planTrades.filter(
+    (t) => t.result === "Loss"
+  );
+  
+  const beTrades = planTrades.filter(
+    (t) =>
+      t.result === "BE" ||
+      t.result === "Break Even"
+  );
+  
+  const totalWin = wins.reduce((sum, t) => {
+  
+    const pnl = Number(
+      String(t.pnl).replace(/[₹,$+ ]/g, "")
+    );
+  
+    return sum + (isNaN(pnl) ? 0 : pnl);
+  
+  }, 0);
+  
+  const totalLoss = losses.reduce((sum, t) => {
+  
+    const pnl = Number(
+      String(t.pnl).replace(/[₹,$+ ]/g, "")
+    );
+  
+    return sum + Math.abs(isNaN(pnl) ? 0 : pnl);
+  
+  }, 0);
+  
+  const netProfit = totalWin - totalLoss;
+  
+  const profitFactor =
+    totalLoss === 0
+      ? "∞"
+      : (totalWin / totalLoss).toFixed(2);
+  
+  const expectancy =
+    totalTrades === 0
+      ? 0
+      : (netProfit / totalTrades).toFixed(2);
+  
+  const averageRR =
+    totalTrades === 0
+      ? 0
+      : (
+          planTrades.reduce((sum, t) => {
+  
+            const rr = Number(
+              String(t.rr).replace(/[^\d.]/g, "")
+            );
+  
+            return sum + (isNaN(rr) ? 0 : rr);
+  
+          }, 0) / totalTrades
+        ).toFixed(2);
+  
+  const averageWin =
+    wins.length === 0
+      ? 0
+      : (totalWin / wins.length).toFixed(0);
+  
+  const averageLoss =
+    losses.length === 0
+      ? 0
+      : (totalLoss / losses.length).toFixed(0);
+  
+  const maxWin =
+    wins.length === 0
+      ? 0
+      : Math.max(
+          ...wins.map((t) =>
+            Number(
+              String(t.pnl).replace(/[₹,$+ ]/g, "")
+            )
+          )
+        );
+  
+  const maxLoss =
+    losses.length === 0
+      ? 0
+      : Math.min(
+          ...losses.map((t) =>
+            Number(
+              String(t.pnl).replace(/[₹,$+ ]/g, "")
+            )
+          )
+        );
+  
+  const winRate =
+    totalTrades === 0
+      ? 0
+      : ((wins.length / totalTrades) * 100).toFixed(1);
+
+      const sections = [
+
+        {
+          title: "Performance",
+          rows: [
+            ["Net Profit", `₹${netProfit.toLocaleString()}`],
+            ["Gross Profit", `₹${totalWin.toLocaleString()}`],
+            ["Gross Loss", `₹${totalLoss.toLocaleString()}`],
+            ["Profit Factor", profitFactor],
+            ["Expectancy", `₹${expectancy}`],
+          ],
+        },
+      
+        {
+          title: "Trades",
+          rows: [
+            ["Total Trades", totalTrades],
+            ["Winning Trades", wins.length],
+            ["Losing Trades", losses.length],
+            ["Break Even", beTrades.length],
+            ["Win Rate", `${winRate}%`],
+            ["Average RR", `${averageRR}R`],
+          ],
+        },
+      
+        {
+          title: "Risk",
+          rows: [
+            ["Average Win", `₹${averageWin}`],
+            ["Average Loss", `₹${averageLoss}`],
+            ["Largest Win", `₹${maxWin}`],
+            ["Largest Loss", `₹${maxLoss}`],
+            ["Max Drawdown", "Coming Soon"],
+          ],
+        },
+      
+      ];
+    
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
   

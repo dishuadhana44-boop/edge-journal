@@ -18,8 +18,9 @@ import {
   export default function EdgeHeader({
     onStats,
     onNewPlan,
-    
+    activeView,
   }) {
+    
     const [menuOpen, setMenuOpen] = useState(false);
   
   
@@ -76,22 +77,25 @@ import {
           {/* Stats */}
   
           <button
-            onClick={onStats}
-            className="
-            h-10
-            px-4
-            rounded-xl
-            border
-            border-gray-300
-            bg-white
-            hover:bg-gray-50
-            flex
-            items-center
-            gap-2
-            font-medium
-            transition
-          "
-          >
+  onClick={onStats}
+  className={`
+    h-10
+    px-4
+    rounded-xl
+    flex
+    items-center
+    gap-2
+    font-medium
+    transition-all
+    duration-200
+
+    ${
+      activeView === "stats"
+        ? "bg-violet-600 text-white shadow-lg border border-violet-600"
+        : "bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
+    }
+  `}
+>
             <BarChart3 size={18} />
   
             Stats

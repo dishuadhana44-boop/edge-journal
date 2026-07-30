@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Highlighter } from "lucide-react";
 import Highlight from "@tiptap/extension-highlight";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -25,46 +25,16 @@ function ReflectionSection({
   trade,
   setTrade,
 }) {
-    const [plans, setPlans] = useState([
-        "KILLZONE",
-        "BIAS ALIGNMENT",
-        "PRIOR ZONE",
-        "LIQUIDITY SWEEP",
-        "MS/BOS",
-        ]);
-      
-      const [selectedPlans, setSelectedPlans] = useState([]);
-      
-      const [showAddPlan, setShowAddPlan] = useState(false);
-      const [newPlan, setNewPlan] = useState("");
-      
-    
-      const togglePlan = (plan) => {
-        if (selectedPlans.includes(plan)) {
-          setSelectedPlans(selectedPlans.filter((p) => p !== plan));
-        } else {
-          setSelectedPlans([...selectedPlans, plan]);
-        }
-      };
-      
-      const addPlan = () => {
-        if (!newPlan.trim()) return;
-      
-        setPlans([...plans, newPlan]);
-        setSelectedPlans([...selectedPlans, newPlan]);
-      
-        setNewPlan("");
-        setShowAddPlan(false);
-      };
-      const deletePlan = (planToDelete) => {
+  const [plans, setPlans] = useState([]);
 
-        setPlans(plans.filter((plan) => plan !== planToDelete));
-      
-        setSelectedPlans(
-          selectedPlans.filter((plan) => plan !== planToDelete)
-        );
-      
-      };
+  useEffect(() => {
+  
+    const savedPlans =
+      JSON.parse(localStorage.getItem("edgeStrategies")) || [];
+  
+    setPlans(savedPlans);
+  
+  }, []);
       const entryTags = trade?.reflection?.entryTags || [];
       const [entryInput, setEntryInput] = useState("");
       
@@ -467,91 +437,68 @@ Characters: {characterCount}
             {/* Trading Plan */}
   
             <div>
-  <label className="block text-sm font-semibold mb-3">
-    Which plan did you follow?
-  </label>
+ 
 
   <div className="space-y-2">
 
-   {plans.map((plan) => (
+  <label className="block text-sm font-semibold mb-3">
+  Which plan did you follow?
+</label>
 
-  <div
-    key={plan}
-    className="flex items-center justify-between mb-2"
-  >
+<select
+  value={trade?.reflection?.selectedPlanId || ""}
+  onChange={(e) => {
 
-    <label className="flex items-center gap-2 cursor-pointer">
-
-    <input
-  type="checkbox"
-  checked={
-    trade?.reflection?.selectedPlans?.includes(plan) || false
-  }
-  onChange={() => {
-    const current =
-      trade?.reflection?.selectedPlans || [];
-
-    const updated = current.includes(plan)
-      ? current.filter((p) => p !== plan)
-      : [...current, plan];
+    const selected = plans.find(
+      (p) => String(p.id) === e.target.value
+    );
 
     setTrade({
       ...trade,
       reflection: {
         ...trade.reflection,
-        selectedPlans: updated,
+        selectedPlanId: selected?.id || "",
+        selectedPlanTitle: selected?.title || "",
       },
     });
+
   }}
-/>
+  className="
+    w-full
+    rounded-xl
+    border
+    border-gray-300
+    px-4
+    py-3
+    bg-white
+    focus:outline-none
+    focus:ring-2
+    focus:ring-violet-500
+  "
+>
 
-      <span>{plan}</span>
+  <option value="">
+    Select Trading Plan
+  </option>
 
-    </label>
+  {plans.map((plan) => (
 
-    <button
-      onClick={() => deletePlan(plan)}
-      className="text-red-500 hover:text-red-700 transition"
+    <option
+      key={plan.id}
+      value={plan.id}
     >
-      <Trash2 size={16} />
-    </button>
+      {plan.title}
+    </option>
+
+  ))}
+
+</select>
 
   </div>
 
-))}
 
-  </div>
 
-  <button
-    onClick={() => setShowAddPlan(!showAddPlan)}
-    className="flex items-center gap-2 mt-3 text-purple-600 hover:text-purple-700"
-  >
-    <Plus size={16} />
-    Add Plan
-  </button>
-
-  {showAddPlan && (
-
-    <div className="flex gap-2 mt-3">
-
-      <input
-        type="text"
-        value={newPlan}
-        onChange={(e) => setNewPlan(e.target.value)}
-        placeholder="New Trading Plan"
-        className="flex-1 border rounded-lg px-3 py-2"
-      />
-
-      <button
-        onClick={addPlan}
-        className="px-4 rounded-lg bg-purple-600 text-white"
-      >
-        Add
-      </button>
-
-    </div>
-
-  )}
+  
 
 </div>
   

@@ -4,29 +4,37 @@ import EquityCurve from "./EquityCurve";
 import PerformanceTable from "./PerformanceTable";
 import MistakeAnalysis from "./MistakeAnalysis";
 
-export default function PlanStatistics({ onBack }) {
+export default function PlanStatistics({
+  plan,
+  onBack,
+}) {
   return (
     <div className="h-full flex flex-col bg-[#fafafa] rounded-2xl overflow-hidden">
 
-      <StatisticsHeader onBack={onBack} />
+<StatisticsHeader
+  plan={plan}
+  onBack={onBack}
+/>
 
       <div className="flex-1 overflow-y-auto">
 
-        <div className="max-w-[1700px] mx-auto p-8 space-y-8">
+        <div className="max-w-[1700px] mx-auto p-8 space-y-4">
 
-        <StatisticsOverview />
+        <StatisticsOverview
+    plan={plan}
+/>
 
           {/* Equity Curve */}
 
-          <EquityCurve />
+          <EquityCurve plan={plan} />
 
           {/* Bottom */}
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-2 gap-3">
 
-            <PerformanceTable />
+          <PerformanceTable plan={plan} />
 
-            <MistakeAnalysis />
+          <MistakeAnalysis plan={plan} />
 
           </div>
 

@@ -101,6 +101,46 @@ function AddTradeModal({
     };
   
     setTrades([...trades, newTrade]);
+
+    // ==========================
+// LINK TRADE TO SELECTED PLAN
+// ==========================
+
+if (newTrade.reflection?.selectedPlanId) {
+
+  const folders =
+    JSON.parse(localStorage.getItem("edgeFolders")) || [];
+
+  const updatedFolders = folders.map(folder => ({
+
+    ...folder,
+
+    plans: folder.plans.map(plan => {
+
+      if (plan.id !== newTrade.reflection.selectedPlanId)
+        return plan;
+
+      return {
+
+        ...plan,
+
+        trades: [
+          ...(plan.trades || []),
+          newTrade.id,
+        ],
+
+      };
+
+    }),
+
+  }));
+
+  localStorage.setItem(
+    "edgeFolders",
+    JSON.stringify(updatedFolders)
+  );
+
+}
   
     setShowModal(false);
   };

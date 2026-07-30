@@ -153,7 +153,7 @@ if (!trade) {
 
       <Row label="Trade Type" value={trade.tradeType || "-"} />
 <Row label="Timeframe" value={trade.timeframe || "-"} />
-<Row label="Setup " value={trade.setup || "-"} />
+
 
       </div>
 

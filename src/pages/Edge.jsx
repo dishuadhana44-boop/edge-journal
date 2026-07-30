@@ -8,10 +8,21 @@ import PlanStatistics from "../components/edge/statistics/PlanStatistics";
 import PresetsPage from "../components/edge/presets/PresetsPage";
 import EdgeEditor from "../components/edge/editor/EdgeEditor";
 
+import PresetPreview from "../components/edge/presetPreview/PresetPreview";
+import PlanPreview from "../components/edge/myPlans/PlanPreview";
+
+import StatsHome from "../components/edge/statistics/StatsHome";
+
 
 export default function Edge() {
 
   const [view, setView] = useState("editor");
+
+  const [selectedStatsPlan, setSelectedStatsPlan] = useState(null);
+
+const [statsView, setStatsView] = useState("home");
+// home
+// dashboard
 
   const [collapsed, setCollapsed] = useState(false);
 
@@ -25,6 +36,8 @@ export default function Edge() {
 // edit = Edit Existing Plan
 
 const [selectedPlan, setSelectedPlan] = useState(null);
+
+const [previewPlan, setPreviewPlan] = useState(null);
 
 const [plans, setPlans] = useState([]);
 
@@ -44,7 +57,12 @@ useEffect(() => {
      
 
 <EdgeHeader
-  onStats={() => setView("stats")}
+  isStatsActive={view === "stats"}
+  onStats={() => {
+    setView("stats");
+    setStatsView("home");
+    setActiveTab(null);
+  }}
 
   onNewPlan={() => {
 
@@ -55,28 +73,92 @@ useEffect(() => {
     setMode("new");
   
   }}
+  activeView={view}
 />
 
       
 
       <div className="flex flex-1 overflow-hidden">
 
-        <EdgeSidebar
-          collapsed={collapsed}
-          setCollapsed={setCollapsed}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-        />
+      <EdgeSidebar
+  collapsed={collapsed}
+  setCollapsed={setCollapsed}
+  activeTab={activeTab}
+  setActiveTab={(tab) => {
+
+    setView("editor");      // <-- IMPORTANT
+
+    setStatsView("home");
+
+    setSelectedStatsPlan(null);
+
+    setActiveTab(tab);
+
+    setMode("list");
+
+  }}
+/>
 
 <div className="flex-1 overflow-hidden">
 
 {view === "stats" ? (
 
-<PlanStatistics
-  onBack={() => setView("editor")}
+statsView === "home" ? (
+
+<StatsHome
+
+plans={plans}
+
+onSelectPlan={(plan) => {
+
+setSelectedStatsPlan(plan);
+
+setStatsView("dashboard");
+
+}}
+
 />
 
-) : activeTab === "presets" ? (
+) : (
+
+<PlanStatistics
+
+plan={selectedStatsPlan}
+
+onBack={() => {
+
+setStatsView("home");
+
+}}
+
+/>
+
+)
+
+): 
+
+ previewPlan ? (
+
+  <PlanPreview
+  
+      plan={previewPlan}
+  
+      onBack={() => setPreviewPlan(null)}
+  
+      onEdit={(plan) => {
+  
+          setPreviewPlan(null);
+  
+          setSelectedPlan(plan);
+  
+          setMode("edit");
+  
+      }}
+  
+  />
+  
+  ) :
+ activeTab === "presets" ? (
 
 <PresetsPage />
 
@@ -86,13 +168,17 @@ useEffect(() => {
 
   {mode === "list" && (
 
-    <MyPlansPage
-      plans={plans}
-      onOpenPlan={(plan) => {
-        setSelectedPlan(plan);
-        setMode("edit");
-      }}
-    />
+<MyPlansPage
+plans={plans}
+onOpenPlan={(plan) => {
+  setSelectedPlan(plan);
+  setMode("edit");
+}}
+
+onPreview={(plan) => {
+  setPreviewPlan(plan);
+}}
+/>
 
   )}
 

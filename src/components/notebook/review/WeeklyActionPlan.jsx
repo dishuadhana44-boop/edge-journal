@@ -1,301 +1,331 @@
 import { useState } from "react";
 import {
-  Plus,
-  Trash2,
-  CheckCircle2,
-  Flag,
+Plus,
+Trash2,
+Check,
+Calendar,
+Flag,
 } from "lucide-react";
 
-export default function WeeklyActionPlan() {
+export default function WeeklyActionPlan(){
 
-  const [text, setText] = useState("");
+const [task,setTask]=useState("");
 
-  const [priority, setPriority] = useState("Medium");
+const [tasks,setTasks]=useState([]);
 
-  const [tasks, setTasks] = useState([]);
+function addTask(){
 
-  function addTask() {
+if(!task.trim()) return;
 
-    if (!text.trim()) return;
+setTasks([
+...tasks,
+{
+id:Date.now(),
+title:task,
+priority:"Medium",
+done:false,
+}
+]);
 
-    setTasks([
-      ...tasks,
-      {
-        id: Date.now(),
-        text,
-        priority,
-        completed: false,
-      },
-    ]);
+setTask("");
 
-    setText("");
+}
 
-  }
+function toggle(id){
 
-  function toggle(id) {
+setTasks(
 
-    setTasks(
+tasks.map((t)=>
 
-      tasks.map(task =>
-        task.id === id
-          ? {
-              ...task,
-              completed: !task.completed,
-            }
-          : task
-      )
+t.id===id
 
-    );
+?{
 
-  }
+...t,
 
-  function remove(id) {
+done:!t.done,
 
-    setTasks(
+}
 
-      tasks.filter(task => task.id !== id)
+:t
 
-    );
+)
 
-  }
+);
 
-  const completed = tasks.filter(t => t.completed).length;
+}
 
-  const progress =
-    tasks.length === 0
-      ? 0
-      : Math.round((completed / tasks.length) * 100);
+function remove(id){
 
-  function badgeColor(level){
+setTasks(
 
-    switch(level){
+tasks.filter((t)=>t.id!==id)
 
-      case "High":
+);
 
-        return "bg-red-100 text-red-600";
+}
 
-      case "Medium":
+function changePriority(id,value){
 
-        return "bg-yellow-100 text-yellow-700";
+setTasks(
 
-      default:
+tasks.map((t)=>
 
-        return "bg-green-100 text-green-600";
+t.id===id
 
-    }
+?{
 
-  }
+...t,
 
-  return (
+priority:value,
 
-    <div className="bg-white rounded-3xl border border-gray-200 p-8 hover:shadow-xl transition-all duration-500">
+}
 
-      <h2 className="text-2xl font-bold">
+:t
 
-        Next Week Action Plan
+)
 
-      </h2>
+);
 
-      <p className="text-gray-500 mt-2">
+}
 
-        Focus on what matters next week.
+const completed=tasks.filter(t=>t.done).length;
 
-      </p>
+const progress=
 
-      {/* Progress */}
+tasks.length===0
 
-      <div className="mt-8">
+?0
 
-        <div className="flex justify-between mb-2">
+:Math.round(
 
-          <span className="text-sm text-gray-500">
+completed/tasks.length*100
 
-            Completion
+);
 
-          </span>
+return(
 
-          <span className="font-semibold">
+<div className="bg-white rounded-[30px] border border-gray-200 p-8">
 
-            {progress}%
+<div className="flex items-center justify-between">
 
-          </span>
+<div>
 
-        </div>
+<h2 className="text-3xl font-black">
 
-        <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
+Next Week Action Plan
 
-          <div
+</h2>
 
-            style={{
 
-              width:`${progress}%`
 
-            }}
 
-            className="h-full bg-gradient-to-r from-purple-600 to-violet-500 transition-all duration-700"
+</div>
 
-          />
+<div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-600 to-violet-500 flex items-center justify-center">
 
-        </div>
+<Calendar className="text-white"/>
 
-      </div>
+</div>
 
-      {/* Add */}
+</div>
 
-      <div className="mt-8 space-y-4">
+<div className="mt-8">
 
-        <input
+<div className="flex justify-between">
 
-          value={text}
+<span>Progress</span>
 
-          onChange={(e)=>setText(e.target.value)}
+<strong>{progress}%</strong>
 
-          placeholder="New Action..."
+</div>
 
-          className="w-full h-12 rounded-2xl border border-gray-300 px-4 outline-none focus:ring-2 focus:ring-purple-500"
+<div className="mt-3 h-3 rounded-full bg-gray-100 overflow-hidden">
 
-          onKeyDown={(e)=>{
+<div
 
-            if(e.key==="Enter"){
+className="h-full bg-gradient-to-r from-purple-500 to-violet-500 transition-all duration-500"
 
-              addTask();
+style={{width:`${progress}%`}}
 
-            }
+/>
 
-          }}
+</div>
 
-        />
+</div>
 
-        <div className="flex gap-3">
+<div className="flex gap-3 mt-8">
 
-          <select
+<input
 
-            value={priority}
+value={task}
 
-            onChange={(e)=>setPriority(e.target.value)}
+onChange={(e)=>setTask(e.target.value)}
 
-            className="flex-1 h-11 rounded-xl border border-gray-300 px-3"
+placeholder="Add Action..."
 
-          >
+className="flex-1 rounded-2xl border border-gray-200 px-5 py-4 outline-none focus:border-purple-500"
 
-            <option>High</option>
+/>
 
-            <option>Medium</option>
+<button
 
-            <option>Low</option>
+onClick={addTask}
 
-          </select>
+className="w-14 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center"
 
-          <button
+>
 
-            onClick={addTask}
+<Plus/>
 
-            className="px-5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2"
+</button>
 
-          >
+</div>
 
-            <Plus size={18}/>
+<div className="space-y-4 mt-8">
 
-            Add
+{tasks.map((item)=>(
 
-          </button>
+<div
 
-        </div>
+key={item.id}
 
-      </div>
+className="border rounded-2xl p-5 hover:border-purple-500 transition"
 
-      {/* Tasks */}
+>
 
-      <div className="space-y-3 mt-8">
+<div className="flex justify-between">
 
-        {tasks.map(task=>(
+<div
 
-          <div
+className="flex items-center gap-4 cursor-pointer"
 
-            key={task.id}
+onClick={()=>toggle(item.id)}
 
-            className="group rounded-2xl border border-gray-200 p-4 hover:border-purple-500 hover:bg-purple-50 transition-all"
+>
 
-          >
+<div
 
-            <div className="flex items-center gap-4">
+className={`
 
-              <button
+w-7
 
-                onClick={()=>toggle(task.id)}
+h-7
 
-              >
+rounded-full
 
-                <CheckCircle2
+flex
 
-                  size={24}
+items-center
 
-                  className={
-                    task.completed
-                      ? "text-green-500"
-                      : "text-gray-300"
-                  }
+justify-center
 
-                />
+${item.done
 
-              </button>
+?"bg-green-500"
 
-              <div className="flex-1">
+:"border-2 border-gray-300"}
 
-                <p
+`}
 
-                  className={`font-medium ${
-                    task.completed
-                      ? "line-through text-gray-400"
-                      : ""
-                  }`}
+>
 
-                >
+{item.done&&
 
-                  {task.text}
+<Check
 
-                </p>
+size={15}
 
-              </div>
+className="text-white"
 
-              <span
+/>
 
-                className={`px-3 py-1 rounded-full text-xs font-semibold ${badgeColor(task.priority)}`}
+}
 
-              >
+</div>
 
-                <Flag size={12} className="inline mr-1"/>
+<span
 
-                {task.priority}
+className={`
 
-              </span>
+${item.done
 
-              <button
+?"line-through text-gray-400"
 
-                onClick={()=>remove(task.id)}
+:"font-medium"}
 
-              >
+`}
 
-                <Trash2
+>
 
-                  size={18}
+{item.title}
 
-                  className="text-gray-400 hover:text-red-500"
+</span>
 
-                />
+</div>
 
-              </button>
+<button
 
-            </div>
+onClick={()=>remove(item.id)}
 
-          </div>
+className="text-red-500"
 
-        ))}
+>
 
-      </div>
+<Trash2 size={18}/>
 
-    </div>
+</button>
 
-  );
+</div>
+
+<div className="mt-5 flex items-center gap-3">
+
+<Flag
+
+size={18}
+
+className="text-purple-600"
+
+/>
+
+<select
+
+value={item.priority}
+
+onChange={(e)=>
+
+changePriority(
+
+item.id,
+
+e.target.value
+
+)
+
+}
+
+className="border rounded-xl px-3 py-2"
+
+>
+
+<option>High</option>
+
+<option>Medium</option>
+
+<option>Low</option>
+
+</select>
+
+</div>
+
+</div>
+
+))}
+
+</div>
+
+</div>
+
+);
 
 }

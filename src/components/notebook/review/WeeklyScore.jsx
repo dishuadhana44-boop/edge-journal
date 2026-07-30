@@ -1,275 +1,296 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import {
-  ShieldCheck,
-  Brain,
-  Target,
-  TrendingUp,
+Shield,
+Brain,
+Target,
+TrendingUp,
+Award,
 } from "lucide-react";
 
-export default function WeeklyScore() {
+export default function WeeklyScore(){
 
-  const [discipline, setDiscipline] = useState(8);
+const [discipline,setDiscipline]=useState(8);
+const [execution,setExecution]=useState(7);
+const [psychology,setPsychology]=useState(8);
+const [risk,setRisk]=useState(9);
 
-  const [execution, setExecution] = useState(7);
+const overall=Math.round(
 
-  const [psychology, setPsychology] = useState(8);
+(
+discipline+
+execution+
+psychology+
+risk
+)/4
 
-  const [risk, setRisk] = useState(9);
+);
 
-  const overall = useMemo(() => {
+const circumference=2*Math.PI*85;
 
-    return Math.round(
+const offset=
 
-      (discipline + execution + psychology + risk) / 4
+circumference-
 
-    );
+(overall/10)*circumference;
 
-  }, [
+function grade(){
 
-    discipline,
+if(overall>=9) return "A+";
 
-    execution,
+if(overall>=8) return "A";
 
-    psychology,
+if(overall>=7) return "B";
 
-    risk,
+if(overall>=6) return "C";
 
-  ]);
+return "D";
 
-  const radius = 72;
+}
 
-  const circumference =
+const cards=[
 
-    2 * Math.PI * radius;
+{
+title:"Discipline",
+icon:Shield,
+value:discipline,
+setter:setDiscipline,
+},
 
-  const offset =
+{
+title:"Execution",
+icon:Target,
+value:execution,
+setter:setExecution,
+},
 
-    circumference -
+{
+title:"Psychology",
+icon:Brain,
+value:psychology,
+setter:setPsychology,
+},
 
-    (overall / 10) * circumference;
+{
+title:"Risk",
+icon:TrendingUp,
+value:risk,
+setter:setRisk,
+},
 
-  function ScoreCard({
+];
 
-    title,
+return(
 
-    value,
+<div className="space-y-6">
 
-    setValue,
+{/* Overall */}
 
-    icon: Icon,
+<div className="bg-white rounded-[30px] border border-gray-200 p-8">
 
-  }) {
+<div className="flex items-center gap-3">
 
-    return (
+<Award className="text-purple-600"/>
 
-      <div className="rounded-2xl border border-gray-200 p-5 hover:border-purple-500 hover:shadow-lg transition-all">
+<h2 className="text-2xl font-black">
 
-        <div className="flex items-center justify-between">
+Weekly Score
 
-          <div>
+</h2>
 
-            <p className="text-sm text-gray-500">
+</div>
 
-              {title}
+<div className="flex justify-center mt-8">
 
-            </p>
+<div className="relative w-52 h-52">
 
-            <h3 className="text-3xl font-bold mt-1">
+<svg
+className="w-52 h-52 -rotate-90"
+>
 
-              {value}
+<circle
 
-            </h3>
+cx="104"
 
-          </div>
+cy="104"
 
-          <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
+r="85"
 
-            <Icon className="text-purple-600"/>
+stroke="#ECECEC"
 
-          </div>
+strokeWidth="14"
 
-        </div>
+fill="none"
 
-        <input
+/>
 
-          type="range"
+<circle
 
-          min={1}
+cx="104"
 
-          max={10}
+cy="104"
 
-          value={value}
+r="85"
 
-          onChange={(e)=>
+stroke="url(#gradient)"
 
-            setValue(Number(e.target.value))
+strokeWidth="14"
 
-          }
+fill="none"
 
-          className="w-full mt-6 accent-purple-600"
+strokeLinecap="round"
 
-        />
+strokeDasharray={circumference}
 
-      </div>
+strokeDashoffset={offset}
 
-    );
+style={{
 
-  }
+transition:"1s",
 
-  return (
+}}
 
-    <div className="bg-white rounded-3xl border border-gray-200 p-8 hover:shadow-xl transition-all duration-500">
+/>
 
-      <h2 className="text-2xl font-bold">
+<defs>
 
-        Weekly Score
+<linearGradient
 
-      </h2>
+id="gradient"
 
-      <p className="text-gray-500 mt-2">
+x1="0%"
 
-        Evaluate your trading discipline.
+y1="0%"
 
-      </p>
+x2="100%"
 
-      {/* Circle */}
+y2="100%"
 
-      <div className="flex justify-center mt-10">
+>
 
-        <div className="relative w-44 h-44">
+<stop
 
-          <svg
+offset="0%"
 
-            className="-rotate-90"
+stopColor="#9333EA"
 
-            width="176"
+/>
 
-            height="176"
+<stop
 
-          >
+offset="100%"
 
-            <circle
+stopColor="#7C3AED"
 
-              cx="88"
+/>
 
-              cy="88"
+</linearGradient>
 
-              r={radius}
+</defs>
 
-              stroke="#ececec"
+</svg>
 
-              strokeWidth="12"
+<div className="absolute inset-0 flex flex-col items-center justify-center">
 
-              fill="none"
+<h1 className="text-6xl font-black">
 
-            />
+{overall}
 
-            <circle
+</h1>
 
-              cx="88"
+<p className="text-gray-400">
 
-              cy="88"
+Overall
 
-              r={radius}
+</p>
 
-              stroke="#7C3AED"
+<span className="mt-2 px-4 py-1 rounded-full bg-purple-100 text-purple-700 font-bold">
 
-              strokeWidth="12"
+{grade()}
 
-              fill="none"
+</span>
 
-              strokeLinecap="round"
+</div>
 
-              strokeDasharray={circumference}
+</div>
 
-              strokeDashoffset={offset}
+</div>
 
-              style={{
+</div>
 
-                transition:"all .8s"
+{/* Sliders */}
 
-              }}
+{cards.map((item,index)=>{
 
-            />
+const Icon=item.icon;
 
-          </svg>
+return(
 
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
+<div
 
-            <h1 className="text-5xl font-bold">
+key={index}
 
-              {overall}
+className="bg-white rounded-[26px] border border-gray-200 p-6 hover:border-purple-500 hover:shadow-xl transition"
 
-            </h1>
+>
 
-            <p className="text-gray-500">
+<div className="flex justify-between">
 
-              Overall
+<div>
 
-            </p>
+<p className="text-gray-400">
 
-          </div>
+{item.title}
 
-        </div>
+</p>
 
-      </div>
+<h2 className="text-4xl font-black mt-2">
 
-      {/* Scores */}
+{item.value}
 
-      <div className="space-y-5 mt-10">
+</h2>
 
-        <ScoreCard
+</div>
 
-          title="Discipline"
+<div className="w-14 h-14 rounded-2xl bg-purple-100 flex items-center justify-center">
 
-          value={discipline}
+<Icon className="text-purple-600"/>
 
-          setValue={setDiscipline}
+</div>
 
-          icon={ShieldCheck}
+</div>
 
-        />
+<input
 
-        <ScoreCard
+type="range"
 
-          title="Execution"
+min="0"
 
-          value={execution}
+max="10"
 
-          setValue={setExecution}
+value={item.value}
 
-          icon={Target}
+onChange={(e)=>
 
-        />
+item.setter(
 
-        <ScoreCard
+Number(e.target.value)
 
-          title="Psychology"
+)
 
-          value={psychology}
+}
 
-          setValue={setPsychology}
+className="w-full mt-6 accent-purple-600"
 
-          icon={Brain}
+/>
 
-        />
+</div>
 
-        <ScoreCard
+)
 
-          title="Risk Management"
+})}
 
-          value={risk}
+</div>
 
-          setValue={setRisk}
-
-          icon={TrendingUp}
-
-        />
-
-      </div>
-
-    </div>
-
-  );
+)
 
 }

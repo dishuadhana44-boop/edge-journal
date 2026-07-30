@@ -342,30 +342,13 @@ function EditAdvancedTradeForm({
   </div>
 
   {/* Setup */}
-  <div className="col-span-2">
-    <label className="block text-sm font-medium mb-2">
-      Setup / Strategy
-    </label>
-
-    <input
-      type="text"
-      placeholder="Liquidity Sweep + BOS"
-      value={form.setup}
-      onChange={(e) =>
-        setForm({
-          ...form,
-          setup: e.target.value,
-        })
-      }
-      className="w-full border rounded-xl px-4 py-3"
-    />
-  </div>
+ 
 
 </div>
 
 </div>
         {/* Bottom Buttons */}
-        <div className="flex justify-end items-center gap-3 pt-6 border-t">
+        <div className="flex justify-end items-center gap-3 pt-6 ">
 
 
 

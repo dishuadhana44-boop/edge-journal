@@ -1,26 +1,32 @@
 import { useState } from "react";
-import { Plus, Trash2, CheckCircle2 } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Check,
+  Target,
+} from "lucide-react";
 
 export default function WeeklyGoals() {
 
-  const [input, setInput] = useState("");
+  const [text, setText] = useState("");
 
   const [goals, setGoals] = useState([]);
 
   function addGoal() {
 
-    if (!input.trim()) return;
+    if (!text.trim()) return;
 
     setGoals([
       ...goals,
       {
         id: Date.now(),
-        text: input,
-        completed: false,
+        title: text,
+        done: false,
       },
     ]);
 
-    setInput("");
+    setText("");
+
   }
 
   function toggleGoal(id) {
@@ -28,12 +34,19 @@ export default function WeeklyGoals() {
     setGoals(
 
       goals.map((goal) =>
+
         goal.id === id
+
           ? {
+
               ...goal,
-              completed: !goal.completed,
+
+              done: !goal.done,
+
             }
+
           : goal
+
       )
 
     );
@@ -50,46 +63,49 @@ export default function WeeklyGoals() {
 
   }
 
-  const completed = goals.filter(g => g.completed).length;
+  const completed = goals.filter(
 
-  const progress =
+    (g) => g.done
+
+  ).length;
+
+  const percent =
+
     goals.length === 0
+
       ? 0
-      : Math.round((completed / goals.length) * 100);
+
+      : Math.round(
+
+          (completed / goals.length) * 100
+
+        );
 
   return (
 
-    <div className="bg-white rounded-3xl border border-gray-200 p-8 hover:shadow-xl transition-all duration-500">
+    <div className="rounded-[30px] border border-gray-200 bg-white p-8">
 
-      <div className="flex items-center justify-between">
+      {/* Header */}
+
+      <div className="flex justify-between items-center">
 
         <div>
 
-          <h2 className="text-2xl font-bold">
+          <h2 className="text-3xl font-black">
 
             Weekly Goals
 
           </h2>
 
-          <p className="text-gray-500 mt-1">
-
-            Track your objectives for this week.
-
-          </p>
+          
 
         </div>
 
-        <button
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-violet-500 flex items-center justify-center shadow-lg">
 
-          onClick={addGoal}
+          <Target className="text-white"/>
 
-          className="w-11 h-11 rounded-2xl bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white transition"
-
-        >
-
-          <Plus size={20} />
-
-        </button>
+        </div>
 
       </div>
 
@@ -97,31 +113,31 @@ export default function WeeklyGoals() {
 
       <div className="mt-8">
 
-        <div className="flex justify-between mb-2">
+        <div className="flex justify-between">
 
-          <span className="text-sm text-gray-500">
+          <span className="font-medium">
 
             Progress
 
           </span>
 
-          <span className="text-sm font-semibold">
+          <span className="font-bold">
 
-            {progress}%
+            {percent}%
 
           </span>
 
         </div>
 
-        <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+        <div className="h-3 rounded-full bg-gray-100 mt-3 overflow-hidden">
 
           <div
 
-            className="h-full bg-gradient-to-r from-purple-600 to-violet-500 transition-all duration-700"
+            className="h-full rounded-full bg-gradient-to-r from-purple-500 to-violet-500 transition-all duration-700"
 
             style={{
 
-              width: `${progress}%`
+              width: `${percent}%`,
 
             }}
 
@@ -137,31 +153,33 @@ export default function WeeklyGoals() {
 
         <input
 
-          value={input}
+          value={text}
 
-          onChange={(e)=>setInput(e.target.value)}
-
-          onKeyDown={(e)=>{
-
-            if(e.key==="Enter"){
-
-              addGoal();
-
-            }
-
-          }}
+          onChange={(e)=>setText(e.target.value)}
 
           placeholder="Add Weekly Goal..."
 
-          className="flex-1 h-12 rounded-2xl border border-gray-300 px-4 outline-none focus:ring-2 focus:ring-purple-500"
+          className="flex-1 border rounded-2xl px-5 py-4 outline-none focus:border-purple-500"
 
         />
 
+        <button
+
+          onClick={addGoal}
+
+          className="w-14 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center"
+
+        >
+
+          <Plus/>
+
+        </button>
+
       </div>
 
-      {/* List */}
+      {/* Goals */}
 
-      <div className="space-y-3 mt-8">
+      <div className="space-y-4 mt-8">
 
         {goals.map((goal)=>(
 
@@ -169,55 +187,91 @@ export default function WeeklyGoals() {
 
             key={goal.id}
 
-            className="group flex items-center gap-4 rounded-2xl border border-gray-200 p-4 hover:border-purple-500 hover:bg-purple-50 transition"
+            className="flex items-center justify-between border rounded-2xl p-4 hover:border-purple-500 transition"
 
           >
 
-            <button
+            <div
+
+              className="flex items-center gap-4 cursor-pointer"
 
               onClick={()=>toggleGoal(goal.id)}
 
             >
 
-              <CheckCircle2
+              <div
 
-                size={24}
+                className={`
 
-                className={goal.completed
-                  ? "text-green-500"
-                  : "text-gray-300"}
+                w-7
 
-              />
+                h-7
 
-            </button>
+                rounded-full
 
-            <p
+                flex
 
-              className={`flex-1 ${
-                goal.completed
+                items-center
+
+                justify-center
+
+                transition
+
+                ${goal.done
+
+                  ? "bg-green-500"
+
+                  : "border-2 border-gray-300"}
+
+                `}
+
+              >
+
+                {goal.done &&
+
+                  <Check
+
+                    size={16}
+
+                    className="text-white"
+
+                  />
+
+                }
+
+              </div>
+
+              <span
+
+                className={`
+
+                text-lg
+
+                ${goal.done
+
                   ? "line-through text-gray-400"
-                  : "text-gray-700"
-              }`}
 
-            >
+                  : "font-medium"}
 
-              {goal.text}
+                `}
 
-            </p>
+              >
+
+                {goal.title}
+
+              </span>
+
+            </div>
 
             <button
 
               onClick={()=>deleteGoal(goal.id)}
 
+              className="text-red-500"
+
             >
 
-              <Trash2
-
-                size={18}
-
-                className="text-gray-400 hover:text-red-500"
-
-              />
+              <Trash2 size={18}/>
 
             </button>
 

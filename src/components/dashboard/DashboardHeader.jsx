@@ -32,25 +32,10 @@ function DashboardHeader({
   
           <DateRangePicker />
   
-          <button
-            onClick={() => setShowAddAccountModal(true)}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-xl font-medium transition"
-          >
-            + Add Account
-          </button>
+          
   
          
-          <select
-  value={selectedAccount}
-  onChange={(e) => setSelectedAccount(e.target.value)}
-  className="border border-gray-300 rounded-xl px-4 py-2 bg-white min-w-[150px]"
->
-  {accounts?.map((account) => (
-    <option key={account.id} value={account.name}>
-      {account.name}
-    </option>
-  ))}
-</select>
+  
 
   
         </div>

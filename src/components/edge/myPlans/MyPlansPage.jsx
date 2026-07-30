@@ -3,21 +3,24 @@ import { useState } from "react";
 import NewFolderModal from "./NewFolderModal";
 import { Plus } from "lucide-react";
 import { useEffect } from "react";
+import PlanCard from "./PlanCard";
+import { Trash2 } from "lucide-react";
 
 export default function MyPlansPage({
 
-  plans = [],
-
-  onOpenPlan,
-
-}) {
+    plans,
+  
+    onOpenPlan,
+  
+    onPreview,
+  
+  }) {
 
     const [showFolderModal, setShowFolderModal] = useState(false);
 
     const [folders, setFolders] = useState(() => {
-
-        return JSON.parse(localStorage.getItem("edgeFolders")) || [
-      
+      return (
+        JSON.parse(localStorage.getItem("edgeFolders")) || [
           {
             id: 1,
             name: "Commodities",
@@ -33,10 +36,15 @@ export default function MyPlansPage({
             name: "Crypto",
             plans: [],
           },
-      
-        ];
-      
-      });
+        ]
+      );
+    });
+    
+    const [allPlans, setAllPlans] = useState(() => {
+      return JSON.parse(
+        localStorage.getItem("edgeStrategies")
+      ) || [];
+    });
 
     useEffect(()=>{
 
@@ -49,6 +57,15 @@ export default function MyPlansPage({
         );
         
         },[folders]);
+
+        useEffect(() => {
+
+          const savedPlans =
+            JSON.parse(localStorage.getItem("edgeStrategies")) || [];
+        
+          setAllPlans(savedPlans);
+        
+        }, []);
 
 function createFolder(name) {
 
@@ -70,11 +87,11 @@ function createFolder(name) {
 
     <div className="h-full bg-[#fafafa] overflow-y-auto">
 
-      <div className="max-w-[1400px] mx-auto p-8">
+<div className="max-w-[1500px] mx-auto px-4 pt-3 pb-8">
 
         {/* Header */}
 
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-5">
 
   <div>
 
@@ -125,7 +142,7 @@ function createFolder(name) {
 </div>
         {/* Search */}
 
-        <div className="relative mb-8">
+        <div className="relative mb-4">
 
           <Search
             size={18}
@@ -166,7 +183,7 @@ function createFolder(name) {
 
         {/* Example Folder */}
 
-        <div className="space-y-8">
+        <div className="space-y-2">
 
 {folders.map((folder) => (
 
@@ -174,35 +191,94 @@ function createFolder(name) {
 
     key={folder.id}
 
-    className="bg-white rounded-2xl border border-gray-200 p-6"
+    className="bg-white rounded-2xl border border-gray-200 p-5"
 
   >
 
-    <div className="flex items-center gap-3 mb-5">
+<div className="flex items-center justify-between mb-5">
 
-      <Folder
+<div className="flex items-center gap-3">
 
-        className="text-violet-600"
+  <Folder
+    className="text-violet-600"
+    size={20}
+  />
 
-        size={20}
+  <h2 className="font-bold text-lg">
+    {folder.name}
+  </h2>
 
-      />
+  <span className="text-gray-400">
+    ({folder.plans.length})
+  </span>
 
-      <h2 className="font-bold text-lg">
+</div>
 
-        {folder.name}
+<button
 
-      </h2>
+  onClick={() => {
 
-      <span className="text-gray-400">
+    const ok = window.confirm(
 
-        ({folder.plans.length})
+      `Delete folder "${folder.name}"?`
 
-      </span>
+    );
 
-    </div>
+    if (!ok) return;
 
-    <div className="grid grid-cols-3 gap-5">
+    const updatedFolders = folders.filter(
+
+      (f) => f.id !== folder.id
+
+    );
+
+    setFolders(updatedFolders);
+
+    localStorage.setItem(
+
+      "edgeFolders",
+
+      JSON.stringify(updatedFolders)
+
+    );
+
+  }}
+
+  className="
+
+    w-9
+
+    h-9
+
+    rounded-lg
+
+    flex
+
+    items-center
+
+    justify-center
+
+    text-red-500
+
+    hover:bg-red-50
+
+    hover:text-red-600
+
+    transition
+
+  "
+
+  title="Delete Folder"
+
+>
+
+  <Trash2 size={18} />
+
+</button>
+
+</div>
+
+    <div className="grid grid-cols-2 gap-6">
 
   {folder.plans.length === 0 ? (
 
@@ -229,39 +305,89 @@ function createFolder(name) {
 
   ) : (
 
-    folder.plans.map((plan) => (
+    folder.plans
+  .map((planId) =>
+    allPlans.find((p) => p.id === planId)
+  )
+  .filter(Boolean)
+  .map((plan) => (
 
-      <button
+        <PlanCard
+      
+          key={plan.id}
+      
+          plan={plan}
+      
+          onPreview={(plan) => {
 
-        key={plan.id}
+            onPreview(plan);
+        
+        }}
+      
+          onEdit={(plan) => {
+      
+            onOpenPlan(plan);
+      
+          }}
+      
+          onDelete={(plan) => {
 
-        onClick={() => onOpenPlan(plan)}
-
-        className="
-          border
-          rounded-xl
-          p-5
-          hover:border-violet-500
-          hover:shadow-md
-          transition
-          text-left
-        "
-
-      >
-
-        <FileText
-          className="text-violet-600 mb-3"
+            if (!window.confirm(`Delete "${plan.title}" ?`))
+                return;
+        
+            // Folder update
+        
+            const updatedFolders = folders.map((f) => {
+        
+                if (f.id !== folder.id) return f;
+        
+                return {
+        
+                    ...f,
+        
+                    plans: f.plans.filter(
+                      (id) => id !== plan.id
+                  )
+        
+                };
+        
+            });
+        
+            setFolders(updatedFolders);
+        
+            localStorage.setItem(
+        
+                "edgeFolders",
+        
+                JSON.stringify(updatedFolders)
+        
+            );
+        
+            // edgeStrategies update
+        
+            const allStrategies =
+        
+                JSON.parse(localStorage.getItem("edgeStrategies")) || [];
+        
+            const updatedStrategies = allStrategies.filter(
+        
+                (item) => item.id !== plan.id
+        
+            );
+        
+            localStorage.setItem(
+        
+                "edgeStrategies",
+        
+                JSON.stringify(updatedStrategies)
+        
+            );
+        
+        }}
+      
         />
-
-        <h3 className="font-semibold">
-
-          {plan.title}
-
-        </h3>
-
-      </button>
-
-    ))
+      
+      ))
 
   )}
 

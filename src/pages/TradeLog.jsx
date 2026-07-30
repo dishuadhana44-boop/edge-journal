@@ -5,7 +5,13 @@ import AddTradeModal from "../components/trade/AddTradeModal";
 import EditTradeModal from "../components/trade/EditTradeModal";
 import DeleteTradeModal from "../components/DeleteTradeModal";
 
+import { useSearchParams } from "react-router-dom";
+
 function TradeLog() {
+
+  const [searchParams] = useSearchParams();
+
+const selectedDate = searchParams.get("date");
 
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -15,6 +21,7 @@ const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [tradeToDelete, setTradeToDelete] = useState(null);
   const [trades, setTrades] = useState(() => {
+
     const savedTrades = localStorage.getItem("trades");
   
     return savedTrades
@@ -42,26 +49,39 @@ const [isEditing, setIsEditing] = useState(false);
   }, [trades]);
   const filteredTrades = trades.filter((trade) => {
 
-    const matchesSearch =
-      trade.pair.toLowerCase().includes(searchTerm.toLowerCase());
+    // 📅 Date Filter
+    const matchesDate =
+      !selectedDate || trade.date === selectedDate;
   
+    // 🔍 Search
+    const matchesSearch =
+      trade.pair
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+  
+    // Session
     const matchesSession =
       selectedSession === "All" ||
       trade.session === selectedSession;
   
+    // Result
     const matchesResult =
       selectedResult === "All" ||
       trade.result === selectedResult;
   
+    // Direction
     const matchesDirection =
       selectedDirection === "All" ||
       trade.direction === selectedDirection;
   
     return (
+  
+      matchesDate &&
       matchesSearch &&
       matchesSession &&
       matchesResult &&
       matchesDirection
+  
     );
   
   });

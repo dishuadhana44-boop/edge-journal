@@ -8,7 +8,7 @@ import WeeklyMistakes from "./WeeklyMistakes";
 import WeeklyLessons from "./WeeklyLessons";
 import WeeklyActionPlan from "./WeeklyActionPlan";
 import WeeklyScore from "./WeeklyScore";
-
+import WeeklyAISummary from "./WeeklyAISummary";
 import BestSetupCard from "./BestSetupCard";
 
 export default function WeeklyReview({ onBack }) {
@@ -39,79 +39,90 @@ export default function WeeklyReview({ onBack }) {
 
     return (
 
-        <div className="h-full overflow-y-auto bg-[#fafafa]">
-
-<button
-  onClick={onBack}
-  className="px-4 py-2 rounded-xl border border-gray-300 hover:bg-gray-100 transition"
->
-  ← Back
-</button>
-
-            <div className="max-w-7xl mx-auto px-10 py-10">
-
+        <div className="h-full overflow-y-auto bg-[#F8F9FC]">
+        
+        <div className="max-w-[1700px] mx-auto   space-y-2">
+        
+            {/* HEADER */}
+        
             <WeeklyHeader
-
-onBack={onBack}
-
-onSave={saveReview}
-
-/>
-
-                <div className="mt-8">
-
-                    <WeeklyStats />
-
-                    <div className="mt-8">
-
-    <BestSetupCard />
-
-</div>
-
+                onBack={onBack}
+                onSave={saveReview}
+            />
+        
+            {/* STATS */}
+        
+            <WeeklyStats />
+        
+            {/* BEST SETUP */}
+        
+            <BestSetupCard />
+        
+            {/* ================= ROW 1 ================= */}
+        
+            <div className="grid grid-cols-12 gap-4">
+        
+                <div className="col-span-8">
+        
+                    <WeeklyGoals />
+        
                 </div>
-
-                <div className="grid grid-cols-12 gap-7 mt-8">
-
-                    {/* LEFT */}
-
-                    <div className="col-span-8 space-y-7">
-
-                        <WeeklyGoals />
-
-                        <WeeklyPsychology />
-
-                        <WeeklyMistakes />
-
-                        <WeeklyLessons />
-
-                    </div>
-
-                    {/* RIGHT */}
-
-                    <div className="col-span-4 space-y-7">
-
-                        <WeeklyScore />
-
-                        
-
-                        <WeeklyActionPlan />
-
-                        <ReviewSaveBar
-
-saved={saved}
-
-onSave={saveReview}
-
-/>
-
-                    </div>
-
+        
+                <div className="col-span-4">
+        
+                    <WeeklyScore />
+        
                 </div>
-
+        
             </div>
-
+        
+            {/* ================= ROW 2 ================= */}
+        
+            <div className="grid grid-cols-12 gap-4">
+        
+                <div className="col-span-8">
+        
+                    <WeeklyPsychology />
+        
+                </div>
+        
+                <div className="col-span-4">
+        
+                    <ReviewSaveBar
+                        saved={saved}
+                        onSave={saveReview}
+                    />
+        
+                </div>
+        
+            </div>
+        
+            {/* ================= ROW 3 ================= */}
+        
+            <div className="grid grid-cols-12 gap-8">
+        
+                <div className="col-span-8">
+        
+                    <WeeklyMistakes />
+        
+                </div>
+        
+                <div className="col-span-4">
+        
+                    <WeeklyActionPlan />
+        
+                </div>
+        
+            </div>
+        
+            {/* ================= FULL WIDTH ================= */}
+        
+            <WeeklyLessons />
+        
         </div>
-
-    );
+        
+        </div>
+        
+        );
 
 }

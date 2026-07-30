@@ -1,191 +1,287 @@
 import { useState } from "react";
-
-const violations = [
-  "Entered Early",
-  "Ignored Stop Loss",
-  "Moved Stop Loss",
-  "Overtraded",
-  "Revenge Trade",
-  "FOMO Entry",
-  "Position Too Large",
-  "No Confirmation",
-];
+import {
+AlertTriangle,
+ShieldAlert,
+TrendingDown,
+CheckCircle2,
+} from "lucide-react";
 
 export default function WeeklyMistakes() {
 
-  const [selected, setSelected] = useState([]);
+const rules = [
 
-  const [wins, setWins] = useState("");
+"Early Entry",
 
-  const [mistakes, setMistakes] = useState("");
+"Late Entry",
 
-  function toggle(item) {
+"FOMO Trade",
 
-    if (selected.includes(item)) {
+"Revenge Trade",
 
-      setSelected(selected.filter(i => i !== item));
+"No Confirmation",
 
-    } else {
+"Over Trading",
 
-      setSelected([...selected, item]);
+"Oversized Position",
 
-    }
+"Moved Stop Loss",
 
-  }
+"Didn't Follow Plan",
 
-  return (
+"Poor Risk Management",
 
-    <div className="bg-white rounded-3xl border border-gray-200 p-8 hover:shadow-xl transition-all duration-500">
+];
 
-      <h2 className="text-2xl font-bold">
+const [selected,setSelected]=useState([]);
 
-        Weekly Reflection
+function toggle(rule){
 
-      </h2>
+if(selected.includes(rule)){
 
-      <p className="text-gray-500 mt-2">
+setSelected(
 
-        Analyse your biggest wins and recurring mistakes.
+selected.filter((r)=>r!==rule)
 
-      </p>
+);
 
-      {/* Rule Violations */}
+}else{
 
-      <div className="mt-8">
+setSelected([...selected,rule]);
 
-        <h3 className="font-semibold text-lg mb-4">
+}
 
-          Rule Violations
+}
 
-        </h3>
+const count=selected.length;
 
-        <div className="flex flex-wrap gap-3">
+let severity="Low";
 
-          {violations.map((item) => {
+let colour="green";
 
-            const active = selected.includes(item);
+if(count>=3){
 
-            return (
+severity="Medium";
 
-              <button
+colour="yellow";
 
-                key={item}
+}
 
-                onClick={() => toggle(item)}
+if(count>=6){
 
-                className={`
-                  px-5
-                  py-3
-                  rounded-full
-                  border
-                  transition-all
-                  duration-300
-                  hover:-translate-y-1
+severity="High";
 
-                  ${
-                    active
-                      ? "bg-red-500 border-red-500 text-white shadow-lg"
-                      : "bg-white border-gray-200 hover:border-red-400"
-                  }
-                `}
-              >
+colour="red";
 
-                {item}
+}
 
-              </button>
+return(
 
-            );
+<div className="bg-white rounded-[30px] border border-gray-200 p-8">
 
-          })}
+{/* Header */}
 
-        </div>
+<div className="flex justify-between items-center">
 
-      </div>
+<div>
 
-      {/* Wins & Mistakes */}
+<h2 className="text-3xl font-black">
 
-      <div className="grid grid-cols-2 gap-6 mt-10">
+Rule Violations
 
-        {/* Wins */}
+</h2>
 
-        <div className="rounded-3xl bg-green-50 border border-green-200 p-6">
+<p className="text-gray-500 mt-2">
 
-          <h3 className="text-xl font-bold text-green-700">
+Track mistakes honestly to improve faster.
 
-            Biggest Wins
+</p>
 
-          </h3>
+</div>
 
-          <textarea
+<div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
 
-            rows={8}
+<ShieldAlert className="text-white"/>
 
-            value={wins}
+</div>
 
-            onChange={(e)=>setWins(e.target.value)}
+</div>
 
-            placeholder="What did you do well this week?"
+{/* Summary */}
 
-            className="
-            mt-5
-            w-full
-            rounded-2xl
-            border
-            border-green-200
-            bg-white
-            p-4
-            resize-none
-            outline-none
-            focus:ring-2
-            focus:ring-green-400
-            "
+<div className="grid grid-cols-3 gap-5 mt-8">
 
-          />
+<div className="rounded-2xl border border-gray-200 p-5">
 
-        </div>
+<p className="text-gray-400">
 
-        {/* Mistakes */}
+Mistakes
 
-        <div className="rounded-3xl bg-red-50 border border-red-200 p-6">
+</p>
 
-          <h3 className="text-xl font-bold text-red-700">
+<h2 className="text-4xl font-black mt-2">
 
-            Biggest Mistakes
+{count}
 
-          </h3>
+</h2>
 
-          <textarea
+</div>
 
-            rows={8}
+<div className="rounded-2xl border border-gray-200 p-5">
 
-            value={mistakes}
+<p className="text-gray-400">
 
-            onChange={(e)=>setMistakes(e.target.value)}
+Severity
 
-            placeholder="What mistakes repeated this week?"
+</p>
 
-            className="
-            mt-5
-            w-full
-            rounded-2xl
-            border
-            border-red-200
-            bg-white
-            p-4
-            resize-none
-            outline-none
-            focus:ring-2
-            focus:ring-red-400
-            "
+<h2
 
-          />
+className={`
 
-        </div>
+text-3xl
 
-      </div>
+font-black
 
-    </div>
+mt-2
 
-  );
+${colour==="green"
+
+?"text-green-500"
+
+:colour==="yellow"
+
+?"text-yellow-500"
+
+:"text-red-500"}
+
+`}
+
+>
+
+{severity}
+
+</h2>
+
+</div>
+
+<div className="rounded-2xl border border-gray-200 p-5">
+
+<p className="text-gray-400">
+
+Improvement
+
+</p>
+
+<h2 className="text-3xl font-black text-purple-600 mt-2">
+
+{Math.max(0,100-count*10)}%
+
+</h2>
+
+</div>
+
+</div>
+
+{/* Rules */}
+
+<div className="grid grid-cols-2 gap-4 mt-8">
+
+{rules.map((rule,index)=>{
+
+const active=selected.includes(rule);
+
+return(
+
+<button
+
+key={index}
+
+onClick={()=>toggle(rule)}
+
+className={`
+
+rounded-2xl
+
+border
+
+p-5
+
+flex
+
+justify-between
+
+items-center
+
+transition-all
+
+duration-300
+
+hover:-translate-y-1
+
+${active
+
+?"border-red-400 bg-red-50"
+
+:"border-gray-200 hover:border-purple-400"}
+
+`}
+
+>
+
+<span className="font-medium">
+
+{rule}
+
+</span>
+
+{active
+
+?<AlertTriangle
+
+className="text-red-500"
+
+/>
+
+:<CheckCircle2
+
+className="text-gray-300"
+
+/>
+
+}
+
+</button>
+
+)
+
+})}
+
+</div>
+
+{/* Most Common */}
+
+<div className="mt-8 rounded-3xl bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 p-6">
+
+<h3 className="font-bold text-red-600">
+
+Most Common Issue
+
+</h3>
+
+<p className="mt-3 text-gray-600 leading-8">
+
+{count===0
+
+?"Excellent discipline this week. No rule violations recorded."
+
+:selected[0]}
+
+</p>
+
+</div>
+
+</div>
+
+)
 
 }
