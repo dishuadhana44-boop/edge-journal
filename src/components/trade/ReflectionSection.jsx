@@ -4,7 +4,7 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { UnderlineIcon } from "lucide-react";
 import Color from "@tiptap/extension-color";
 import RichTextEditor from "./RichTextEditor";
-import "react-quill/dist/quill.snow.css";
+
 import { Plus, Trash2 } from "lucide-react";
 import { X } from "lucide-react";
 import {
