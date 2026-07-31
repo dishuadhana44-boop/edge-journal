@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { Highlighter } from "lucide-react";
-import Highlight from "@tiptap/extension-highlight";
+
 import { TextStyle } from "@tiptap/extension-text-style";
 import { UnderlineIcon } from "lucide-react";
 import Color from "@tiptap/extension-color";
@@ -87,7 +86,7 @@ function ReflectionSection({
         extensions: [
           StarterKit,
           Underline,
-          Highlight,
+        
           TextStyle,
           Color,
           Placeholder.configure({
@@ -339,17 +338,7 @@ function ReflectionSection({
   <UnderlineIcon size={17} />
 </button>
 
-<button
-  type="button"
-  onClick={() => editor?.chain().focus().toggleHighlight().run()}
-  className={`w-9 h-9 rounded-lg border flex items-center justify-center ${
-    editor?.isActive("highlight")
-      ? "bg-yellow-400 text-black border-yellow-400"
-      : "hover:bg-gray-100"
-  }`}
->
-  <Highlighter size={17} />
-</button>
+
 
 <input
   type="color"
