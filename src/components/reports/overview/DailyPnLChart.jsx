@@ -9,21 +9,21 @@ import {
     CartesianGrid,
   } from "recharts";
   
-  import DailyPnLData from "./DailyPnLData";
+  
   import DailyPnLTooltip from "./DailyPnLTooltip";
   
-  export default function DailyPnLChart() {
+  export default function DailyPnLChart({ data }) {
     return (
       <div className="h-[250px]">
   
         <ResponsiveContainer width="100%" height="100%">
   
           <BarChart
-            data={DailyPnLData}
+            data={data}
             margin={{
               top: 10,
               right: 10,
-              left: -20,
+              left: -5,
               bottom: 0,
             }}
           >
@@ -51,7 +51,7 @@ import {
               radius={[6, 6, 0, 0]}
             >
   
-              {DailyPnLData.map((entry, index) => (
+                      {data.map((entry, index) => (
                 <Cell
                   key={index}
                   fill={

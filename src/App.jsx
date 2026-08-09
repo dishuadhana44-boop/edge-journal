@@ -9,55 +9,75 @@ import Edge from "./pages/Edge";
 import Journal from "./pages/Journal";
 import Reports from "./pages/Reports";
 import Notebook from "./pages/Notebook";
+import EdgeOS from "./pages/EdgeOS/EdgeOS";
 import News from "./pages/News";
 import AIInsights from "./pages/AIInsights";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 import TradeJournal from "./pages/TradeJournal";
 import NoteEditor from "./pages/NoteEditor";
+import { JournalProvider } from "./context/JournalContext";
+import { DashboardFilterProvider } from "./context/DashboardFilterContext";
 
 function App(){
 
-return(
+    return (
 
-<BrowserRouter>
+        <BrowserRouter>
+        
+        <JournalProvider>
+        
+        <DashboardFilterProvider>
+        
+        <Routes>
+        
+        <Route element={<AppLayout />}>
+        
+        <Route path="/" element={<Dashboard />} />
+        
+        <Route path="/tradelog" element={<TradeLog />} />
+        
+        <Route path="/trading" element={<Trading />} />
+        
+        <Route path="/edge" element={<Edge />} />
+        
+        <Route path="/journal" element={<Journal />} />
+        
+        <Route path="/Reports" element={<Reports />} />
+        
+        <Route path="/notebook" element={<Notebook />} />
+        
+        <Route
+        path="/notebook/editor/:id"
+        element={<NoteEditor />}
+        />
+        
+        <Route path="/edgeos" element={<EdgeOS />} />
 
-<Routes>
-
-<Route element={<AppLayout/>}>
-
-<Route path="/" element={<Dashboard/>}/>
-
-<Route path="/tradelog" element={<TradeLog />} />
-
-<Route path="/trading" element={<Trading/>}/>
-
-<Route path="/edge" element={<Edge/>}/>
-
-<Route path="/journal" element={<Journal/>}/>
-
-<Route path="/Reports" element={<Reports/>}/>
-
-<Route path="/notebook" element={<Notebook/>}/>
-<Route path="/notebook/editor/:id" element={<NoteEditor />} />
-
-<Route path="/news" element={<News/>}/>
-
-<Route path="/ai" element={<AIInsights/>}/>
-
-<Route path="/settings" element={<Settings/>}/>
-
-<Route path="/profile" element={<Profile/>}/>
-
-<Route path="/trade/:id" element={<TradeJournal />} />
-
-</Route>
-
-</Routes>
-
-</BrowserRouter>
-
-)
+        <Route path="/news" element={<News />} />
+        
+        <Route path="/ai" element={<AIInsights />} />
+        
+        <Route path="/settings" element={<Settings />} />
+        
+        <Route path="/profile" element={<Profile />} />
+        
+        <Route
+        path="/trade/:id"
+        element={<TradeJournal />}
+        />
+        
+        </Route>
+        
+        </Routes>
+        
+        </DashboardFilterProvider>
+        
+        </JournalProvider>
+        
+        </BrowserRouter>
+        
+        );
 
 }
 

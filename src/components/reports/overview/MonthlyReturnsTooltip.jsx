@@ -22,7 +22,7 @@ export default function MonthlyReturnsTooltip({
           }`}
         >
           {value > 0 ? "+" : ""}
-          {value}%
+          ${Number(value).toLocaleString()}
         </p>
   
       </div>

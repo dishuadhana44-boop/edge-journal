@@ -43,12 +43,18 @@ function EditTradeModal({
     setForm(trade);
   
   }, [trade]);
+  
   const handleSaveTrade = () => {
     const updatedTrades = trades.map((t) =>
       t.id === trade.id
         ? {
             ...t,
+  
+            // preserve account
+            accountId: t.accountId,
+  
             ...form,
+  
             updatedAt: new Date().toISOString(),
           }
         : t

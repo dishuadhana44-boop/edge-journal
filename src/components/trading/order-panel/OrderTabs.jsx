@@ -1,4 +1,4 @@
-import { useState } from "react";
+import useOrder from "./context/useOrder";
 
 const tabs = [
   "Market",
@@ -7,7 +7,10 @@ const tabs = [
 ];
 
 export default function OrderTabs() {
-  const [active, setActive] = useState("Market");
+  const {
+    orderType,
+    setOrderType,
+  } = useOrder();
 
   return (
     <div className="px-4 pt-4">
@@ -18,7 +21,7 @@ export default function OrderTabs() {
 
           <button
             key={tab}
-            onClick={() => setActive(tab)}
+            onClick={() => setOrderType(tab)}
             className={`
               py-2
               rounded-lg
@@ -28,7 +31,7 @@ export default function OrderTabs() {
               duration-200
 
               ${
-                active === tab
+                orderType === tab
                   ? "bg-white shadow text-violet-600"
                   : "text-gray-500 hover:bg-gray-50"
               }

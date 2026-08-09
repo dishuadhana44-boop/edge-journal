@@ -5,46 +5,85 @@ import {
     Activity,
     BarChart3,
   } from "lucide-react";
+
+  import {
+    calculateNetPnL,
+  } from "../../../utils/statisticsEngine";
+
+  export default function ChartStats({
+    trades,
+    startingBalance,
+    equityData,
+  }) {
   
-  const stats = [
-    {
-      title: "Current Equity",
-      value: "$23,400",
-      icon: TrendingUp,
-      color: "text-green-600",
-      bg: "bg-green-50",
-    },
-    {
-      title: "Peak Equity",
-      value: "$23,800",
-      icon: Trophy,
-      color: "text-yellow-600",
-      bg: "bg-yellow-50",
-    },
-    {
-      title: "Net Return",
-      value: "+138%",
-      icon: Target,
-      color: "text-violet-600",
-      bg: "bg-violet-50",
-    },
-    {
-      title: "CAGR",
-      value: "31.2%",
-      icon: Activity,
-      color: "text-blue-600",
-      bg: "bg-blue-50",
-    },
-    {
-      title: "High Watermark",
-      value: "$23,800",
-      icon: BarChart3,
-      color: "text-orange-600",
-      bg: "bg-orange-50",
-    },
-  ];
+    const currentEquity =
+    equityData.length > 0
+      ? equityData[equityData.length - 1].value
+      : startingBalance;
+
+  const peakEquity =
+    equityData.length > 0
+      ? Math.max(...equityData.map(i => i.value))
+      : startingBalance;
+
+  const netPnL =
+    calculateNetPnL(trades);
+
+  const returnPercent =
+    (
+      ((currentEquity - startingBalance) /
+        startingBalance) *
+      100
+    ).toFixed(2);
+
+const stats = [
+
+{
+title:"Current Equity",
+value:`$${currentEquity.toLocaleString()}`,
+icon:TrendingUp,
+color:"text-green-600",
+bg:"bg-green-50",
+},
+
+{
+title:"Peak Equity",
+value:`$${peakEquity.toLocaleString()}`,
+icon:Trophy,
+color:"text-yellow-600",
+bg:"bg-yellow-50",
+},
+
+{
+title:"Net Return",
+value:`${returnPercent}%`,
+icon:Target,
+color:"text-violet-600",
+bg:"bg-violet-50",
+},
+
+{
+title:"Net P&L",
+value:`${netPnL>=0?"+":"-"}$${Math.abs(netPnL).toLocaleString()}`,
+icon:Activity,
+color:netPnL>=0
+?"text-green-600"
+:"text-red-600",
+bg:"bg-blue-50",
+},
+
+{
+title:"High Watermark",
+value:`$${peakEquity.toLocaleString()}`,
+icon:BarChart3,
+color:"text-orange-600",
+bg:"bg-orange-50",
+},
+
+];
   
-  export default function ChartStats() {
+
+
     return (
       <div className="grid grid-cols-5 border-b">
   

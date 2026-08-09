@@ -10,7 +10,7 @@ import RiskSection from "./RiskSection";
 export default function OrderPanel({ setOrderOpen }) {
     return (
       
-        <div className="h-[650px] rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="h-[770px] rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
   
         <OrderHeader setOrderOpen={setOrderOpen} />
   

@@ -7,6 +7,8 @@ import DeleteTradeModal from "../components/DeleteTradeModal";
 
 import { useSearchParams } from "react-router-dom";
 
+import { useJournal } from "../context/JournalContext";
+
 function TradeLog() {
 
   const [searchParams] = useSearchParams();
@@ -20,34 +22,24 @@ const [selectedTrade, setSelectedTrade] = useState(null);
 const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [tradeToDelete, setTradeToDelete] = useState(null);
-  const [trades, setTrades] = useState(() => {
 
-    const savedTrades = localStorage.getItem("trades");
+  const {
+    trades,
+    filteredTrades: accountTrades,
+    setTrades,
+    addTrade,
+    updateTrade,
+    deleteTrade,
+  } = useJournal();
   
-    return savedTrades
-      ? JSON.parse(savedTrades)
-      : [
-          {
-            id: 1,
-            pair: "EURUSD",
-            date: "06 Jul 2026",
-            session: "London",
-            result: "Win",
-            direction: "Buy",
-            pnl: "+₹12,500",
-            day: "Monday",
-            rr: "1 : 3",
-          },
-        ];
-  });
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSession, setSelectedSession] = useState("All");
   const [selectedResult, setSelectedResult] = useState("All");
   const [selectedDirection, setSelectedDirection] = useState("All");
-  useEffect(() => {
-    localStorage.setItem("trades", JSON.stringify(trades));
-  }, [trades]);
-  const filteredTrades = trades.filter((trade) => {
+ 
+
+
+  const filteredTrades = accountTrades.filter((trade) => {
 
     // 📅 Date Filter
     const matchesDate =
@@ -103,6 +95,19 @@ const [isEditing, setIsEditing] = useState(false);
     setShowModal(true);
   };
   
+
+  console.log("JournalContext trades:", trades);
+console.log("JournalContext length:", trades.length);
+
+console.log(
+  "LocalStorage trades:",
+  JSON.parse(localStorage.getItem("trades"))
+);
+
+console.log(
+  "LocalStorage length:",
+  JSON.parse(localStorage.getItem("trades"))?.length
+);
   return (
 
     <div className="w-full max-w-[1450px] mx-auto px-2">
@@ -157,10 +162,8 @@ const [isEditing, setIsEditing] = useState(false);
 {/* Add Trade Modal */}
 {showModal && !isEditing && (
   <AddTradeModal
-    setShowModal={setShowModal}
-    trades={trades}
-    setTrades={setTrades}
-  />
+  setShowModal={setShowModal}
+/>
 )}
 
 {/* Edit Trade Modal */}

@@ -1,29 +1,75 @@
 import useOrder from "./context/useOrder";
+import { useTrade } from "../../../context/TradeContext";
 
 export default function RiskSection() {
-    const {
+  const {
 
-        risk,
-        setRisk,
-        
-        riskAmount,
-        
-        rewardAmount,
-        
-        riskPips,
-        
-        rewardPips,
-        
-        rr,
-        
-        side,
+    risk,
+    setRisk,
 
-        entry,
-        
-        lotSize,
-        
-        } = useOrder();
+    riskAmount,
 
+    rewardAmount,
+
+    riskPips,
+
+    rewardPips,
+
+    rr,
+
+    side,
+
+    entry,
+
+    sl,
+
+    tp,
+
+    orderType,
+
+    lotSize,
+
+} = useOrder();
+
+const {
+  executeTrade,
+  addPendingOrder,
+} = useTrade();
+
+const handleExecuteTrade = () => {
+
+  const trade = {
+
+    symbol: "EURUSD",
+
+    side,
+
+    entry,
+
+    stopLoss: sl,
+
+    takeProfit: tp,
+
+    quantity: lotSize,
+
+    risk,
+
+    orderType,
+
+  };
+
+  if (orderType === "Market") {
+
+    executeTrade(trade);
+
+  } else {
+
+    addPendingOrder(trade);
+
+  }
+
+};
+console.log("Risk Side:", side);
   return (
     <div className="px-4 pt-5">
 
@@ -122,20 +168,25 @@ export default function RiskSection() {
       {/* Execute Button */}
 
       <button
-        className="
-          mt-4
-          w-full
-          rounded-xl
-          bg-emerald-500
-          hover:bg-emerald-600
-          text-white
-          font-semibold
-          py-3
-          transition-all
-          duration-200
-          hover:-translate-y-0.5
-          hover:shadow-lg
-        "
+      
+      onClick={handleExecuteTrade}
+      className={`
+        mt-4
+        w-full
+        rounded-xl
+        text-white
+        font-semibold
+        py-3
+        transition-all
+        duration-200
+        hover:-translate-y-0.5
+        hover:shadow-lg
+        ${
+          side === "buy"
+            ? "bg-emerald-500 hover:bg-emerald-600"
+            : "bg-red-500 hover:bg-red-600"
+        }
+      `}
       >
         {side === "buy" ? "Buy" : "Sell"} {lotSize.toFixed(2)} Lots @ {entry}
       </button>

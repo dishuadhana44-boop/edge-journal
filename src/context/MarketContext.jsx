@@ -4,8 +4,8 @@ const MarketContext = createContext();
 
 export function MarketProvider({ children }) {
 
-  const [bid, setBid] = useState(1.18451);
-  const [ask, setAsk] = useState(1.18452);
+  const [bid, setBid] = useState(1.15580);
+  const [ask, setAsk] = useState(1.15581);
 
   useEffect(() => {
 

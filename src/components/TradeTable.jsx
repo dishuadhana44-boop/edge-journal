@@ -6,7 +6,7 @@ function TradeTable({ trades, onDelete, onEdit }) {
   const navigate = useNavigate();
   const [openMenu, setOpenMenu] = useState(null);
   return (
-    <div className="bg-white rounded-2xl shadow border border-gray-200 overflow-x-auto">
+    <div className="bg-white rounded-2xl shadow border border-gray-200 overflow-visible">
       <table className="w-full">
 
         <thead className="bg-gray-50">

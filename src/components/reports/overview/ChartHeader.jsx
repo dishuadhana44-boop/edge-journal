@@ -1,9 +1,13 @@
-import { useState } from "react";
+
 import { Download, Settings2 } from "lucide-react";
 
-export default function ChartHeader() {
-  const [period, setPeriod] = useState("1Y");
-  const [mode, setMode] = useState("Balance");
+export default function ChartHeader({
+  period,
+  setPeriod,
+  mode,
+  setMode,
+}) {
+
 
   const periods = [
     "1D",
@@ -69,7 +73,10 @@ export default function ChartHeader() {
 
             <button
               key={item}
-              onClick={() => setMode(item)}
+              onClick={() => {
+                console.log("Clicked =", item);
+                setMode(item);
+              }}
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
                 mode === item
                   ? "bg-violet-600 text-white shadow"

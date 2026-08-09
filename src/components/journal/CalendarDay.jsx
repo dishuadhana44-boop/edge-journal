@@ -108,8 +108,8 @@ const trade = tradeMap?.[dateKey];
                     : "text-red-600"
             }`}
         >
-            {trade.pnl > 0 ? "+" : "-"}$
-            {trade.pnl.toLocaleString()}
+            {trade.pnl >= 0 ? "+" : "-"}$
+            {Math.abs(trade.pnl).toLocaleString()}
         </h3>
 
     </div>

@@ -41,24 +41,53 @@ export default function ClosedPositionsTable() {
 
 <table className="w-full">
 
-      <thead className="sticky top-0 bg-white border-b">
+<thead className="sticky top-0 bg-white border-b z-20">
+  <tr className="text-xs uppercase text-gray-500">
 
-        <tr>
+    <th className="w-[90px] px-6 py-4 text-left">
+      Instrument
+    </th>
 
-          <th className="px-6 py-4 text-left">Instrument</th>
-          <th>Direction</th>
-          <th>Lots</th>
-          <th>Entry</th>
-          <th>Current</th>
-          <th>SL</th>
-          <th>TP</th>
-          <th>P/L</th>
-          <th>Duration</th>
-          <th>Actions</th>
+    <th className="w-[90px] text-center">
+      Side
+    </th>
 
-        </tr>
+    <th className="w-[90px] text-center">
+      Lots
+    </th>
 
-      </thead>
+    <th className="w-[90px] text-right">
+      Entry
+    </th>
+
+ 
+
+    <th className="w-[90px] text-right">
+      TakeProfit
+    </th>
+
+    <th className="w-[90px] text-right">
+      StopLoss
+    </th>
+
+    <th className="w-[90px] text-right">
+      P/L
+    </th>
+
+    <th className="w-[90px] text-right">
+      Duration
+    </th>
+
+    <th className="w-[90px] text-right">
+      Margin
+    </th>
+
+    <th className="w-[90px] text-center">
+      Actions
+    </th>
+
+  </tr>
+</thead>
 
       <tbody>
 

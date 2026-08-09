@@ -2,18 +2,19 @@ import { useMemo, useState } from "react";
 import MonthlyCalendar from "../components/journal/MonthlyCalendar";
 import WeeklyPnL from "../components/journal/WeeklyPnL";
 
+import { useJournal } from "../context/JournalContext";
+
 export default function Journal() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
 
-  const trades =
-      JSON.parse(localStorage.getItem("trades")) || [];
+  const { filteredTrades } = useJournal();
 
       const tradeMap = useMemo(() => {
 
         const map = {};
     
-        trades.forEach((trade) => {
+        filteredTrades.forEach((trade) => {
     
             if (!map[trade.date]) {
     
@@ -34,11 +35,11 @@ export default function Journal() {
     
         return map;
     
-    }, [trades]);
+      }, [filteredTrades]);
 
     const monthlyPnL = useMemo(() => {
 
-      return trades.reduce((total, trade) => {
+      return filteredTrades.reduce((total, trade) => {
   
           const tradeDate = new Date(trade.date);
   
@@ -70,7 +71,7 @@ export default function Journal() {
   
       }, 0);
   
-  }, [trades, currentDate]);
+    }, [filteredTrades, currentDate]);
 
   const weeklyData = useMemo(() => {
 
@@ -88,7 +89,7 @@ export default function Journal() {
 
     };
 
-    trades.forEach((trade) => {
+    filteredTrades.forEach((trade) => {
 
         const tradeDate = new Date(trade.date);
 
@@ -132,7 +133,7 @@ export default function Journal() {
 
     return weeks;
 
-}, [trades, currentDate]);
+  }, [filteredTrades, currentDate]);
 
   return (
     <div className="max-w-[1450px] mx-auto px-1 py-1">
@@ -184,8 +185,9 @@ export default function Journal() {
         <div className="col-span-9">
 
         <MonthlyCalendar
-    currentDate={currentDate}
-    setCurrentDate={setCurrentDate}
+  currentDate={currentDate}
+  setCurrentDate={setCurrentDate}
+  trades={filteredTrades}
 />
 
         </div>
@@ -211,7 +213,8 @@ export default function Journal() {
   <div className="p-5">
 
   <WeeklyPnL
-    currentDate={currentDate}
+  currentDate={currentDate}
+  trades={filteredTrades}
 />
 
   </div>

@@ -23,7 +23,7 @@ export default function OverviewPage() {
 
       {/* Daily + Weekly */}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3">
 
         <DailyPnLCard />
 
@@ -33,7 +33,7 @@ export default function OverviewPage() {
 
       {/* Monthly + Calendar */}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3">
 
         <MonthlyReturnsCard />
 

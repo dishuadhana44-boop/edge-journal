@@ -1,79 +1,93 @@
 import { useTrade } from "../../../../context/TradeContext";
 import OpenPositionRow from "../rows/OpenPositionRow";
+import EmptyPositions from "../EmptyPositions";
 
 export default function OpenPositionsTable() {
 
   const { openTrades } = useTrade();
 
+ // console.log("TABLE OPEN TRADES:", openTrades);
+
   return (
-
     <div
-  className="
-    h-[340px]
-    overflow-y-auto
-    overflow-x-hidden
-  "
->
+      className="
+        h-[340px]
+        overflow-y-auto
+        overflow-x-hidden
+      "
+    >
+      <table className="w-full">
 
-<table className="w-full">
+      <thead className="sticky top-0 bg-white  z-20">
+  <tr className="text-xs uppercase text-gray-500">
 
-      <thead className="sticky top-0 bg-white z-20 border-b">
+    <th className="w-[90px] px-6 py-4 text-left">
+      Instrument
+    </th>
 
-        <tr className="text-xs uppercase text-gray-500">
+    <th className="w-[90px] text-center">
+      Side
+    </th>
 
-          <th className="px-6 py-4 text-left">Instrument</th>
+    <th className="w-[90px] text-center">
+      Lots
+    </th>
 
-          <th className="px-4 text-left">Direction</th>
+    <th className="w-[90px] text-right">
+      Entry
+    </th>
 
-          <th className="px-4 text-left">Lots</th>
+    <th className="w-[90px] text-right">
+      Current
+    </th>
 
-          <th className="px-4 text-left">Entry</th>
+    <th className="w-[90px] text-right">
+      TakeProfit
+    </th>
 
-          <th className="px-4 text-left">Current</th>
+    <th className="w-[90px] text-right">
+      StopLoss
+    </th>
 
-          <th className="px-4 text-left">SL</th>
+    <th className="w-[90px] text-right">
+      P/L
+    </th>
 
-          <th className="px-4 text-left">TP</th>
+    <th className="w-[90px] text-right">
+      Margin
+    </th>
 
-          <th className="px-4 text-left">P/L</th>
+    <th className="w-[90px] text-right">
+      Duration
+    </th>
 
-          <th className="px-4 text-left">Duration</th>
+    <th className="w-[90px] text-center">
+      Actions
+    </th>
 
-          <th className="px-4 text-center">Actions</th>
+  </tr>
+</thead>
 
-        </tr>
-
-      </thead>
-
-      <tbody>
+        <tbody>
 
         {openTrades.length === 0 ? (
+  <tr>
+    <td colSpan={10}>
+      <EmptyPositions />
+    </td>
+  </tr>
+) : (
+  openTrades.map((trade) => (
+    <OpenPositionRow
+      key={trade.id}
+      trade={trade}
+    />
+  ))
+)}
 
-          <>
-            <OpenPositionRow demo />
-            <OpenPositionRow demo />
-            <OpenPositionRow demo />
-            <OpenPositionRow demo />
-            <OpenPositionRow demo />
-          </>
+        </tbody>
 
-        ) : (
-
-          openTrades.map((trade) => (
-
-            <OpenPositionRow
-              key={trade.id}
-              trade={trade}
-            />
-
-          ))
-
-        )}
-
-      </tbody>
-
-    </table>
+      </table>
     </div>
   );
-
 }

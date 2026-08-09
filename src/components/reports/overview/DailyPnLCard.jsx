@@ -1,6 +1,13 @@
 import DailyPnLChart from "./DailyPnLChart";
+import { useJournal } from "../../../context/JournalContext";
+import { generateDailyPnL } from "../../../utils/dailyPnLEngine";
 
 export default function DailyPnLCard() {
+
+  const { filteredTrades } = useJournal();
+
+  const dailyData = generateDailyPnL(filteredTrades);
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
 
@@ -23,7 +30,8 @@ export default function DailyPnLCard() {
           </p>
 
           <h2 className="text-2xl font-bold text-green-600">
-            +$182
+          {dailyData.todayPnL >= 0 ? "+" : ""}
+          ${dailyData.todayPnL.toFixed(2)}
           </h2>
 
         </div>
@@ -32,29 +40,31 @@ export default function DailyPnLCard() {
 
       <div className="grid grid-cols-3 border-b">
 
-        <Metric
-          title="Average"
-          value="+$124"
+      <Metric
+title="Average"
+value={`${dailyData.average >= 0 ? "+" : ""}$${dailyData.average.toFixed(2)}`}
           color="text-green-600"
         />
 
         <Metric
           title="Best Day"
-          value="+$610"
+          value={`${dailyData.bestDay >= 0 ? "+" : ""}$${dailyData.bestDay.toFixed(2)}`}
           color="text-green-600"
         />
 
-        <Metric
-          title="Worst Day"
-          value="-$220"
-          color="text-red-500"
-        />
+           <Metric
+             title="Worst Day"
+             value={`${dailyData.worstDay >= 0 ? "+" : ""}$${dailyData.worstDay.toFixed(2)}`}
+             color="text-red-500"
+           />
 
       </div>
 
       <div className="p-4">
 
-        <DailyPnLChart />
+      <DailyPnLChart
+    data={dailyData.data}
+/>
 
       </div>
 

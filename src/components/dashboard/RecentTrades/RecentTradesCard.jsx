@@ -3,41 +3,31 @@ import {
     ArrowDownRight,
   } from "lucide-react";
   import { useNavigate } from "react-router-dom";
+  import { useJournal } from "../../../context/JournalContext";
 
 
-  const trades = [
-    {
-      id: 1,
-      instrument: "EURUSD",
-      flag: "🇪🇺",
-      direction: "Sell",
-      pnl: -1500,
-      outcome: "Loss",
-      time: "Today, 11:15 AM",
-    },
-    {
-      id: 2,
-      instrument: "GBPJPY",
-      flag: "🇬🇧",
-      direction: "Sell",
-      pnl: -1250,
-      outcome: "Loss",
-      time: "Today, 10:48 AM",
-    },
-    {
-      id: 3,
-      instrument: "XAUUSD",
-      flag: "🥇",
-      direction: "Sell",
-      pnl: -600,
-      outcome: "Loss",
-      time: "Today, 10:05 AM",
-    },
-   
-  ];
   
   export default function RecentTradesCard() {
+
     const navigate = useNavigate();
+
+    const { trades } = useJournal();
+
+    const recentTrades = [...trades]
+    .sort(
+    (a,b)=>
+    new Date(b.date)-new Date(a.date)
+    )
+    .slice(0,3);
+
+    const getFlag = (pair) => {
+      if (pair?.includes("EUR")) return "🇪🇺";
+      if (pair?.includes("GBP")) return "🇬🇧";
+      if (pair?.includes("JPY")) return "🇯🇵";
+      if (pair?.includes("USD")) return "🇺🇸";
+      if (pair?.includes("XAU")) return "🥇";
+      return "📈";
+    };
 
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -93,7 +83,7 @@ import {
   
           <tbody>
   
-            {trades.map((trade) => (
+            {recentTrades.map((trade) => (
   
   <tr
   key={trade.id}
@@ -105,12 +95,12 @@ import {
   
                   <div className="flex items-center gap-3">
   
-                    <span className="text-xl">
-                      {trade.flag}
-                    </span>
+                  <span className="text-xl">
+  {getFlag(trade.pair)}
+</span>
   
                     <span className="font-medium">
-                      {trade.instrument}
+                      {trade.pair}
                     </span>
   
                   </div>
@@ -140,47 +130,38 @@ import {
                 </td>
   
                 <td
-                  className={`font-semibold ${
-                    trade.pnl > 0
-                      ? "text-green-600"
-                      : trade.pnl < 0
-                      ? "text-red-500"
-                      : "text-gray-700"
-                  }`}
-                >
-  
-                  {trade.pnl > 0
-                    ? `+$${trade.pnl}`
-                    : trade.pnl < 0
-                    ? `-$${Math.abs(trade.pnl)}`
-                    : "$0"}
-  
-                </td>
+  className={`font-semibold ${
+    Number(trade.pnl) >= 0
+      ? "text-green-600"
+      : "text-red-500"
+  }`}
+>
+  {Number(trade.pnl) >= 0
+    ? `+$${Math.abs(Number(trade.pnl)).toLocaleString()}`
+    : `-$${Math.abs(Number(trade.pnl)).toLocaleString()}`}
+</td>
   
                 <td>
   
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      trade.outcome === "Win"
+                      trade.result === "Win"
                         ? "bg-green-100 text-green-700"
-                        : trade.outcome === "Loss"
+                        : trade.result === "Loss"
                         ? "bg-red-100 text-red-600"
                         : "bg-gray-100 text-gray-600"
                     }`}
                   >
   
-                    {trade.outcome}
+                    {trade.result}
   
                   </span>
   
                 </td>
   
                 <td className="text-sm text-gray-500 pr-6">
-  
-                  {trade.time}
-  
-                </td>
-  
+  {new Date(trade.date).toLocaleDateString()}
+</td>
               </tr>
   
             ))}

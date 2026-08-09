@@ -8,6 +8,10 @@ import { UIProvider, useUI } from "../context/UIContext";
 
 import { TradeProvider } from "../context/TradeContext";
 
+import {
+  TradeObjectsProvider,
+} from "../context/TradeObjectsContext";
+
 function TradingContent() {
 
   const {
@@ -42,9 +46,13 @@ export default function Trading() {
 
         <TradeProvider>
 
-          <TradingContent />
+<TradeObjectsProvider>
 
-          </TradeProvider>
+    <TradingContent/>
+
+</TradeObjectsProvider>
+
+</TradeProvider>
 
         </OrderProvider>
 

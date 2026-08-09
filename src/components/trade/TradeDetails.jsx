@@ -1,10 +1,15 @@
 import { useParams } from "react-router-dom";
+import { useJournal } from "../../context/JournalContext";
+
 function TradeDetails() {
   const { id } = useParams();
 
-const trades = JSON.parse(localStorage.getItem("trades")) || [];
+  const { trades } = useJournal();
 
-const trade = trades.find((t) => t.id === Number(id));
+  const trade = trades.find(
+    (t) => String(t.id) === String(id)
+  );
+
 if (!trade) {
   return (
     <div className="p-10 text-center">

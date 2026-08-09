@@ -1,5 +1,9 @@
 import { useState } from "react";
-
+import { useEffect } from "react";
+import {
+  DATE_FILTERS,
+  getDateRange,
+} from "../../utils/dateRangeUtils";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -16,33 +20,105 @@ import {
   Settings2,
 } from "lucide-react";
 
-export default function EquityCurve() {
+import EquityTooltip from "./EquityTooltip";
 
-  const [period, setPeriod] = useState("30D");
+import { useEquityCurveFilter } from "../../context/EquityCurveFilterContext";
+import { generateBalanceCurve } from "../../utils/balanceCurveEngine";
+
+import { useDashboardFilter } from "../../context/DashboardFilterContext";
+
+export default function EquityCurve({
+  account,
+  trades = [],
+}) {
+
+  const {
+    selectedFilter,
+    startDate,
+    endDate,
+  } = useDashboardFilter();
+  
+  console.log("Dashboard Start:", startDate);
+  console.log("Dashboard End:", endDate);
+  
+
+  useEffect(() => {
+    setChartFilter(null);
+  }, [startDate, endDate]);
+
+
+  const [chartFilter, setChartFilter] = useState(null);
+  console.log("Chart Filter =", chartFilter);
+  const dashboardRange = getDateRange(selectedFilter);
+
+  const effectiveRange = chartFilter
+  ? getDateRange(chartFilter)
+  : {
+      startDate,
+      endDate,
+    };
+    
+  console.log("Chart Filter:", chartFilter);
+  console.log("Effective Start:", effectiveRange.startDate);
+  console.log("Effective End:", effectiveRange.endDate);
+  const startingBalance =
+  account?.startingBalance ?? 10000;
+
+  console.log("Trades received in EquityCurve:", trades);
+  console.log("Trade count:", trades.length);
+  const balanceCurve = generateBalanceCurve(
+    startingBalance,
+    trades,
+    effectiveRange.startDate,
+    effectiveRange.endDate
+);
+console.log("Balance Curve:", balanceCurve);
+
+  const currentBalance =
+  balanceCurve.length > 0
+    ? balanceCurve[balanceCurve.length-1].value
+    : startingBalance;
+  
+    const peakBalance =
+    balanceCurve.length > 0
+      ? Math.max(...balanceCurve.map(i=>i.value))
+      : startingBalance;
+  
+      const totalPnL = currentBalance - startingBalance;
+  
+      const returnPercent =
+      startingBalance
+        ? ((totalPnL / startingBalance) * 100).toFixed(2)
+        : 0;
+
   const [view, setView] = useState("$");
 
   const periods = [
-    "1D",
+    "Today",
     "1W",
+    "2W",
     "1M",
+    "3M",
+    "6M",
     "1Y",
-    "All",
+    "ALL",
   ];
 
-  const equityData = [
-    { date: "Dec 1", value: 5200 },
-    { date: "Dec 3", value: 7100 },
-    { date: "Dec 5", value: 6400 },
-    { date: "Dec 7", value: 9800 },
-    { date: "Dec 10", value: 7200 },
-    { date: "Dec 14", value: 10500 },
-    { date: "Dec 17", value: 13200 },
-    { date: "Dec 20", value: 12800 },
-    { date: "Dec 22", value: 11800 },
-    { date: "Dec 24", value: 14100 },
-    { date: "Dec 26", value: 13900 },
-    { date: "Dec 28", value: 14700 },
-  ];
+  const equityData = balanceCurve;
+
+  const peakPoint =
+  equityData.length > 0
+    ? equityData.reduce((highest, point) =>
+        point.value > highest.value
+          ? point
+          : highest
+      )
+    : {
+        date: "",
+        value: 0,
+        percent: 0,
+        r: 0,
+      };
 
   return (
 
@@ -68,9 +144,12 @@ export default function EquityCurve() {
 
       <button
         key={item}
-        onClick={() => setPeriod(item)}
+        onClick={() => {
+          console.log("Clicked:", item);
+          setChartFilter(item);
+        }}
         className={`px-2 py-1 rounded-lg text-xs transition ${
-          period === item
+          chartFilter === item
             ? "bg-violet-600 text-white"
             : "hover:bg-gray-100"
         }`}
@@ -138,7 +217,7 @@ export default function EquityCurve() {
     </p>
 
     <h2 className="text-xl font-bold text-gray-900">
-      $18,427
+    ${currentBalance.toLocaleString()}
     </h2>
 
   </div>
@@ -150,7 +229,7 @@ export default function EquityCurve() {
     </p>
 
     <h2 className="text-xl font-bold text-green-600">
-      $19,580
+    ${peakBalance.toLocaleString()}
     </h2>
 
   </div>
@@ -162,7 +241,8 @@ export default function EquityCurve() {
     </p>
 
     <h2 className="text-xl font-bold text-green-600">
-      +84.27%
+    {returnPercent >= 0 ? "+" : ""}
+{returnPercent}%
     </h2>
 
   </div>
@@ -174,7 +254,8 @@ export default function EquityCurve() {
     </p>
 
     <h2 className="text-xl font-bold text-green-600">
-      +$8,427
+    {totalPnL >= 0 ? "+" : "-"}$
+    {Math.abs(totalPnL).toLocaleString()}
     </h2>
 
   </div>
@@ -185,16 +266,27 @@ export default function EquityCurve() {
 
       <div className="h-[280px] px-3 pt-1 pb-0">
 
+      {equityData.length <= 1 ? (
+
+<div className="flex h-[280px] items-center justify-center text-gray-400">
+
+  No trades available
+
+</div>
+
+) : (
+
       <ResponsiveContainer width="100%" height="100%">
 
 <AreaChart
-data={equityData}
-margin={{
-  top: 5,
-  right: 13,
-  left: -25,
-  bottom: -5,
-}}
+  data={equityData}
+  onMouseMove={() => console.log(equityData)}
+  margin={{
+    top: 5,
+    right: 13,
+    left: -25,
+    bottom: -5,
+  }}
 >
 
 <defs>
@@ -239,33 +331,37 @@ fill:"#64748B",
 />
 
 <YAxis
-tickLine={false}
-axisLine={false}
-width={55}
-tickFormatter={(v)=>`$${(v/1000).toFixed(0)}k`}
-tick={{
-fontSize:11,
-fill:"#64748B",
-}}
+  tickLine={false}
+  axisLine={false}
+  width={55}
+  tickFormatter={(v) => {
+    if (view === "%") return `${(((v - startingBalance) / startingBalance) * 100).toFixed(1)}%`;
+
+    if (view === "R") return `${(v / 100).toFixed(1)}R`;
+
+    return `$${(v / 1000).toFixed(0)}k`;
+  }}
+  tick={{
+    fontSize: 11,
+    fill: "#64748B",
+  }}
 />
 
+
+
 <Tooltip
-contentStyle={{
-borderRadius:14,
-border:"1px solid #E5E7EB",
-boxShadow:"0 10px 25px rgba(0,0,0,.08)",
-}}
-formatter={(value)=>[
-`$${Number(value).toLocaleString()}`,
-"Balance",
-]}
+content={<EquityTooltip view={view} />}
 />
 
 <Area
-
 type="natural"
-
-dataKey="value"
+dataKey={
+  view === "$"
+    ? "value"
+    : view === "%"
+    ? "percent"
+    : "r"
+}
 
 stroke="#22C55E"
 
@@ -287,8 +383,14 @@ animationDuration={1800}
 />
 
 <ReferenceDot
-  x="Dec 28"
-  y={14700}
+  x={peakPoint.date}
+  y={
+    view === "$"
+      ? peakPoint.value
+      : view === "%"
+      ? peakPoint.percent
+      : peakPoint.r
+  }
   r={6}
   fill="#22C55E"
   stroke="#fff"
@@ -303,8 +405,14 @@ animationDuration={1800}
 />
 
 <ReferenceDot
-  x="Dec 24"
-  y={14100}
+  x={equityData[equityData.length - 1]?.date}
+  y={
+    view === "$"
+      ? equityData[equityData.length - 1]?.value
+      : view === "%"
+      ? equityData[equityData.length - 1]?.percent
+      : equityData[equityData.length - 1]?.r
+  }
   r={5}
   fill="#6366F1"
   stroke="#fff"
@@ -322,6 +430,7 @@ animationDuration={1800}
 
 </ResponsiveContainer>
 
+)}
 </div>
 
 

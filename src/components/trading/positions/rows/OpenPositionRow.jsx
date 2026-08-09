@@ -1,62 +1,205 @@
-import PositionRow from "../PositionRow";
+import { useEffect, useState } from "react";
+import { useTrade } from "../../../../context/TradeContext";
 
 export default function OpenPositionRow({
-
   trade,
   demo = false,
-
 }) {
+  const { closeTrade } = useTrade();
 
-  if (demo) {
+  if (!trade) return null;
 
-    return (
+  const [duration, setDuration] = useState("00:00:00");
 
-      <tr className="border-b hover:bg-gray-50 transition">
+  useEffect(() => {
+    const updateDuration = () => {
+      const now = new Date();
+      const opened = new Date(trade.openedAt);
 
-        <td className="px-6 py-5 font-medium">
-          EURUSD
-        </td>
+      const diff = Math.max(
+        0,
+        Math.floor((now - opened) / 1000)
+      );
 
-        <td>
+      const hours = String(
+        Math.floor(diff / 3600)
+      ).padStart(2, "0");
 
-          <span className="px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-semibold">
+      const minutes = String(
+        Math.floor((diff % 3600) / 60)
+      ).padStart(2, "0");
 
-            BUY
+      const seconds = String(
+        diff % 60
+      ).padStart(2, "0");
 
-          </span>
+      setDuration(
+        `${hours}:${minutes}:${seconds}`
+      );
+    };
 
-        </td>
+    updateDuration();
 
-        <td>5.00</td>
-
-        <td>1.18637</td>
-
-        <td>1.18642</td>
-
-        <td>1.18500</td>
-
-        <td>1.18800</td>
-
-        <td className="font-semibold text-emerald-600">
-
-          +$18.50
-
-        </td>
-
-        <td>00:05:18</td>
-
-        <td className="text-center">
-
-          ⋮
-
-        </td>
-
-      </tr>
-
+    const interval = setInterval(
+      updateDuration,
+      1000
     );
 
-  }
+    return () => clearInterval(interval);
+  }, [trade.openedAt]);
 
-  return <PositionRow trade={trade} />;
+  const formatDuration = (value) => {
+    if (!value) return "0s";
 
+    const parts = value.split(":");
+
+    if (parts.length !== 3) return value;
+
+    const hours = Number(parts[0]);
+    const minutes = Number(parts[1]);
+    const seconds = Number(parts[2]);
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
+
+    return `${seconds}s`;
+  };
+
+  const quantity = Number(
+    trade.quantity ?? trade.lots ?? 0
+  );
+
+  const entry = Number(
+    trade.entry ?? 0
+  );
+
+  const currentPrice = Number(
+    trade.currentPrice ?? trade.entry ?? 0
+  );
+
+  const takeProfit = Number(
+    trade.takeProfit ?? trade.tp ?? 0
+  );
+
+  const stopLoss = Number(
+    trade.stopLoss ?? trade.sl ?? 0
+  );
+
+  const pnl = Number(
+    trade.pnl ?? 0
+  );
+
+  // IMPORTANT: Margin yahin se aa raha hai
+  const margin = Number(
+    trade.margin ?? 0
+  );
+
+  return (
+    <tr className="border-t border-gray-100 hover:bg-gray-50 transition">
+
+      {/* Instrument */}
+      <td className="w-[90px] px-6 py-4 text-left">
+        <span className="font-semibold text-gray-900">
+          {trade.symbol || "EURUSD"}
+        </span>
+      </td>
+
+      {/* Side */}
+      <td className="w-[90px] text-center">
+        <span
+          className={`px-2 py-1 rounded-lg text-xs font-semibold ${
+            trade.side?.toLowerCase() === "buy"
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-red-100 text-red-700"
+          }`}
+        >
+          {trade.side?.toUpperCase()}
+        </span>
+      </td>
+
+      {/* Lots */}
+      <td className="w-[90px] text-center">
+        {quantity.toFixed(2)}
+      </td>
+
+      {/* Entry */}
+      <td className="w-[90px] text-right">
+        {entry.toFixed(5)}
+      </td>
+
+      {/* Current */}
+      <td className="w-[90px] text-right">
+        {currentPrice.toFixed(5)}
+      </td>
+
+      {/* Take Profit */}
+      <td className="w-[90px] text-right text-emerald-600">
+        {takeProfit
+          ? takeProfit.toFixed(5)
+          : "-"}
+      </td>
+
+      {/* Stop Loss */}
+      <td className="w-[90px] text-right text-red-600">
+        {stopLoss
+          ? stopLoss.toFixed(5)
+          : "-"}
+      </td>
+
+      {/* P/L */}
+      <td className="w-[90px] text-right">
+        <span
+          className={`font-semibold ${
+            pnl >= 0
+              ? "text-emerald-600"
+              : "text-red-600"
+          }`}
+        >
+          {pnl >= 0 ? "+" : ""}
+          ${pnl.toFixed(2)}
+        </span>
+      </td>
+
+      {/* MARGIN */}
+      <td className="w-[90px] text-right">
+        <span className="font-medium text-gray-700">
+          ${margin.toFixed(2)}
+        </span>
+      </td>
+
+      {/* Duration */}
+      <td className="w-[90px] text-right whitespace-nowrap">
+        <span className="font-medium text-gray-700">
+          {formatDuration(duration)}
+        </span>
+      </td>
+
+      {/* Actions */}
+      <td className="w-[90px] text-center">
+        <button
+          type="button"
+          onClick={() => closeTrade(trade.id)}
+          className="
+            px-3
+            py-1
+            rounded-lg
+            bg-red-500
+            hover:bg-red-600
+            text-white
+            text-xs
+            font-medium
+            transition
+          "
+        >
+          Close
+        </button>
+      </td>
+
+    </tr>
+  );
 }

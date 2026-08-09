@@ -2,13 +2,18 @@ import { useState, useEffect } from "react";
 import BasicTradeForm from "./BasicTradeForm";
 import AdvancedTradeForm from "./AdvancedTradeForm";
 
+import { useJournal } from "../../context/JournalContext";
+
 function AddTradeModal({
   setShowModal,
-  trades,
-  setTrades,
-
   editTrade = null,
 }) {
+
+  const {
+    addTrade,
+    trades,
+    selectedAccountId,
+  } = useJournal();
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [form, setForm] = useState({
@@ -47,7 +52,7 @@ function AddTradeModal({
   const handleSaveTrade = () => {
     const newTrade = {
       id: Date.now(),
-  
+  accountId: selectedAccountId,
       // BASIC
       pair: form.pair,
       date: form.date,
@@ -100,7 +105,7 @@ function AddTradeModal({
       updatedAt: new Date().toISOString(),
     };
   
-    setTrades([...trades, newTrade]);
+    addTrade(newTrade);
 
     // ==========================
 // LINK TRADE TO SELECTED PLAN

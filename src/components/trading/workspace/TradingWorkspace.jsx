@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 import TradingChart from "../chart/TradingChart";
 import OrderPanel from "../order-panel/OrderPanel";
@@ -18,57 +18,13 @@ export default function TradingWorkspace() {
 
   } = useUI();
 
-  const [terminalHeight, setTerminalHeight] = useState(300);
+  const [terminalHeight, setTerminalHeight] = useState(0);
 
   const [isDragging, setIsDragging] = useState(false);
 
-  const startDragging = () => {
-
-    setIsDragging(true);
+  const animationFrame = useRef(null);
   
-    const handleMouseMove = (e) => {
-  
-      const container = document.getElementById("chart-area");
-  
-      if (!container) return;
-  
-      const rect = container.getBoundingClientRect();
-  
-      const newHeight = rect.bottom - e.clientY;
-  
-      if (newHeight >= 180 && newHeight <= 650) {
-        setTerminalHeight(newHeight);
-      }
-  
-    };
-  
-    const stopDragging = () => {
-  
-      setIsDragging(false);
-  
-      window.removeEventListener(
-        "mousemove",
-        handleMouseMove
-      );
-  
-      window.removeEventListener(
-        "mouseup",
-        stopDragging
-      );
-  
-    };
-  
-    window.addEventListener(
-      "mousemove",
-      handleMouseMove
-    );
-  
-    window.addEventListener(
-      "mouseup",
-      stopDragging
-    );
-  
-  };
+ 
 
   const startResize = (e) => {
     e.preventDefault();
@@ -77,15 +33,27 @@ export default function TradingWorkspace() {
     const startHeight = terminalHeight;
   
     const handleMouseMove = (event) => {
+
       const delta = startY - event.clientY;
-  
-      const newHeight = startHeight + delta;
-  
-      // Min & Max height
-      if (newHeight >= 180 && newHeight <= 600) {
-        setTerminalHeight(newHeight);
+    
+      let newHeight = startHeight + delta;
+    
+      if (newHeight < 0) newHeight = 0;
+    
+      if (newHeight > 600) newHeight = 600;
+    
+      if (animationFrame.current) {
+        cancelAnimationFrame(animationFrame.current);
       }
+    
+      animationFrame.current = requestAnimationFrame(() => {
+        setTerminalHeight(newHeight);
+      });
+    
     };
+
+    
+
   
     const handleMouseUp = () => {
       window.removeEventListener("mousemove", handleMouseMove);
@@ -115,52 +83,60 @@ export default function TradingWorkspace() {
   {/* Chart */}
 
   <div
-  className="flex flex-col"
+  className="relative overflow-hidden"
   style={{
-    height: "calc(100vh - 120px)",
+    height: "calc(100vh - 50px)",
   }}
 >
 
   {/* Chart */}
 
-  <div
-    style={{
-      flex: 1,
-    }}
-  >
+  <div className="absolute inset-0">
     <TradingChart />
-  </div>
+</div>
 
   {/* Drag Handle */}
 
   <div
-  id="terminal-resize-handle"
-  onMouseDown={startResize}
-  className="
-    h-2
-    bg-gray-200
-    hover:bg-violet-500
-    cursor-row-resize
-    transition
-    flex
-    items-center
-    justify-center
-    select-none
-  "
+    id="terminal-resize-handle"
+    onMouseDown={startResize}
+    className="
+        absolute
+        left-0
+        right-0
+        cursor-row-resize
+        z-30
+        flex
+        justify-center
+        transition-all
+    "
+    style={{
+        bottom: `${terminalHeight}px`,
+    }}
 >
-    <div className="w-14 h-1 rounded-full bg-gray-400"></div>
-  </div>
+    <div className="w-16 h-2 rounded-full bg-gray-400 my-1"></div>
+</div>
+  
 
   {/* Positions */}
 
   <div
+    className="
+        absolute
+        left-0
+        right-0
+        bottom-0
+        bg-white
+        border-t
+        z-20
+        overflow-hidden
+    "
     style={{
-      height: `${terminalHeight}px`,
+        height: terminalHeight,
     }}
-    className="overflow-hidden"
-  >
+>
     <PositionsPanel />
-  </div>
+</div>
 
 </div>
 

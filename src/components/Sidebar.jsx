@@ -9,6 +9,7 @@ import {
   Sparkles,
   ChartBar,
   Notebook,
+  Rocket,
   Newspaper,
   Brain,
   PanelLeft,
@@ -197,6 +198,20 @@ ${collapsed ? "justify-center" : "gap-3"}
 <Notebook size={18}/>
 {!collapsed && "Notebook"}
 </div>
+
+<div onClick={() => navigate("/EdgeOS")}
+ className={`
+flex
+items-center
+text-sm
+font-medium
+cursor-pointer
+${collapsed ? "justify-center" : "gap-3"}
+`}>
+<Rocket size={18}/>
+{!collapsed && "EdgeOS"}
+</div>
+
 
 
 <div onClick={() => navigate("/news")}

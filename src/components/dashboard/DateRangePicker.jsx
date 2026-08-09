@@ -11,16 +11,47 @@ import {
 import "react-day-picker/dist/style.css";
 import "./DateRangePicker.css";
 
+import { useDashboardFilter } from "../../context/DashboardFilterContext";
+import { getDateRange, DATE_FILTERS } from "../../utils/dateRangeUtils";
+
 function DateRangePicker() {
   const popupRef = useRef(null);
 
   const [open, setOpen] = useState(false);
 
-  const [tempStart, setTempStart] = useState(new Date(2025, 4, 1));
-  const [tempEnd, setTempEnd] = useState(new Date(2025, 4, 29));
+  const {
 
-  const [startDate, setStartDate] = useState(new Date(2025, 4, 1));
-  const [endDate, setEndDate] = useState(new Date(2025, 4, 29));
+    selectedFilter,
+    setSelectedFilter,
+
+    startDate,
+    setStartDate,
+
+    endDate,
+    setEndDate,
+
+} = useDashboardFilter();
+
+const [tempStart, setTempStart] = useState(startDate);
+
+const [tempEnd, setTempEnd] = useState(endDate);
+
+const applyQuickFilter = (filter) => {
+
+  const range = getDateRange(filter);
+
+  setSelectedFilter(filter);
+
+  setStartDate(range.startDate);
+
+  setEndDate(range.endDate);
+
+  setTempStart(range.startDate);
+
+  setTempEnd(range.endDate);
+
+};
+
 
   const [activePreset, setActivePreset] = useState("today");
   useEffect(() => {
@@ -37,10 +68,16 @@ function DateRangePicker() {
   }, []);
 
   const applyDates = () => {
+
     setStartDate(tempStart);
+
     setEndDate(tempEnd);
+
+    setSelectedFilter("Custom");
+
     setOpen(false);
-  };
+
+};
 
   const cancelDates = () => {
     setTempStart(startDate);
@@ -49,55 +86,10 @@ function DateRangePicker() {
   };
 
   const presetButtonClass = (preset) =>
-    activePreset === preset
-      ? "px-5 py-2.5 rounded-xl border border-purple-300 bg-purple-50 text-purple-700 font-semibold transition"
-      : "px-5 py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition";
-
-      const selectToday = () => {
-        const today = new Date();
-      
-        setTempStart(today);
-        setTempEnd(today);
-      
-        setActivePreset("today");
-      };
-  
-  const select1Week = () => {
-    const end = new Date();
-    const start = subDays(end, 6);
-  
-    setTempStart(start);
-    setTempEnd(end);
-
-    setActivePreset("1w");
-  };
-  
-  const select2Weeks = () => {
-    const end = new Date();
-    const start = subDays(end, 13);
-  
-    setTempStart(start);
-    setTempEnd(end);
-
-    setActivePreset("2w");
-  };
-  
-  const select1Month = () => {
-    const today = new Date();
-  
-    setTempStart(startOfMonth(today));
-    setTempEnd(endOfMonth(today));
-
-    setActivePreset("1m");
-  };
-  
-  const selectAll = () => {
-    setTempStart(new Date(2020, 0, 1));
-    setTempEnd(new Date());
-
-    setActivePreset("all");
-  };
-
+    selectedFilter === preset
+      ? "px-5 py-2.5 rounded-xl bg-purple-600 text-white border border-purple-600 shadow-md transition-all duration-300 hover:bg-purple-700 hover:scale-105"
+      : "px-5 py-2.5 rounded-xl bg-white text-gray-700 border border-gray-200 transition-all duration-300 hover:bg-purple-50 hover:border-purple-400 hover:text-purple-700 hover:scale-105";
+ 
   
   return (
     <div className="relative" ref={popupRef}>
@@ -123,41 +115,41 @@ function DateRangePicker() {
   Select Date Range
 </h2>
 
-<div className="flex items-center gap-3">
+<div className="flex items-center gap-1">
 
-  <button
-  onClick={selectToday}
-  className={presetButtonClass("today")}
+<button
+    onClick={() => applyQuickFilter(DATE_FILTERS.TODAY)}
+    className={presetButtonClass(DATE_FILTERS.TODAY)}
 >
-  Today
+    Today
 </button>
 
 <button
-  onClick={select1Week}
-  className={presetButtonClass("1w")}
-  >
+  onClick={() => applyQuickFilter(DATE_FILTERS.ONE_WEEK)}
+  className={presetButtonClass(DATE_FILTERS.ONE_WEEK)}
+>
   1W
 </button>
 
 <button
-  onClick={select2Weeks}
-  className={presetButtonClass("2w")}
-  >
-  2W
+    onClick={() => applyQuickFilter(DATE_FILTERS.TWO_WEEKS)}
+    className={presetButtonClass(DATE_FILTERS.TWO_WEEKS)}
+>
+    2W
 </button>
 
 <button
-  onClick={select1Month}
-  className={presetButtonClass("1m")}
-  >
-  1M
+    onClick={() => applyQuickFilter(DATE_FILTERS.ONE_MONTH)}
+    className={presetButtonClass(DATE_FILTERS.ONE_MONTH)}
+>
+    1M
 </button>
 
 <button
-  onClick={selectAll}
-  className={presetButtonClass("all")}
-  >
-  ALL
+    onClick={() => applyQuickFilter(DATE_FILTERS.ALL)}
+    className={presetButtonClass(DATE_FILTERS.ALL)}
+>
+    ALL
 </button>
 
 </div>

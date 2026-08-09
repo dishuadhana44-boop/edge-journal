@@ -3,8 +3,8 @@ import { useState } from "react";
 import PositionsTabs from "./header/PositionsTabs";
 import PositionsStats from "./header/PositionsStats";
 import PositionsToolbar from "./header/PositionsToolbar";
-import OpenPositionsTable from "./tables/OpenPositionsTable";
 
+import OpenPositionsTable from "./tables/OpenPositionsTable";
 import PendingOrdersTable from "./tables/PendingOrdersTable";
 import ClosedPositionsTable from "./tables/ClosedPositionsTable";
 
@@ -35,23 +35,19 @@ export default function PositionTerminal() {
 
       <PositionsToolbar />
 
-     
+      {activeTab === "open" && (
+        <OpenPositionsTable />
+      )}
 
-    {activeTab === "open" && (
-      <OpenPositionsTable />
-    )}
+      {activeTab === "pending" && (
+        <PendingOrdersTable />
+      )}
 
-    {activeTab === "pending" && (
-      <PendingOrdersTable />
-    )}
+      {activeTab === "closed" && (
+        <ClosedPositionsTable />
+      )}
 
-    {activeTab === "closed" && (
-      <ClosedPositionsTable />
-    )}
-
-  </div>
-
-
+    </div>
 
   );
 

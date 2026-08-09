@@ -1,21 +1,24 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import JournalLayout from "../components/trade/JournalLayout";
+import { useJournal } from "../context/JournalContext";
+
+
 
 function TradeJournal() {
 
+  const { trades, setTrades } = useJournal();
   const { id } = useParams();
   console.log(id);
   const navigate = useNavigate();
 
-  const trades =
-    JSON.parse(localStorage.getItem("trades")) || [];
-
-    const trade = trades.find(
-      (t) => String(t.id) === String(id)
-    );
+  const trade = trades.find(
+    (t) => String(t.id) === String(id)
+  );
+ 
+ 
   const currentIndex = trades.findIndex(
-    (t) => t.id.toString() === id
+    (t) => String(t.id) === String(id)
   );
   
   const previousTrade =
@@ -27,65 +30,31 @@ function TradeJournal() {
     currentIndex < trades.length - 1
       ? trades[currentIndex + 1]
       : null;
-  const [tradeState, setTradeState] = useState(trade);
-  useEffect(() => {
-    const latestTrades =
-      JSON.parse(localStorage.getItem("trades")) || [];
-  
-    const latestTrade = latestTrades.find(
-      (t) => String(t.id) === String(id)
-    );
-  
-    if (latestTrade) {
-      setTradeState(latestTrade);
-    }
-  }, [id]);
+
+
   const [showSaved, setShowSaved] = useState(false);
-  useEffect(() => {
-    if (!tradeState) return;
-  
-    const allTrades =
-      JSON.parse(localStorage.getItem("trades")) || [];
-  
-    const updatedTrades = allTrades.map((t) =>
-      t.id === tradeState.id
-        ? {
-            ...tradeState,
-            updatedAt: new Date().toISOString(),
-          }
-        : t
-    );
-  
-    localStorage.setItem(
-      "trades",
-      JSON.stringify(updatedTrades)
-    );
-  }, [tradeState]);
+ 
+
+
   const handleSave = () => {
-    const allTrades =
-      JSON.parse(localStorage.getItem("trades")) || [];
+    if (!trade) return;
   
-    const updatedTrades = allTrades.map((t) =>
-      t.id === tradeState.id
-        ? {
-          ...tradeState,
-            updatedAt: new Date().toISOString(),
-          }
-        : t
+    setTrades((prev) =>
+      prev.map((t) =>
+        t.id === trade.id
+          ? {
+              ...trade,
+              updatedAt: new Date().toISOString(),
+            }
+          : t
+      )
     );
   
-    localStorage.setItem(
-      "trades",
-      JSON.stringify(updatedTrades)
-    );
-    
     setShowSaved(true);
-    
+  
     setTimeout(() => {
       setShowSaved(false);
     }, 2500);
-  
-    
   };
 
   
@@ -124,8 +93,14 @@ function TradeJournal() {
       )}
   
   <JournalLayout
-  trade={tradeState}
-  setTrade={setTradeState}
+  trade={trade}
+  setTrade={(updatedTrade) => {
+    setTrades((prev) =>
+      prev.map((t) =>
+        t.id === updatedTrade.id ? updatedTrade : t
+      )
+    );
+  }}
   onSave={handleSave}
   previousTrade={previousTrade}
   nextTrade={nextTrade}

@@ -8,6 +8,16 @@ export default function CalendarTooltip({
 const topRow = index < 7;
   
     if (!trade) return null;
+
+    const winRate =
+  trade.trades === 0
+    ? 0
+    : Math.round((trade.wins / trade.trades) * 100);
+
+const avgRR =
+  trade.trades === 0
+    ? 0
+    : (trade.totalRR / trade.trades).toFixed(1);
   
     return (
   
@@ -97,36 +107,28 @@ const topRow = index < 7;
           </div>
   
           <div className="flex justify-between">
+
+                             <span className="text-gray-500">
+                          Win Rate
+                                 </span>
+
+                        <span className="font-semibold">
+                                         {winRate}%
+                              </span>
+
+                            </div>
   
-            <span className="text-gray-500">
-  
-              Win Rate
-  
-            </span>
-  
-            <span>
-  
-              80%
-  
-            </span>
-  
-          </div>
-  
-          <div className="flex justify-between">
-  
-            <span className="text-gray-500">
-  
-              Avg RR
-  
-            </span>
-  
-            <span>
-  
-              2.3R
-  
-            </span>
-  
-          </div>
+                <div className="flex justify-between">
+
+                 <span className="text-gray-500">
+                      Avg RR
+                        </span>
+
+                         <span className="font-semibold">
+                       {avgRR}R
+                   </span>
+
+                     </div>
   
         </div>
   

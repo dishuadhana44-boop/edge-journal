@@ -1,6 +1,13 @@
 import WeeklyPnLChart from "./WeeklyPnLChart";
+import { useJournal } from "../../../context/JournalContext";
+import { generateWeeklyPnL } from "../../../utils/weeklyPnLEngine";
 
 export default function WeeklyPnLCard() {
+
+  const { filteredTrades } = useJournal();
+
+  const weeklyData = generateWeeklyPnL(filteredTrades);
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
 
@@ -23,7 +30,8 @@ export default function WeeklyPnLCard() {
           </p>
 
           <h2 className="text-2xl font-bold text-green-600">
-            +$1,264
+            {weeklyData.thisWeek >= 0 ? "+" : ""}
+            ${weeklyData.thisWeek.toFixed(2)}
           </h2>
 
         </div>
@@ -34,19 +42,19 @@ export default function WeeklyPnLCard() {
 
         <Metric
           title="Average"
-          value="+$784"
+          value={`${weeklyData.average >= 0 ? "+" : ""}$${weeklyData.average.toFixed(2)}`}
           color="text-green-600"
         />
 
-        <Metric
-          title="Best Week"
-          value="+$2,485"
-          color="text-green-600"
-        />
+                <Metric
+                title="Best Week"
+                value={`${weeklyData.bestWeek >= 0 ? "+" : ""}$${weeklyData.bestWeek.toFixed(2)}`}
+                 color="text-green-600"
+                />
 
         <Metric
           title="Worst Week"
-          value="-$820"
+          value={`${weeklyData.worstWeek >= 0 ? "+" : ""}$${weeklyData.worstWeek.toFixed(2)}`}
           color="text-red-500"
         />
 
@@ -54,7 +62,9 @@ export default function WeeklyPnLCard() {
 
       <div className="p-4">
 
-        <WeeklyPnLChart />
+      <WeeklyPnLChart
+    data={weeklyData.data}
+/>
 
       </div>
 

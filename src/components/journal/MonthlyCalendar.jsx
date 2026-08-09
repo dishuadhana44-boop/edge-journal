@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 export default function MonthlyCalendar({
   currentDate,
   setCurrentDate,
+  trades,
 }) {
 
     const navigate = useNavigate();
@@ -87,10 +88,8 @@ while (calendarDays.length < 42) {
   calendarDays.push(null);
 }
 
-    const trades = JSON.parse(
-        localStorage.getItem("trades")
-      ) || [];
-      
+   
+console.log(trades);
       const tradeMap = useMemo(() => {
 
         const map = {};
@@ -439,7 +438,9 @@ border-gray-200
 
   tradeMap={tradeMap}
 
-  onClick={(date) => navigate(`/tradelog?date=${date}`)}
+  onClick={(date) => {
+    navigate(`/tradelog?date=${date}`);
+  }}
 
 />
 

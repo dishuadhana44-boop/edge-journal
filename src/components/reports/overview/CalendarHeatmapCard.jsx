@@ -1,6 +1,17 @@
+import { useState } from "react";
 import CalendarHeatmapGrid from "./CalendarHeatmapGrid";
 
 export default function CalendarHeatmapCard() {
+
+  const today = new Date();
+
+  const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+
+  const months = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
+  ];
 
   return (
 
@@ -19,19 +30,25 @@ export default function CalendarHeatmapCard() {
 
         </div>
 
-        <select className="border rounded-lg px-3 py-2 text-sm">
-
-          <option>May 2025</option>
-
-          <option>June 2025</option>
-
-        </select>
-
+        <select
+  value={selectedMonth}
+  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+  className="border rounded-lg px-3 py-2 text-sm"
+>
+  {months.map((month, index) => (
+    <option key={month} value={index}>
+      {month} {selectedYear}
+    </option>
+  ))}
+</select>
       </div>
 
       <div className="p-6">
 
-        <CalendarHeatmapGrid />
+      <CalendarHeatmapGrid
+  selectedMonth={selectedMonth}
+  selectedYear={selectedYear}
+/>
 
       </div>
 

@@ -4,10 +4,14 @@ import useOrder from "./context/useOrder";
 export default function PriceInputs() {
 
   const {
+    orderType,
+  
     entry,
     setEntry,
+  
     sl,
     setSL,
+  
     tp,
     setTP,
   } = useOrder();
@@ -20,13 +24,24 @@ export default function PriceInputs() {
 
       <div>
 
-        <label className="block text-xs font-medium text-gray-500 mb-1">
-          Entry Price
-        </label>
+      <label className="block text-xs font-medium text-gray-500 mb-1">
+  {orderType === "Market"
+    ? "Entry Price"
+    : orderType === "Limit"
+    ? "Limit Price"
+    : "Stop Price"}
+</label>
 
-        <input
-          value={entry}
-          onChange={(e)=>setEntry(e.target.value)}
+<input
+  value={entry}
+  onChange={(e) => setEntry(e.target.value)}
+  placeholder={
+    orderType === "Market"
+      ? "Current Market Price"
+      : orderType === "Limit"
+      ? "Enter Limit Price"
+      : "Enter Stop Price"
+  }
           className="
             w-full
             rounded-xl

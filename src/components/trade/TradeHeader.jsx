@@ -14,6 +14,14 @@ function TradeHeader({
 }) {
   const navigate = useNavigate();
 
+  if (!trade) {
+    return (
+      <div className="h-12 flex items-center px-4 text-gray-500">
+        Loading trade...
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-between h-[10px]">
 
@@ -35,11 +43,14 @@ function TradeHeader({
 </h1>
 
 <span className="text-gray-500 text-[15px] font-medium">
-  {trade?.direction} • {trade?.day}  • {new Date(trade.date).toLocaleDateString("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-})}
+  {trade?.direction || "-"} • {trade?.day || "-"} •{" "}
+  {trade?.date
+    ? new Date(trade.date).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : "-"}
 </span>
 
         </div>
@@ -50,7 +61,7 @@ function TradeHeader({
       <div className="flex items-center gap-2">
 
       <button
-    enable={!previousTrade}
+    disabled={!previousTrade}
     onClick={() =>
         previousTrade &&
         navigate(`/trade/${String(previousTrade.id)}`)
@@ -62,7 +73,7 @@ function TradeHeader({
 </button>
 
 <button
-    enable={!nextTrade}
+    disabled={!nextTrade}
     onClick={() =>
         nextTrade &&
         navigate(`/trade/${String(nextTrade.id)}`)

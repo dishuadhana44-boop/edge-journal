@@ -142,6 +142,10 @@ export default function AddTradingAccountModal({
               <option>USD</option>
               <option>EUR</option>
               <option>GBP</option>
+              <option>JPY</option>
+              <option>AUD</option>
+              <option>CAD</option>
+              <option>CHF</option>
               <option>INR</option>
 
             </select>

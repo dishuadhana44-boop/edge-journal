@@ -4,6 +4,8 @@ import {
     Trash2,
   } from "lucide-react";
 
+  import { useJournal } from "../../context/JournalContext";
+
   export default function TradingAccountsSidebar({
     accounts,
     selectedAccount,
@@ -12,6 +14,9 @@ import {
     onDelete,
     onSetDefault,
   }) {
+
+    const { setSelectedAccountId } = useJournal();
+
   return (
     <div
       className="
@@ -54,7 +59,16 @@ import {
         {accounts.map((acc) => (
           <button
             key={acc.id}
-            onClick={() => setSelectedAccount(acc)}
+            onClick={() => {
+  setSelectedAccount(acc);
+
+  setSelectedAccountId(acc.id);
+
+  localStorage.setItem(
+    "selectedAccountId",
+    acc.id
+  );
+}}
             className={`
               w-full
               rounded-2xl

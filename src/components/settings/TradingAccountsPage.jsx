@@ -7,11 +7,13 @@ import TradingAccountsView from "./TradingAccountsView";
 import TradingAccountsEdit from "./TradingAccountsEdit";
 import AddTradingAccountModal from "./AddTradingAccountModal";
 
-
+import { useJournal } from "../../context/JournalContext";
 
 export default function TradingAccountsPage() {
 
   const [accounts, setAccounts] = useState(() => {
+    const { setSelectedAccountId } = useJournal();
+
 
     return (
       JSON.parse(localStorage.getItem("tradingAccounts")) ||
@@ -32,6 +34,23 @@ export default function TradingAccountsPage() {
   });
 
   const [selectedAccount, setSelectedAccount] = useState(accounts[0]);
+  const {
+    selectedAccountId,
+    setSelectedAccountId,
+  } = useJournal();
+
+  useEffect(() => {
+
+    const current =
+      accounts.find(
+        (a) => Number(a.id) === Number(selectedAccountId)
+      ) || accounts[0];
+  
+    if (current) {
+      setSelectedAccount(current);
+    }
+  
+  }, [accounts, selectedAccountId]);
 
   const [isEditing, setIsEditing] = useState(false);
 
@@ -78,6 +97,16 @@ export default function TradingAccountsPage() {
       isDefault: a.id === id,
   
     }));
+    setSelectedAccount(
+      updated.find((a) => a.id === id)
+    );
+    
+    setSelectedAccountId(id);
+    
+    localStorage.setItem(
+      "selectedAccountId",
+      id
+    );
   
     setAccounts(updated);
   

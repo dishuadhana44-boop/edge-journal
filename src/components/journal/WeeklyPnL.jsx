@@ -8,10 +8,10 @@ import {
   
   export default function WeeklyPnL({
     currentDate,
+    trades,
 }) {
 
-  const trades =
-  JSON.parse(localStorage.getItem("trades")) || [];
+    const journalTrades = trades || [];
 
   const currentMonth = currentDate.getMonth();
 
@@ -52,7 +52,7 @@ import {
         },
     ];
 
-    trades.forEach((trade) => {
+    journalTrades.forEach((trade) => {
 
         if (!trade.date) return;
 
@@ -69,22 +69,37 @@ import {
         if (!weeks[weekIndex]) return;
 
         const pnl = Number(
-          String(trade.pnl)
-            .replace(/\$/g, "")
-            .replace(/,/g, "")
-        );
-        
-        weeks[weekIndex].pnl += pnl;
-        
-        if (pnl > 0) {
-          weeks[weekIndex].wins++;
-        }
+            String(trade.pnl)
+              .replace(/[₹$,\s]/g, "")
+          );
+          
+          weeks[weekIndex].pnl += pnl;
+          
+          // Trade count
+          weeks[weekIndex].trades++;
+          console.log({
+            pair: trade.pair,
+            result: trade.result,
+            pnl: trade.pnl,
+            week: weekIndex + 1,
+          });
+          
+          // Win count
+          if (trade.result === "Win") {
+            weeks[weekIndex].wins++;
+          }
 
     });
 
-    return weeks;
+    return weeks.map((week) => ({
+        ...week,
+        winRate:
+          week.trades === 0
+            ? 0
+            : Math.round((week.wins / week.trades) * 100),
+      }));
 
-}, [trades, currentMonth, currentYear]);
+}, [journalTrades, currentMonth, currentYear]);
 
     return (
 
@@ -92,14 +107,14 @@ import {
 
 {weeklyData.map((data, index) => {
 
-const winRate =
-    data.trades === 0
-        ? 0
-        : Math.round(
-              (data.wins / data.trades) * 100
-          );
+
 
           const bestPnL = Math.max(...weeklyData.map(w => w.pnl));
+
+          const totalTrades = weeklyData.reduce(
+            (sum, week) => sum + week.trades,
+            0
+          );
 
           const isBestWeek =
               data.pnl === bestPnL &&
@@ -207,7 +222,7 @@ return (
 </p>
 
 <p className="font-bold text-violet-600">
-    {winRate}%
+{data.winRate}%
 </p>
 
 </div>

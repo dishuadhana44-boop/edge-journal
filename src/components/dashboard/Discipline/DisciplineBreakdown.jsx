@@ -20,6 +20,7 @@ function DisciplineBreakdown() {
         score: 85,
         color: "bg-orange-500",
       },
+      
     ];
   
     return (

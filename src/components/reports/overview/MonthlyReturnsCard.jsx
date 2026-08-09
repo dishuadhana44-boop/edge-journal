@@ -1,6 +1,31 @@
+import { useState } from "react";
 import MonthlyReturnsChart from "./MonthlyReturnsChart";
+import { useJournal } from "../../../context/JournalContext";
+import { generateMonthlyReturns } from "../../../utils/monthlyReturnsEngine";
 
 export default function MonthlyReturnsCard() {
+
+const { filteredTrades } = useJournal();
+
+const years = [
+  ...new Set(
+    filteredTrades
+      .filter((t) => t.date)
+      .map((t) => new Date(t.date).getFullYear())
+  ),
+].sort((a, b) => b - a);
+
+const [selectedYear, setSelectedYear] = useState(
+  years[0] || new Date().getFullYear()
+);
+
+const monthlyData = generateMonthlyReturns(
+  filteredTrades,
+  selectedYear
+);
+
+
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
 
@@ -16,47 +41,51 @@ export default function MonthlyReturnsCard() {
 
         </div>
 
-        <select className="border rounded-lg px-3 py-2 text-sm">
-
-          <option>2025</option>
-
-          <option>2024</option>
-
-        </select>
+        <select
+  value={selectedYear}
+  onChange={(e) => setSelectedYear(Number(e.target.value))}
+  className="border rounded-lg px-3 py-2 text-sm"
+>
+  {years.map((year) => (
+    <option key={year} value={year}>
+      {year}
+    </option>
+  ))}
+</select>
 
       </div>
 
       <div className="grid grid-cols-4 border-b">
 
-        <Metric
-          title="Best"
-          value="+14.2%"
-          color="text-green-600"
-        />
+      <Metric
+  title="Best"
+  value={`${monthlyData.bestMonth >= 0 ? "+" : ""}$${monthlyData.bestMonth.toFixed(2)}`}
+  color="text-green-600"
+/>
 
-        <Metric
-          title="Worst"
-          value="-3.4%"
-          color="text-red-500"
-        />
+<Metric
+  title="Worst"
+  value={`${monthlyData.worstMonth >= 0 ? "+" : ""}$${monthlyData.worstMonth.toFixed(2)}`}
+  color="text-red-500"
+/>
 
-        <Metric
-          title="Positive"
-          value="9"
-          color="text-green-600"
-        />
+<Metric
+  title="Positive"
+  value={monthlyData.positiveMonths}
+  color="text-green-600"
+/>
 
-        <Metric
-          title="Negative"
-          value="3"
-          color="text-red-500"
-        />
+<Metric
+  title="Negative"
+  value={monthlyData.negativeMonths}
+  color="text-red-500"
+/>
 
       </div>
 
       <div className="p-4">
 
-        <MonthlyReturnsChart />
+      <MonthlyReturnsChart data={monthlyData.data} />
 
       </div>
 

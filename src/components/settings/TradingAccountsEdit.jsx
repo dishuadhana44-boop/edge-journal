@@ -4,7 +4,11 @@ export default function TradingAccountsEdit({
 
   account,
 
-  setAccount,
+  accounts,
+
+  setAccounts,
+
+  setSelectedAccount,
 
   setIsEditing,
 
@@ -12,28 +16,36 @@ export default function TradingAccountsEdit({
 
   const handleChange = (e) => {
 
-    setAccount({
-
+    const updatedAccount = {
+  
       ...account,
-
-      [e.target.name]: e.target.value,
-
-    });
-
+  
+      [e.target.name]:
+        e.target.name === "startingBalance"
+          ? Number(e.target.value)
+          : e.target.value,
+  
+    };
+  
+    setSelectedAccount(updatedAccount);
+  
   };
 
   const handleSave = () => {
 
-    localStorage.setItem(
-
-      "tradingAccount",
-
-      JSON.stringify(account)
-
+    const updatedAccounts = accounts.map((a) =>
+      a.id === account.id ? account : a
     );
-
+  
+    setAccounts(updatedAccounts);
+  
+    localStorage.setItem(
+      "tradingAccounts",
+      JSON.stringify(updatedAccounts)
+    );
+  
     setIsEditing(false);
-
+  
   };
 
   return (

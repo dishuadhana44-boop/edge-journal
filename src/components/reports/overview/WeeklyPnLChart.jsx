@@ -9,21 +9,24 @@ import {
     Cell,
   } from "recharts";
   
-  import WeeklyPnLData from "./WeeklyPnLData";
+
   import WeeklyPnLTooltip from "./WeeklyPnLTooltip";
   
-  export default function WeeklyPnLChart() {
+  export default function WeeklyPnLChart({
+    data,
+  }) {
+
     return (
       <div className="h-[250px]">
   
         <ResponsiveContainer width="100%" height="100%">
   
           <BarChart
-            data={WeeklyPnLData}
+            data={data}
             margin={{
               top: 10,
               right: 10,
-              left: -20,
+              left: -5,
               bottom: 0,
             }}
           >
@@ -51,7 +54,7 @@ import {
               radius={[6, 6, 0, 0]}
             >
   
-              {WeeklyPnLData.map((item, index) => (
+                   {data.map((item, index) => (
                 <Cell
                   key={index}
                   fill={

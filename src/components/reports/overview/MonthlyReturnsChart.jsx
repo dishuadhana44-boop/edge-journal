@@ -9,16 +9,16 @@ import {
     Cell,
   } from "recharts";
   
-  import MonthlyReturnsData from "./MonthlyReturnsData";
+  
   import MonthlyReturnsTooltip from "./MonthlyReturnsTooltip";
   
-  export default function MonthlyReturnsChart() {
+  export default function MonthlyReturnsChart({ data }) {
     return (
       <div className="h-[250px]">
   
         <ResponsiveContainer width="100%" height="100%">
   
-          <BarChart data={MonthlyReturnsData}>
+        <BarChart data={data}>
   
             <CartesianGrid
               vertical={false}
@@ -36,11 +36,11 @@ import {
   }}
 />
   
-            <YAxis
-              tickFormatter={(v) => `${v}%`}
-              tickLine={false}
-              axisLine={false}
-            />
+<YAxis
+  tickFormatter={(v) => `$${v.toLocaleString()}`}
+  tickLine={false}
+  axisLine={false}
+/>
   
             <Tooltip content={<MonthlyReturnsTooltip />} />
   
@@ -48,7 +48,7 @@ import {
               dataKey="return"
               radius={[6, 6, 0, 0]}
             >
-              {MonthlyReturnsData.map((item, index) => (
+              {data.map((item, index) => (
                 <Cell
                   key={index}
                   fill={

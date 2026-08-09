@@ -1,7 +1,8 @@
-import { useState } from "react";
+import useOrder from "./context/useOrder";
 
 export default function BuySellToggle() {
-  const [side, setSide] = useState("buy");
+
+  const { side, setSide } = useOrder();
 
   return (
     <div className="px-4 pt-4">
@@ -10,38 +11,22 @@ export default function BuySellToggle() {
 
         <button
           onClick={() => setSide("buy")}
-          className={`
-            py-2
-            rounded-lg
-            text-sm
-            font-semibold
-            transition-all
-            duration-200
-            ${
-              side === "buy"
-                ? "bg-violet-600 text-white shadow-sm"
-                : "text-gray-500 hover:bg-white"
-            }
-          `}
+          className={`py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+            side === "buy"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "text-gray-500 hover:bg-white"
+          }`}
         >
           Buy
         </button>
 
         <button
           onClick={() => setSide("sell")}
-          className={`
-            py-2
-            rounded-lg
-            text-sm
-            font-semibold
-            transition-all
-            duration-200
-            ${
-              side === "sell"
-                ? "bg-red-500 text-white shadow-sm"
-                : "text-gray-500 hover:bg-white"
-            }
-          `}
+          className={`py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+            side === "sell"
+              ? "bg-red-500 text-white shadow-sm"
+              : "text-gray-500 hover:bg-white"
+          }`}
         >
           Sell
         </button>

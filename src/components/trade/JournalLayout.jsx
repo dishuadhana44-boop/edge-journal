@@ -10,6 +10,17 @@ function JournalLayout({
   previousTrade,
   nextTrade,
 }) {
+
+  if (!trade) {
+    return (
+      <div className="flex items-center justify-center h-[80vh]">
+        <div className="text-gray-500 text-lg">
+          Loading Trade...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full px-2">
 
