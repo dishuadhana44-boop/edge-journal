@@ -5,6 +5,7 @@ import AppLayout from "./layouts/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import TradeLog from "./pages/TradeLog";
 import Trading from "./pages/Trading";
+import Backtesting from "./pages/Backtesting";
 import Edge from "./pages/Edge";
 import Journal from "./pages/Journal";
 import Reports from "./pages/Reports";
@@ -38,6 +39,8 @@ function App(){
         <Route path="/tradelog" element={<TradeLog />} />
         
         <Route path="/trading" element={<Trading />} />
+
+        <Route path="/Backtesting" element={<Backtesting />} />
         
         <Route path="/edge" element={<Edge />} />
         

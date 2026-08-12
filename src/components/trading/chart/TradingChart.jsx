@@ -1,6 +1,8 @@
+
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 
 function TradingChart() {
+  
   return (
     <div
       className="

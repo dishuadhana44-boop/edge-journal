@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   BookText,
   TrendingUp,
+  History,
   BookOpen,
   Sparkles,
   ChartBar,
@@ -141,6 +142,19 @@ ${collapsed ? "justify-center" : "gap-3"}
 `} >
 <TrendingUp size={18}/>
 {!collapsed && "Trading"}
+</div>
+
+<div
+  onClick={() => navigate("/Backtesting")} className={`
+flex
+items-center
+text-sm
+font-medium
+cursor-pointer
+${collapsed ? "justify-center" : "gap-3"}
+`}>
+<History size={18}/>
+{!collapsed && "Backtesting"}
 </div>
 
 
