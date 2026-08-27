@@ -3,26 +3,17 @@ import WebSocket from "ws";
 import protobuf from "protobufjs";
 
 const WS_URL = "wss://demo.ctraderapi.com:5035";
+
 const PROTO_DIR = "./openapi-proto-messages";
 
-// ==========================================
 // cTrader Payload Types
-// ==========================================
-
 const APP_AUTH_REQ = 2100;
 const APP_AUTH_RES = 2101;
-
-const ACCOUNT_AUTH_REQ = 2102;
-const ACCOUNT_AUTH_RES = 2103;
 
 const GET_ACCOUNTS_REQ = 2149;
 const GET_ACCOUNTS_RES = 2150;
 
 const ERROR_RES = 2142;
-
-// ==========================================
-// MAIN
-// ==========================================
 
 async function main() {
   console.log("Loading cTrader protobuf...");
@@ -49,12 +40,6 @@ async function main() {
   const ApplicationAuthRes =
     root.lookupType("ProtoOAApplicationAuthRes");
 
-  const AccountAuthReq =
-    root.lookupType("ProtoOAAccountAuthReq");
-
-  const AccountAuthRes =
-    root.lookupType("ProtoOAAccountAuthRes");
-
   const GetAccountsReq =
     root.lookupType(
       "ProtoOAGetAccountListByAccessTokenReq"
@@ -69,7 +54,6 @@ async function main() {
     root.lookupType("ProtoErrorRes");
 
   console.log("All protobuf types loaded");
-  console.log("Account Auth type loaded");
   console.log("Error response type loaded");
 
   // ==========================================
@@ -99,7 +83,7 @@ async function main() {
   );
 
   // ==========================================
-  // GET OAUTH TOKEN
+  // GET OAUTH TOKEN FROM EDGEFLO SERVER
   // ==========================================
 
   console.log("");
@@ -124,24 +108,24 @@ async function main() {
   const accessToken =
     debugData.accessToken;
 
-  if (!accessToken) {
-    throw new Error(
-      "Access token unavailable"
-    );
-  }
-
   console.log(
     "OAuth connection verified"
   );
 
   console.log(
-    "OAuth Account ID:",
+    "Account ID:",
     debugData.accountId
   );
 
   console.log(
     "Access Token: AVAILABLE"
   );
+
+  if (!accessToken) {
+    throw new Error(
+      "Access token unavailable"
+    );
+  }
 
   // ==========================================
   // CONNECT WEBSOCKET
@@ -217,9 +201,6 @@ async function main() {
           new Uint8Array(data)
         );
 
-      const payloadType =
-        Number(outer.payloadType);
-
       console.log("");
       console.log(
         "===================================="
@@ -233,7 +214,7 @@ async function main() {
 
       console.log(
         "Payload Type:",
-        payloadType
+        outer.payloadType
       );
 
       console.log(
@@ -242,23 +223,20 @@ async function main() {
       );
 
       // ======================================
-      // 1. APPLICATION AUTH SUCCESS
+      // APPLICATION AUTH SUCCESS
       // ======================================
 
-      if (payloadType === APP_AUTH_RES) {
+      if (
+        outer.payloadType ===
+        APP_AUTH_RES
+      ) {
         ApplicationAuthRes.decode(
           outer.payload
         );
 
         console.log("");
         console.log(
-          "===================================="
-        );
-        console.log(
           "APPLICATION AUTH SUCCESS"
-        );
-        console.log(
-          "===================================="
         );
 
         console.log(
@@ -321,10 +299,13 @@ async function main() {
       }
 
       // ======================================
-      // 2. GET ACCOUNTS RESPONSE
+      // GET ACCOUNTS RESPONSE
       // ======================================
 
-      if (payloadType === GET_ACCOUNTS_RES) {
+      if (
+        outer.payloadType ===
+        GET_ACCOUNTS_RES
+      ) {
         const response =
           GetAccountsRes.decode(
             outer.payload
@@ -349,16 +330,6 @@ async function main() {
           accounts.length
         );
 
-        if (accounts.length === 0) {
-          throw new Error(
-            "No authorized cTrader accounts found"
-          );
-        }
-
-        // ====================================
-        // PRINT ACCOUNTS
-        // ====================================
-
         accounts.forEach(
           (account, index) => {
             console.log("");
@@ -374,7 +345,6 @@ async function main() {
             console.log(
               "Broker:",
               account.brokerTitle ||
-                account.brokerTitleShort ||
                 "(not provided)"
             );
 
@@ -387,164 +357,43 @@ async function main() {
               "Is Live:",
               account.isLive
             );
+
+            console.log(
+              "Full Account Object:",
+              account
+            );
           }
         );
 
-        // ====================================
-        // SELECT FIRST ACCOUNT
-        // ====================================
-
-        const tradingAccount =
-          accounts[0];
-
-        const tradingAccountId =
-          tradingAccount.ctidTraderAccountId?.toString();
-
-        if (!tradingAccountId) {
-          throw new Error(
-            "Trading account ID not found"
-          );
-        }
-
         console.log("");
         console.log(
           "===================================="
         );
+
         console.log(
-          "TRADING ACCOUNT SELECTED"
+          "🎉 cTrader OAuth + WebSocket working!"
         );
+
+        console.log(
+          "Authorized account discovery completed."
+        );
+
         console.log(
           "===================================="
         );
 
-        console.log(
-          "Trading Account ID:",
-          tradingAccountId
-        );
-
-        // ====================================
-        // ACCOUNT AUTHENTICATION
-        // ====================================
-
-        const accountAuth =
-          AccountAuthReq.create({
-            ctidTraderAccountId:
-              Number(tradingAccountId),
-
-            accessToken:
-              accessToken,
-          });
-
-        const accountPayload =
-          AccountAuthReq
-            .encode(accountAuth)
-            .finish();
-
-        const accountMessage =
-          ProtoMessage.create({
-            payloadType:
-              ACCOUNT_AUTH_REQ,
-
-            payload:
-              accountPayload,
-
-            clientMsgId:
-              "edgeflo-account-auth-1",
-          });
-
-        const accountBuffer =
-          ProtoMessage
-            .encode(accountMessage)
-            .finish();
-
-        console.log("");
-        console.log(
-          "===================================="
-        );
-        console.log(
-          "AUTHENTICATING TRADING ACCOUNT"
-        );
-        console.log(
-          "===================================="
-        );
-
-        console.log(
-          "Account ID:",
-          tradingAccountId
-        );
-
-        console.log(
-          "Account Auth payload bytes:",
-          accountPayload.length
-        );
-
-        console.log(
-          "Sending Account Auth..."
-        );
-
-        ws.send(accountBuffer);
-
+        // Keep connection open for inspection.
         return;
       }
 
       // ======================================
-      // 3. ACCOUNT AUTH SUCCESS
+      // CTRADER ERROR
       // ======================================
 
-      if (payloadType === ACCOUNT_AUTH_RES) {
-        const response =
-          AccountAuthRes.decode(
-            outer.payload
-          );
-
-        console.log("");
-        console.log(
-          "===================================="
-        );
-        console.log(
-          "ACCOUNT AUTHENTICATION SUCCESS"
-        );
-        console.log(
-          "===================================="
-        );
-
-        console.log(
-          "Authenticated Account ID:",
-          response.ctidTraderAccountId?.toString()
-        );
-
-        console.log("");
-        console.log(
-          "🎉 cTrader trading account is fully authenticated!"
-        );
-
-        console.log("");
-        console.log(
-          "===================================="
-        );
-        console.log(
-          "NEXT STEP"
-        );
-        console.log(
-          "===================================="
-        );
-
-        console.log(
-          "Request account info, positions, orders and deals."
-        );
-
-        console.log(
-          "===================================="
-        );
-
-        return;
-      }
-
-      // ======================================
-      // 4. CTRADER ERROR
-      // ======================================
-
-      if (payloadType === ERROR_RES) {
+      if (
+        outer.payloadType ===
+        ERROR_RES
+      ) {
         console.log("");
         console.log(
           "===================================="
@@ -598,7 +447,7 @@ async function main() {
 
       console.log(
         "Unhandled Payload Type:",
-        payloadType
+        outer.payloadType
       );
 
     } catch (error) {
