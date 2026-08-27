@@ -14,7 +14,8 @@ import {
   } from "lucide-react";
   import { useState, useEffect, useRef } from "react";
  
-  
+  import PageHeader from "../common/PageHeader";
+
   export default function EdgeHeader({
     onStats,
     onNewPlan,
@@ -54,21 +55,15 @@ import {
   }, []);
   
     return (
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between ">
   
         {/* Left */}
   
-        <div className="flex items-center gap-4">
-  
-          <h1 className="text-[30px] font-bold tracking-tight text-gray-900">
-            Edge
-          </h1>
-  
-          <p className="text-[15px] text-gray-500">
-            Build and refine your trading playbook.
-          </p>
-  
-        </div>
+        <PageHeader
+  title="Edge"
+  subtitle="Discover the setups and conditions that give you an advantage."
+  icon="edge"
+/>
   
         {/* Right */}
   

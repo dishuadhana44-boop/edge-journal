@@ -4,6 +4,8 @@ import WeeklyPnL from "../components/journal/WeeklyPnL";
 
 import { useJournal } from "../context/JournalContext";
 
+import PageHeader from "../components/common/PageHeader";
+
 export default function Journal() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -140,22 +142,15 @@ export default function Journal() {
 
       {/* Header */}
 
-      <div className="mb-4">
+      <div className="mb-2">
 
         <div className="flex items-center justify-between">
 
-          <div className="flex items-center gap-4">
-
-            <h1 className="text-2xl font-bold text-gray-900">
-              Journal
-            </h1>
-
-            <p className="text-gray-500">
-              Review your trades, emotions and patterns to build consistency and self-awareness.
-            </p>
-
-          </div>
-
+        <PageHeader
+  title="Journal"
+  subtitle="Document your trades, thoughts and lessons."
+  icon="journal"
+/>
           <button
             className="
             bg-violet-600

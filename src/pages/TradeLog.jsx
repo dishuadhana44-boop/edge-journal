@@ -9,6 +9,8 @@ import { useSearchParams } from "react-router-dom";
 
 import { useJournal } from "../context/JournalContext";
 
+import PageHeader from "../components/common/PageHeader";
+
 function TradeLog() {
 
   const [searchParams] = useSearchParams();
@@ -113,19 +115,12 @@ console.log(
     <div className="w-full max-w-[1450px] mx-auto px-2">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-
-        <div className="flex items-center gap-4">
-
-          <h1 className="text-2xl font-bold text-gray-900">
-            Trade Log
-          </h1>
-
-          <p className="text-gray-500">
-            View and manage all your trades.
-          </p>
-
-        </div>
+      <div className="flex items-center justify-between ">
+      <PageHeader
+  title="Trade Log"
+  subtitle="Review, analyze and manage your trading activity."
+  icon="tradeLog"
+/>
 
         <button
           onClick={() => {

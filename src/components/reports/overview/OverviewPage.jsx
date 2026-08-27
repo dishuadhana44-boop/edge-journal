@@ -8,7 +8,7 @@ import YourStatistics from "../statistics/YourStatistics";
 import TradeDistributionCard from "../distribution/TradeDistributionCard";
 import LongShortCard from "../direction/LongShortCard";
 import InstrumentAnalysisCard from "../instrument/InstrumentAnalysisCard";
-import SetupAnalysisCard from "../setup/SetupAnalysisCard";
+import PlanAnalysisCard from "../setup/PlanAnalysisCard";
 import SessionAnalysisCard from "../session/SessionAnalysisCard";
 
 export default function OverviewPage() {
@@ -51,7 +51,7 @@ export default function OverviewPage() {
 
        <InstrumentAnalysisCard />
 
-       <SetupAnalysisCard />
+       <PlanAnalysisCard />
 
        <SessionAnalysisCard />
 

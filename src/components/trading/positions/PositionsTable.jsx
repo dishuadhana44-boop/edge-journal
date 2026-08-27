@@ -33,6 +33,8 @@ export default function PositionsTable({ activeTab }) {
 
           <th className="text-left">Entry </th>
 
+          <th className="text-left">Current</th>
+
           <th className="text-left">SL</th>
 
           <th className="text-left">TP</th>

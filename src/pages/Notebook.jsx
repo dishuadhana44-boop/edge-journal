@@ -10,7 +10,7 @@ function Notebook() {
     <div className="h-screen flex flex-col">
 
       {/* Full Width Header */}
-      <div className="  px-6 py-3">
+      <div className="  px-6 py-1">
         <NotebookHeader />
       </div>
 

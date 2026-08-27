@@ -24,7 +24,7 @@ function TradingContent() {
   } = useUI();
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-0 py-1 space-y-5">
+    <div className="w-full max-w-7xl mx-auto px-0  space-y-5">
 
       <TradingHeader />
 

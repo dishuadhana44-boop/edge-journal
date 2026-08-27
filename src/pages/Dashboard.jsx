@@ -68,8 +68,8 @@ const currentAccount =
           </div>
     
           <div className="col-span-4">
-            <DisciplineCard />
-          </div>
+  <DisciplineCard trades={filteredTrades} />
+</div>
     
           <div className="col-span-8 -mt-40">
           <RecentTradesCard

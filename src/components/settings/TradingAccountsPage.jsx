@@ -10,15 +10,31 @@ import AddTradingAccountModal from "./AddTradingAccountModal";
 import { useJournal } from "../../context/JournalContext";
 
 export default function TradingAccountsPage() {
+  // -----------------------------------------
+  // JOURNAL CONTEXT
+  // -----------------------------------------
+
+  const {
+    selectedAccountId,
+    setSelectedAccountId,
+  } = useJournal();
+
+
+  // -----------------------------------------
+  // LOAD ACCOUNTS
+  // -----------------------------------------
 
   const [accounts, setAccounts] = useState(() => {
-    const { setSelectedAccountId } = useJournal();
+    try {
+      const saved = localStorage.getItem("tradingAccounts");
 
+      if (saved !== null) {
+        return JSON.parse(saved) || [];
+      }
 
-    return (
-      JSON.parse(localStorage.getItem("tradingAccounts")) ||
-
-      [
+      // Only create default account
+      // when there is NO saved account data.
+      return [
         {
           id: 1,
           accountName: "FTMO Challenge",
@@ -27,213 +43,358 @@ export default function TradingAccountsPage() {
           accountType: "Funded",
           isDefault: true,
         },
-      ]
-
-    );
-
+      ];
+    } catch (error) {
+      console.error("Failed to load trading accounts:", error);
+      return [];
+    }
   });
 
-  const [selectedAccount, setSelectedAccount] = useState(accounts[0]);
-  const {
-    selectedAccountId,
-    setSelectedAccountId,
-  } = useJournal();
+
+  // -----------------------------------------
+  // SELECTED ACCOUNT
+  // -----------------------------------------
+
+  const [selectedAccount, setSelectedAccount] = useState(null);
+
+
+  // -----------------------------------------
+  // KEEP SELECTED ACCOUNT VALID
+  // -----------------------------------------
 
   useEffect(() => {
+    if (!accounts.length) {
+      setSelectedAccount(null);
 
-    const current =
-      accounts.find(
-        (a) => Number(a.id) === Number(selectedAccountId)
-      ) || accounts[0];
-  
+      // Important:
+      // old deleted account ID must be removed.
+      setSelectedAccountId(null);
+      localStorage.removeItem("selectedAccountId");
+
+      return;
+    }
+
+
+    // First try currently selected account
+    let current = accounts.find(
+      (account) =>
+        Number(account.id) === Number(selectedAccountId)
+    );
+
+
+    // If selected account was deleted,
+    // use default account.
+    if (!current) {
+      current =
+        accounts.find((account) => account.isDefault) ||
+        accounts[0];
+    }
+
+
     if (current) {
       setSelectedAccount(current);
+
+      // Keep JournalContext synchronized
+      setSelectedAccountId(current.id);
+
+      localStorage.setItem(
+        "selectedAccountId",
+        String(current.id)
+      );
     }
-  
-  }, [accounts, selectedAccountId]);
+
+  }, [
+    accounts,
+    selectedAccountId,
+    setSelectedAccountId,
+  ]);
+
+
+  // -----------------------------------------
+  // UI STATE
+  // -----------------------------------------
 
   const [isEditing, setIsEditing] = useState(false);
 
   const [showAddModal, setShowAddModal] = useState(false);
 
-  useEffect(() => {
+  const [deleteId, setDeleteId] = useState(null);
 
+
+  // -----------------------------------------
+  // SAVE ACCOUNTS
+  // -----------------------------------------
+
+  useEffect(() => {
     localStorage.setItem(
       "tradingAccounts",
       JSON.stringify(accounts)
     );
-
   }, [accounts]);
 
-  const [deleteId, setDeleteId] = useState(null);
+
+  // -----------------------------------------
+  // DELETE ACCOUNT
+  // -----------------------------------------
 
   const handleDelete = (id) => {
-
     const updated = accounts.filter(
-      (a) => a.id !== id
+      (account) =>
+        Number(account.id) !== Number(id)
     );
-  
+
+
     setAccounts(updated);
-  
-    localStorage.setItem(
-      "tradingAccounts",
-      JSON.stringify(updated)
-    );
-  
-    if (updated.length > 0) {
-  
-      setSelectedAccount(updated[0]);
-  
+
+
+    // -----------------------------------------
+    // NO ACCOUNTS LEFT
+    // -----------------------------------------
+
+    if (updated.length === 0) {
+      setSelectedAccount(null);
+
+      setSelectedAccountId(null);
+
+      localStorage.removeItem(
+        "selectedAccountId"
+      );
+
+      localStorage.setItem(
+        "tradingAccounts",
+        JSON.stringify([])
+      );
+
+      setIsEditing(false);
+
+      return;
     }
-  
-  };
-  
-  const handleSetDefault = (id) => {
-  
-    const updated = accounts.map((a) => ({
-  
-      ...a,
-  
-      isDefault: a.id === id,
-  
-    }));
-    setSelectedAccount(
-      updated.find((a) => a.id === id)
+
+
+    // -----------------------------------------
+    // SELECT FALLBACK ACCOUNT
+    // -----------------------------------------
+
+    const nextAccount =
+      updated.find(
+        (account) => account.isDefault
+      ) ||
+      updated[0];
+
+
+    setSelectedAccount(nextAccount);
+
+    setSelectedAccountId(
+      nextAccount.id
     );
-    
-    setSelectedAccountId(id);
-    
+
     localStorage.setItem(
       "selectedAccountId",
-      id
+      String(nextAccount.id)
     );
-  
-    setAccounts(updated);
-  
-    localStorage.setItem(
-      "tradingAccounts",
-      JSON.stringify(updated)
-    );
-  
   };
 
-  return (
 
+  // -----------------------------------------
+  // SET DEFAULT ACCOUNT
+  // -----------------------------------------
+
+  const handleSetDefault = (id) => {
+    const updated = accounts.map(
+      (account) => ({
+        ...account,
+
+        isDefault:
+          Number(account.id) === Number(id),
+      })
+    );
+
+
+    const selected = updated.find(
+      (account) =>
+        Number(account.id) === Number(id)
+    );
+
+
+    setAccounts(updated);
+
+
+    if (selected) {
+      setSelectedAccount(selected);
+
+      setSelectedAccountId(
+        selected.id
+      );
+
+      localStorage.setItem(
+        "selectedAccountId",
+        String(selected.id)
+      );
+    }
+  };
+
+
+  // -----------------------------------------
+  // RENDER
+  // -----------------------------------------
+
+  return (
     <div className="w-full max-w-6xl mx-auto px-6">
 
       <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden">
 
-        {/* Header */}
+        {/* HEADER */}
 
-        <div className="flex items-center justify-between p-6 ">
+        <div className="flex items-center justify-between p-6">
 
           <div>
-
             <h2 className="text-2xl font-bold">
               Trading Accounts
             </h2>
-
-           
-
           </div>
 
-          {!isEditing && (
 
+          {!isEditing && selectedAccount && (
             <button
-
               onClick={() => setIsEditing(true)}
-
               className="
-              bg-violet-600
-              hover:bg-violet-700
-              text-white
-              px-5
-              py-2.5
-              rounded-xl
-              flex
-              items-center
-              gap-2
+                bg-violet-600
+                hover:bg-violet-700
+                text-white
+                px-5
+                py-2.5
+                rounded-xl
+                flex
+                items-center
+                gap-2
               "
-
             >
-
               <Pencil size={18} />
-
               Edit
-
             </button>
-
           )}
 
         </div>
 
-        {/* Body */}
+
+        {/* BODY */}
 
         <div className="flex min-h-[530px]">
 
-        <TradingAccountsSidebar
+          {/* SIDEBAR */}
 
-accounts={accounts}
+          <TradingAccountsSidebar
+            accounts={accounts}
+            selectedAccount={selectedAccount}
+            setSelectedAccount={setSelectedAccount}
+            onAdd={() => setShowAddModal(true)}
+            onDelete={(id) => setDeleteId(id)}
+            onSetDefault={handleSetDefault}
+          />
 
-selectedAccount={selectedAccount}
 
-setSelectedAccount={setSelectedAccount}
-
-onAdd={() => setShowAddModal(true)}
-
-onDelete={(id) => setDeleteId(id)}
-
-onSetDefault={handleSetDefault}
-
-/>
+          {/* MAIN */}
 
           <div className="flex-1 p-8">
 
-            <AnimatePresence mode="wait">
+            {!selectedAccount ? (
 
-              {isEditing ? (
+              <div className="h-full flex items-center justify-center">
 
-                <motion.div
-                  key="edit"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                >
+                <div className="text-center">
 
-                  <TradingAccountsEdit
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    No Trading Account
+                  </h3>
 
-                    account={selectedAccount}
+                  <p className="text-sm text-gray-500 mt-2">
+                    Create a trading account to continue.
+                  </p>
 
-                    accounts={accounts}
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="
+                      mt-5
+                      bg-violet-600
+                      hover:bg-violet-700
+                      text-white
+                      px-5
+                      py-2.5
+                      rounded-xl
+                    "
+                  >
+                    Add Trading Account
+                  </button>
 
-                    setAccounts={setAccounts}
+                </div>
 
-                    setSelectedAccount={setSelectedAccount}
+              </div>
 
-                    setIsEditing={setIsEditing}
+            ) : (
 
-                  />
+              <AnimatePresence mode="wait">
 
-                </motion.div>
+                {isEditing ? (
 
-              ) : (
+                  <motion.div
+                    key="edit"
+                    initial={{
+                      opacity: 0,
+                      y: 20,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    exit={{
+                      opacity: 0,
+                      y: -20,
+                    }}
+                  >
 
-                <motion.div
-                  key="view"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                >
+                    <TradingAccountsEdit
+                      account={selectedAccount}
+                      accounts={accounts}
+                      setAccounts={setAccounts}
+                      setSelectedAccount={
+                        setSelectedAccount
+                      }
+                      setIsEditing={
+                        setIsEditing
+                      }
+                    />
 
-                  <TradingAccountsView
-                    account={selectedAccount}
-                  />
+                  </motion.div>
 
-                </motion.div>
+                ) : (
 
-              )}
+                  <motion.div
+                    key="view"
+                    initial={{
+                      opacity: 0,
+                      y: 20,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    exit={{
+                      opacity: 0,
+                      y: -20,
+                    }}
+                  >
 
-            </AnimatePresence>
+                    <TradingAccountsView
+                      account={selectedAccount}
+                    />
+
+                  </motion.div>
+
+                )}
+
+              </AnimatePresence>
+
+            )}
 
           </div>
 
@@ -241,89 +402,93 @@ onSetDefault={handleSetDefault}
 
       </div>
 
+
+      {/* ADD ACCOUNT */}
+
       {showAddModal && (
-
         <AddTradingAccountModal
-
           accounts={accounts}
-
           setAccounts={setAccounts}
-
-          setSelectedAccount={setSelectedAccount}
-
-          setShowModal={setShowAddModal}
-
+          setSelectedAccount={
+            setSelectedAccount
+          }
+          setShowModal={
+            setShowAddModal
+          }
         />
+      )}
+
+
+      {/* DELETE MODAL */}
+
+      {deleteId !== null && (
+
+        <div className="
+          fixed
+          inset-0
+          bg-black/40
+          flex
+          items-center
+          justify-center
+          z-50
+        ">
+
+          <div className="
+            bg-white
+            rounded-3xl
+            p-8
+            w-[420px]
+          ">
+
+            <h2 className="text-xl font-bold">
+              Delete Account
+            </h2>
+
+            <p className="text-gray-500 mt-3">
+              Are you sure you want to delete this account?
+            </p>
+
+
+            <div className="flex justify-end gap-4 mt-8">
+
+              <button
+                onClick={() => setDeleteId(null)}
+                className="
+                  border
+                  rounded-xl
+                  px-5
+                  py-3
+                "
+              >
+                Cancel
+              </button>
+
+
+              <button
+                onClick={() => {
+                  handleDelete(deleteId);
+                  setDeleteId(null);
+                }}
+                className="
+                  bg-red-600
+                  hover:bg-red-700
+                  text-white
+                  rounded-xl
+                  px-6
+                  py-3
+                "
+              >
+                Delete
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
 
       )}
 
-{deleteId && (
-
-<div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-
-  <div className="bg-white rounded-3xl p-8 w-[420px]">
-
-    <h2 className="text-xl font-bold">
-
-      Delete Account
-
-    </h2>
-
-    <p className="text-gray-500 mt-3">
-
-      Are you sure you want to delete this account?
-
-    </p>
-
-    <div className="flex justify-end gap-4 mt-8">
-
-      <button
-
-        onClick={() => setDeleteId(null)}
-
-        className="border rounded-xl px-5 py-3"
-
-      >
-
-        Cancel
-
-      </button>
-
-      <button
-
-        onClick={() => {
-
-          handleDelete(deleteId);
-
-          setDeleteId(null);
-
-        }}
-
-        className="
-        bg-red-600
-        hover:bg-red-700
-        text-white
-        rounded-xl
-        px-6
-        py-3
-        "
-
-      >
-
-        Delete
-
-      </button>
-
     </div>
-
-  </div>
-
-</div>
-
-)}
-
-    </div>
-
   );
-
 }

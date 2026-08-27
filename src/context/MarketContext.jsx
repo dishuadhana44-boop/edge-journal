@@ -1,33 +1,101 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
-const MarketContext = createContext();
+import {
+  getBrokerPrice,
+} from "../services/brokerService";
+
+const MarketContext = createContext(null);
 
 export function MarketProvider({ children }) {
+  const [symbol, setSymbol] = useState("EURUSD");
 
-  const [bid, setBid] = useState(1.15580);
-  const [ask, setAsk] = useState(1.15581);
+  const [bid, setBid] = useState(null);
+  const [ask, setAsk] = useState(null);
+  const [spread, setSpread] = useState(null);
+
+  const [marketLoading, setMarketLoading] = useState(true);
+  const [marketError, setMarketError] = useState(null);
+  const [lastPriceUpdate, setLastPriceUpdate] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
 
-    const interval = setInterval(() => {
+    async function loadPrice() {
+      try {
+        setMarketError(null);
 
-      const move = (Math.random() - 0.5) * 0.00008;
+        const price = await getBrokerPrice(symbol);
 
-      setBid(prev => Number((prev + move).toFixed(5)));
+        if (cancelled) return;
 
-      setAsk(prev => Number((prev + move).toFixed(5)));
+        setBid(price.bid);
+        setAsk(price.ask);
+        setSpread(price.spread);
+        setLastPriceUpdate(price.timestamp);
+      } catch (error) {
+        if (cancelled) return;
 
-    }, 700);
+        console.error("Market price error:", error);
 
-    return () => clearInterval(interval);
+        setMarketError(
+          error?.message || "Unable to load market price"
+        );
+      } finally {
+        if (!cancelled) {
+          setMarketLoading(false);
+        }
+      }
+    }
 
-  }, []);
+    loadPrice();
+
+    // Demo broker price refresh
+    const interval = setInterval(loadPrice, 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [symbol]);
+
+  const market = {
+    symbol,
+
+    bid,
+    ask,
+    spread,
+
+    marketLoading,
+    marketError,
+
+    lastPriceUpdate,
+
+    setSymbol,
+
+    isMarketConnected:
+      !marketLoading && !marketError && bid !== null,
+  };
 
   return (
-    <MarketContext.Provider value={{ bid, ask }}>
+    <MarketContext.Provider value={market}>
       {children}
     </MarketContext.Provider>
   );
 }
 
-export const useMarket = () => useContext(MarketContext);
+export function useMarket() {
+  const context = useContext(MarketContext);
+
+  if (!context) {
+    throw new Error(
+      "useMarket must be used inside MarketProvider"
+    );
+  }
+
+  return context;
+}

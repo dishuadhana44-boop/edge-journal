@@ -16,16 +16,16 @@ function TradingChart() {
       "
     >
       <AdvancedRealTimeChart
-        theme="light"
-        autosize={true}
-        symbol="OANDA:EURUSD"
-        interval="15"
-        allow_symbol_change={true}
-        hide_side_toolbar={false}
-        withdateranges={true}
-        details={false}
-        calendar={false}
-      />
+  theme="light"
+  autosize={true}
+  symbol="OANDA:EURUSD"
+  interval="15"
+  allow_symbol_change={true}
+  hide_side_toolbar={false}
+  withdateranges={true}
+  details={false}
+  calendar={false}
+/>
     </div>
   );
 }

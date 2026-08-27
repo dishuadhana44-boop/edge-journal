@@ -5,7 +5,7 @@ const UIContext = createContext();
 export function UIProvider({ children }) {
 
   const [orderOpen, setOrderOpen] = useState(false);
-
+  const [rightPanel, setRightPanel] = useState(false);
   const [quickOrderOpen, setQuickOrderOpen] = useState(false);
 
   return (
@@ -16,6 +16,9 @@ export function UIProvider({ children }) {
 
         quickOrderOpen,
         setQuickOrderOpen,
+
+        rightPanel,
+        setRightPanel,
       }}
     >
       {children}

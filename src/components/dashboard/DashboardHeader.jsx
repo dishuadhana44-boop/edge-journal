@@ -10,6 +10,8 @@ import { getDateRange } from "../../utils/dateRangeUtils";
 
 import { useJournal } from "../../context/JournalContext";
 
+import PageHeader from "../common/PageHeader";
+
 function DashboardHeader({
   accounts,
   selectedAccount,
@@ -54,19 +56,16 @@ function DashboardHeader({
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between ">
   
         {/* Left */}
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-gray-900">
-            Dashboard
-          </h1>
-  
-          <p className="text-gray-500">
-            Review, analyze and improve every day.
-          </p>
-        </div>
-  
+    
+        <PageHeader
+  title="Dashboard"
+  subtitle="Track your trading performance ."
+  icon="dashboard"
+/>
+
         {/* Right */}
         <div className="flex items-center gap-3">
 

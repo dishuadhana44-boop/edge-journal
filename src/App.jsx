@@ -20,6 +20,8 @@ import NoteEditor from "./pages/NoteEditor";
 import { JournalProvider } from "./context/JournalContext";
 import { DashboardFilterProvider } from "./context/DashboardFilterContext";
 
+import BrokerCallback from "./pages/BrokerCallback";
+
 function App(){
 
     return (
@@ -69,6 +71,10 @@ function App(){
         path="/trade/:id"
         element={<TradeJournal />}
         />
+
+        {/* Standard Routes */}
+
+<Route path="/broker/callback" element={<BrokerCallback />} />
         
         </Route>
         

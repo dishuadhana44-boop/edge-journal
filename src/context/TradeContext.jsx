@@ -3,7 +3,10 @@ import {
   useContext,
   useState,
   useEffect,
+  useMemo,
+  useCallback,
 } from "react";
+
 import { useJournal } from "./JournalContext";
 import { useMarket } from "./MarketContext";
 import { calculatePnL } from "../utils/trading/calculatePnL";
@@ -12,285 +15,781 @@ const TradeContext = createContext();
 
 export function TradeProvider({ children }) {
   const { bid, ask } = useMarket();
+  const { addTrade } = useJournal();
+
+  /*
+  ============================================================
+  TRADE STATE
+  ============================================================
+  */
 
   const [openTrades, setOpenTrades] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
   const [closedTrades, setClosedTrades] = useState([]);
-  const { addTrade } = useJournal();
 
-  const initialBalance = 100000;
+  /*
+  ============================================================
+  ACCOUNT
+  ============================================================
 
-const balance = initialBalance;
+  TEMPORARY ACCOUNT SOURCE
 
-const floatingPnL = openTrades.reduce(
-  (sum, trade) => sum + Number(trade.pnl || 0),
-  0
-);
+  Later:
+  cTrader account balance/equity will come here.
 
-const openTradesCount = openTrades.length;
+  UI does NOT need to change.
+  */
 
-const marginUsed = openTrades.reduce(
-  (sum, trade) => sum + Number(trade.margin || 0),
-  0
-);
+  const [account, setAccount] = useState({
+    balance: 100158.75,
+    currency: "USD",
+    leverage: 100,
+  });
 
-const closedCount = closedTrades.length;
+  /*
+  ============================================================
+  ACCOUNT VALUES
+  ============================================================
+  */
 
-const winningTrades = closedTrades.filter(
-  (trade) => Number(trade.pnl) > 0
-).length;
+  const balance = Number(account.balance || 0);
 
-const winRate =
-  closedCount === 0
-    ? 0
-    : (winningTrades / closedCount) * 100;
+  const leverage = Number(account.leverage || 100);
 
-    useEffect(() => {
-      setOpenTrades((prevTrades) =>
-        prevTrades.map((trade) => {
-    
-          const currentPrice =
-            trade.side === "buy"
-              ? bid
-              : ask;
-    
-          const pnl = calculatePnL(
-            trade.side,
-            trade.entry,
-            currentPrice,
-            trade.quantity
-          );
-    
-          return {
-            ...trade,
-            currentPrice,
-            pnl,
-          };
+
+  /*
+  ============================================================
+  LIVE OPEN TRADE P&L
+  ============================================================
+  */
+
+  useEffect(() => {
+    setOpenTrades((prevTrades) => {
+      return prevTrades.map((trade) => {
+
+        const currentPrice =
+          String(trade.side).toLowerCase() === "buy"
+            ? Number(bid)
+            : Number(ask);
+
+        if (!currentPrice) {
+          return trade;
+        }
+
+        const pnl = calculatePnL(
+          String(trade.side).toLowerCase(),
+          Number(trade.entry),
+          currentPrice,
+          Number(trade.quantity)
+        );
+
+        return {
+          ...trade,
+
+          currentPrice,
+
+          pnl: Number(pnl || 0),
+        };
+      });
+    });
+  }, [bid, ask]);
+
+
+  /*
+  ============================================================
+  FLOATING P&L
+  ============================================================
+  */
+
+  const floatingPnL = useMemo(() => {
+
+    return openTrades.reduce(
+      (sum, trade) => {
+        return (
+          sum +
+          Number(trade.pnl || 0)
+        );
+      },
+      0
+    );
+
+  }, [openTrades]);
+
+
+  /*
+  ============================================================
+  EQUITY
+  ============================================================
+  */
+
+  const equity = useMemo(() => {
+
+    return (
+      balance +
+      floatingPnL
+    );
+
+  }, [
+    balance,
+    floatingPnL,
+  ]);
+
+
+  /*
+  ============================================================
+  MARGIN USED
+  ============================================================
+  */
+
+  const marginUsed = useMemo(() => {
+
+    return openTrades.reduce(
+      (sum, trade) => {
+
+        return (
+          sum +
+          Number(trade.margin || 0)
+        );
+
+      },
+      0
+    );
+
+  }, [openTrades]);
+
+
+  /*
+  ============================================================
+  FREE MARGIN
+  ============================================================
+  */
+
+  const freeMargin =
+    equity -
+    marginUsed;
+
+
+  /*
+  ============================================================
+  TRADE STATISTICS
+  ============================================================
+  */
+
+  const openTradesCount =
+    openTrades.length;
+
+  const closedCount =
+    closedTrades.length;
+
+
+  const winningTrades =
+    closedTrades.filter(
+      (trade) =>
+        Number(trade.pnl || 0) > 0
+    ).length;
+
+
+  const losingTrades =
+    closedTrades.filter(
+      (trade) =>
+        Number(trade.pnl || 0) < 0
+    ).length;
+
+
+  const winRate =
+    closedCount === 0
+      ? 0
+      : (
+          winningTrades /
+          closedCount
+        ) * 100;
+
+
+  /*
+  ============================================================
+  ADD PENDING ORDER
+  ============================================================
+  */
+
+  const addPendingOrder =
+    useCallback((order) => {
+
+      const newOrder = {
+
+        id: Date.now(),
+
+        status: "PENDING",
+
+        createdAt:
+          new Date().toISOString(),
+
+        symbol:
+          order.symbol || "EURUSD",
+
+        side:
+          String(
+            order.side || "buy"
+          ).toLowerCase(),
+
+        orderType:
+          order.orderType || "Limit",
+
+        entry:
+          Number(order.entry || 0),
+
+        stopLoss:
+          Number(
+            order.stopLoss || 0
+          ),
+
+        takeProfit:
+          Number(
+            order.takeProfit || 0
+          ),
+
+        quantity:
+          Number(
+            order.quantity || 0
+          ),
+
+        risk:
+          Number(
+            order.risk || 0
+          ),
+      };
+
+
+      setPendingOrders(
+        (prev) => [
+          ...prev,
+          newOrder,
+        ]
+      );
+
+      return newOrder;
+
+    }, []);
+
+
+  /*
+  ============================================================
+  EXECUTE MARKET TRADE
+  ============================================================
+
+  CURRENTLY:
+  Local execution engine.
+
+  LATER:
+  This exact function can call cTrader.
+  */
+
+  const executeTrade =
+    useCallback((trade) => {
+
+      const side =
+        String(
+          trade.side || "buy"
+        ).toLowerCase();
+
+
+      /*
+      BUY executes at ASK.
+      SELL executes at BID.
+      */
+
+      const executionPrice =
+        side === "buy"
+          ? Number(ask)
+          : Number(bid);
+
+
+      if (!executionPrice) {
+
+        console.error(
+          "Market price unavailable."
+        );
+
+        return null;
+      }
+
+
+      /*
+      ========================================================
+      POSITION SIZE
+      ========================================================
+      */
+
+      const lots =
+        Number(
+          trade.quantity || 0
+        );
+
+
+      if (lots <= 0) {
+
+        console.error(
+          "Invalid lot size."
+        );
+
+        return null;
+      }
+
+
+      /*
+      ========================================================
+      MARGIN
+
+      Current forex approximation.
+
+      Broker integration later will use
+      broker-provided margin requirements.
+      ========================================================
+      */
+
+      const contractSize =
+        100000;
+
+
+      const margin =
+        (
+          lots *
+          contractSize *
+          executionPrice
+        ) /
+        leverage;
+
+
+      /*
+      ========================================================
+      CREATE POSITION
+      ========================================================
+      */
+
+      const newTrade = {
+
+        id: Date.now(),
+
+        status: "OPEN",
+
+        openedAt:
+          new Date().toISOString(),
+
+        symbol:
+          trade.symbol || "EURUSD",
+
+        side,
+
+        entry:
+          executionPrice,
+
+        currentPrice:
+          executionPrice,
+
+        stopLoss:
+          Number(
+            trade.stopLoss || 0
+          ),
+
+        takeProfit:
+          Number(
+            trade.takeProfit || 0
+          ),
+
+        quantity:
+          lots,
+
+        margin,
+
+        pnl: 0,
+
+        risk:
+          Number(
+            trade.risk || 0
+          ),
+
+        orderType:
+          trade.orderType || "Market",
+      };
+
+
+      console.log(
+        "LOCAL TRADE EXECUTED:",
+        newTrade
+      );
+
+
+      setOpenTrades(
+        (prev) => [
+          ...prev,
+          newTrade,
+        ]
+      );
+
+
+      return newTrade;
+
+    }, [
+      bid,
+      ask,
+      leverage,
+    ]);
+
+
+  /*
+  ============================================================
+  CLOSE TRADE
+  ============================================================
+  */
+
+  const closeTrade =
+    useCallback((id) => {
+
+      const trade =
+        openTrades.find(
+          (item) =>
+            item.id === id
+        );
+
+
+      if (!trade) {
+        return;
+      }
+
+
+      const closedTime =
+        new Date();
+
+
+      const openedTime =
+        new Date(
+          trade.openedAt
+        );
+
+
+      /*
+      ========================================================
+      TRADE DURATION
+      ========================================================
+      */
+
+      const durationSeconds =
+        Math.max(
+          0,
+          Math.floor(
+            (
+              closedTime -
+              openedTime
+            ) / 1000
+          )
+        );
+
+
+      /*
+      ========================================================
+      FINAL P&L
+      ========================================================
+      */
+
+      const pnl =
+        Number(
+          trade.pnl || 0
+        );
+
+
+      /*
+      ========================================================
+      CLOSED TRADE
+      ========================================================
+      */
+
+      const closedTrade = {
+
+        ...trade,
+
+        status: "CLOSED",
+
+        closedAt:
+          closedTime.toISOString(),
+
+        durationSeconds,
+
+        date:
+          closedTime
+            .toISOString()
+            .split("T")[0],
+
+        pair:
+          trade.symbol,
+
+        direction:
+          String(
+            trade.side
+          ).toLowerCase() === "buy"
+            ? "Long"
+            : "Short",
+
+        entryPrice:
+          Number(
+            trade.entry
+          ),
+
+        exitPrice:
+          Number(
+            trade.currentPrice ??
+            trade.entry
+          ),
+
+        stopLoss:
+          Number(
+            trade.stopLoss || 0
+          ),
+
+        takeProfit:
+          Number(
+            trade.takeProfit || 0
+          ),
+
+        quantity:
+          Number(
+            trade.quantity || 0
+          ),
+
+        pnl,
+
+        result:
+          pnl > 0
+            ? "Win"
+            : pnl < 0
+            ? "Loss"
+            : "Breakeven",
+      };
+
+
+      /*
+      ========================================================
+      REMOVE FROM OPEN
+      ========================================================
+      */
+
+      setOpenTrades(
+        (prev) =>
+          prev.filter(
+            (item) =>
+              item.id !== id
+          )
+      );
+
+
+      /*
+      ========================================================
+      ADD TO CLOSED
+      ========================================================
+      */
+
+      setClosedTrades(
+        (prev) => [
+          ...prev,
+          closedTrade,
+        ]
+      );
+
+
+      /*
+      ========================================================
+      SAVE TO TRADE LOG / JOURNAL
+      ========================================================
+      */
+
+      addTrade(
+        closedTrade
+      );
+
+
+      console.log(
+        "TRADE CLOSED:",
+        closedTrade
+      );
+
+
+      return closedTrade;
+
+    }, [
+      openTrades,
+      addTrade,
+    ]);
+
+
+  /*
+  ============================================================
+  DELETE TRADE
+  ============================================================
+  */
+
+  const deleteTrade =
+    useCallback((id) => {
+
+      setOpenTrades(
+        (prev) =>
+          prev.filter(
+            (trade) =>
+              trade.id !== id
+          )
+      );
+
+
+      setClosedTrades(
+        (prev) =>
+          prev.filter(
+            (trade) =>
+              trade.id !== id
+          )
+      );
+
+
+      setPendingOrders(
+        (prev) =>
+          prev.filter(
+            (order) =>
+              order.id !== id
+          )
+      );
+
+    }, []);
+
+
+  /*
+  ============================================================
+  UPDATE ACCOUNT
+
+  Broker integration ke time:
+  setAccount({
+    balance,
+    currency,
+    leverage
+  })
+  ============================================================
+  */
+
+  const updateAccount =
+    useCallback((data) => {
+
+      setAccount(
+        (prev) => ({
+          ...prev,
+          ...data,
         })
       );
-    }, [bid, ask]);
 
-  const addPendingOrder = (order) => {
-
-    const newOrder = {
-  
-      id: Date.now(),
-  
-      status: "PENDING",
-  
-      createdAt: new Date(),
-  
-      ...order,
-  
-    };
-  
-    setPendingOrders(prev => [
-  
-      ...prev,
-  
-      newOrder,
-  
-    ]);
-  
-  };
+    }, []);
 
 
-  const executeTrade = (trade) => {
-
-    const side =
-      String(trade.side).toLowerCase();
-  
-    // BUY executes at ASK
-    // SELL executes at BID
-    const executionPrice =
-    side === "buy"
-      ? ask
-      : bid;
-  
-  // Margin calculation
-  const lots = Number(trade.quantity || 0);
-  
-  const leverage = 100;
-  const contractSize = 100000;
-  
-  const margin =
-    (lots * contractSize * Number(executionPrice)) /
-    leverage;
-  
-  const newTrade = {
-      id: Date.now(),
-  
-      status: "OPEN",
-  
-      openedAt: new Date().toISOString(),
-  
-      symbol: trade.symbol,
-  
-      side,
-  
-      entry: Number(executionPrice),
-  
-      currentPrice: Number(executionPrice),
-  
-      stopLoss: Number(trade.stopLoss || 0),
-  
-      takeProfit: Number(trade.takeProfit || 0),
-  
-      quantity: Number(trade.quantity || 0),
-
-margin,
-
-pnl: 0,
-    };
-  
-    console.log("PAPER TRADE EXECUTED:", newTrade);
-  
-    setOpenTrades((prev) => [
-      ...prev,
-      newTrade,
-    ]);
-  };
-
-
-
-  const closeTrade = (id) => {
-    const trade = openTrades.find(
-      (t) => t.id === id
-    );
-  
-    if (!trade) return;
-  
-    // Exact close time
-    const closedTime = new Date();
-  
-    // Calculate how long the trade was actually open
-    const openedTime = new Date(
-      trade.openedAt
-    );
-  
-    const durationSeconds = Math.max(
-      0,
-      Math.floor(
-        (closedTime - openedTime) / 1000
-      )
-    );
-  
-    const closedTrade = {
-      ...trade,
-  
-      status: "CLOSED",
-  
-      closedAt: closedTime.toISOString(),
-  
-      // Fixed duration — timer will NOT continue
-      durationSeconds,
-  
-      date: closedTime
-        .toISOString()
-        .split("T")[0],
-  
-      // TradeLog fields
-      pair: trade.symbol,
-  
-      direction:
-        String(trade.side).toLowerCase() === "buy"
-          ? "Long"
-          : "Short",
-  
-      entryPrice: Number(trade.entry),
-  
-      exitPrice: Number(
-        trade.currentPrice ?? trade.entry
-      ),
-  
-      stopLoss: Number(
-        trade.stopLoss ?? 0
-      ),
-  
-      takeProfit: Number(
-        trade.takeProfit ?? 0
-      ),
-  
-      quantity: Number(
-        trade.quantity ?? 0
-      ),
-  
-      pnl: Number(
-        trade.pnl ?? 0
-      ),
-  
-      result:
-        Number(trade.pnl ?? 0) > 0
-          ? "Win"
-          : Number(trade.pnl ?? 0) < 0
-          ? "Loss"
-          : "Breakeven",
-    };
-  
-    console.log(
-      "CLOSING TRADE:",
-      closedTrade
-    );
-  
-    // Remove from Open Positions
-    setOpenTrades((prev) =>
-      prev.filter(
-        (t) => t.id !== id
-      )
-    );
-  
-    // Add to Closed Positions
-    setClosedTrades((prev) => [
-      ...prev,
-      closedTrade,
-    ]);
-  
-    // Save to TradeLog / Journal
-    addTrade(closedTrade);
-  };
-
-  const deleteTrade = (id) => {
-    // Open trade se delete
-    setOpenTrades((prev) =>
-      prev.filter((trade) => trade.id !== id)
-    );
-  
-    // Closed trade se delete
-    setClosedTrades((prev) =>
-      prev.filter((trade) => trade.id !== id)
-    );
-  
-    // Pending order se delete
-    setPendingOrders((prev) =>
-      prev.filter((order) => order.id !== id)
-    );
-  };
+  /*
+  ============================================================
+  PROVIDER
+  ============================================================
+  */
 
   return (
-    <TradeContext.Provider
-    value={{
-      openTrades,
-      closedTrades,
-      pendingOrders,
-    
-      executeTrade,
-      addPendingOrder,
-      closeTrade,
-      deleteTrade,
 
-      balance,
-    floatingPnL,
-    openTradesCount,
-    marginUsed,
-    winRate,
-    
-    }}
+    <TradeContext.Provider
+      value={{
+
+        /*
+        ========================================================
+        TRADES
+        ========================================================
+        */
+
+        openTrades,
+
+        closedTrades,
+
+        pendingOrders,
+
+
+        /*
+        ========================================================
+        ACTIONS
+        ========================================================
+        */
+
+        executeTrade,
+
+        addPendingOrder,
+
+        closeTrade,
+
+        deleteTrade,
+
+
+        /*
+        ========================================================
+        ACCOUNT
+        ========================================================
+        */
+
+        account,
+
+        updateAccount,
+
+        balance,
+
+        equity,
+
+        leverage,
+
+
+        /*
+        ========================================================
+        P&L
+        ========================================================
+        */
+
+        floatingPnL,
+
+
+        /*
+        ========================================================
+        MARGIN
+        ========================================================
+        */
+
+        marginUsed,
+
+        freeMargin,
+
+
+        /*
+        ========================================================
+        STATISTICS
+        ========================================================
+        */
+
+        openTradesCount,
+
+        closedCount,
+
+        winningTrades,
+
+        losingTrades,
+
+        winRate,
+
+      }}
     >
+
       {children}
+
     </TradeContext.Provider>
+
   );
 }
 
+
 export function useTrade() {
-  return useContext(TradeContext);
+
+  return useContext(
+    TradeContext
+  );
+
 }

@@ -1,8 +1,12 @@
+import PageHeader from "../components/common/PageHeader";
+
 function Profile() {
     return (
-        <div>
-          <h1>Profile</h1>
-        </div>
+      <PageHeader
+      title="Profile"
+      subtitle="Manage your profile and account information."
+      icon="profile"
+    />
       );
     }
   

@@ -37,9 +37,28 @@ const [statsView, setStatsView] = useState("home");
 
 const [selectedPlan, setSelectedPlan] = useState(null);
 
+
+
 const [previewPlan, setPreviewPlan] = useState(null);
 
 const [plans, setPlans] = useState([]);
+
+
+
+const selectActivePlan = (plan) => {
+  if (!plan) return;
+
+  setSelectedPlan(plan);
+
+  localStorage.setItem(
+    "selectedEdgePlan",
+    JSON.stringify(plan)
+  );
+
+  window.dispatchEvent(
+    new Event("selectedEdgePlanUpdated")
+  );
+};
 
 useEffect(() => {
 
@@ -146,13 +165,9 @@ setStatsView("home");
       onBack={() => setPreviewPlan(null)}
   
       onEdit={(plan) => {
-  
-          setPreviewPlan(null);
-  
-          setSelectedPlan(plan);
-  
-          setMode("edit");
-  
+        setPreviewPlan(null);
+        selectActivePlan(plan);
+        setMode("edit");
       }}
   
   />
@@ -169,33 +184,44 @@ setStatsView("home");
   {mode === "list" && (
 
 <MyPlansPage
-plans={plans}
-onOpenPlan={(plan) => {
-  setSelectedPlan(plan);
-  setMode("edit");
-}}
+  plans={plans}
 
-onPreview={(plan) => {
-  setPreviewPlan(plan);
-}}
+  onOpenPlan={(plan) => {
+    selectActivePlan(plan);
+    setMode("edit");
+  }}
+
+  onPreview={(plan) => {
+    selectActivePlan(plan);
+    setPreviewPlan(plan);
+  }}
 />
 
   )}
 
-  {mode === "new" && (
+{mode === "new" && (
+  <EdgeEditor
+    mode="new"
+    onClose={() => {
+      const updatedPlans =
+        JSON.parse(
+          localStorage.getItem("edgeStrategies")
+        ) || [];
 
-    <EdgeEditor
-      mode="new"
-      onClose={() => {
-        const updatedPlans =
-          JSON.parse(localStorage.getItem("edgeStrategies")) || [];
+      setPlans(updatedPlans);
 
-        setPlans(updatedPlans);
-        setMode("list");
-      }}
-    />
+      // Latest created plan becomes selected plan
+      if (updatedPlans.length > 0) {
+        const latestPlan =
+          updatedPlans[updatedPlans.length - 1];
+      
+        selectActivePlan(latestPlan);
+      }
 
-  )}
+      setMode("list");
+    }}
+  />
+)}
 
   {mode === "edit" && (
 

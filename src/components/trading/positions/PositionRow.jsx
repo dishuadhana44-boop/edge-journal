@@ -162,15 +162,19 @@ const [menuOpen, setMenuOpen] = useState(false);
       </td>
 
       {/* Entry / Current */}
-      <td className="text-right">
+      {/* Entry */}
+<td className="text-right">
+  <div className="font-medium text-gray-900">
+    {entry.toFixed(5)}
+  </div>
+</td>
 
-        <div className="font-medium">
-          {entry.toFixed(5)}
-        </div>
-
-      
-
-      </td>
+{/* Current */}
+<td className="text-right">
+  <div className="font-medium text-gray-700">
+    {Number(currentPrice || 0).toFixed(5)}
+  </div>
+</td>
 
      
 

@@ -1,21 +1,18 @@
 import { useNavigate } from "react-router-dom";
+
+import PageHeader from "../common/PageHeader";
+
 function NotebookHeader() {
     const navigate = useNavigate();
     return (
-        <div className="w-full flex items-center justify-between py-0">
+        <div className="w-full flex items-center justify-between ">
   
         {/* Left */}
-        <div className="flex items-center gap-3">
-  
-          <h1 className="text-2xl font-bold text-gray-900">
-            Notebook
-          </h1>
-  
-          <p className="text-sm text-gray-400 mt-1">
-            Think before you trade. Review before you repeat.
-          </p>
-  
-        </div>
+        <PageHeader
+  title="Notebook"
+  subtitle="Organize your trading ideas, notes and research."
+  icon="notebook"
+/>
   
         {/* Right */}
         <button 

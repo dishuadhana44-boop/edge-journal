@@ -5,18 +5,23 @@ import OrderPanel from "../order-panel/OrderPanel";
 import QuickOrderPanel from "../quick-order/QuickOrderPanel";
 import { useUI } from "../../../context/UIContext";
 import PositionsPanel from "../positions/PositionsPanel";
+import TradingInsightsPanel from "../right-panel/TradingInsightsPanel";
+
 
 export default function TradingWorkspace() {
 
   const {
-
     orderOpen,
     setOrderOpen,
-
+  
     quickOrderOpen,
     setQuickOrderOpen,
-
+  
+    rightPanel,
+  
   } = useUI();
+
+
 
   const [terminalHeight, setTerminalHeight] = useState(0);
 
@@ -66,7 +71,7 @@ export default function TradingWorkspace() {
 
     return (
 
-        <div className="flex h-full gap-4">
+        <div className="flex h-full gap-1">
         
         <div
   className={`
@@ -74,7 +79,7 @@ export default function TradingWorkspace() {
     h-[calc(100vh-90px)]
     transition-all
     duration-300
-    ${orderOpen ? "flex-1" : "w-full"}
+    ${orderOpen || rightPanel === "insights" ? "flex-1" : "w-full"}
   `}
 >
 
@@ -85,7 +90,7 @@ export default function TradingWorkspace() {
   <div
   className="relative overflow-hidden"
   style={{
-    height: "calc(100vh - 50px)",
+    height: "calc(100vh - 55px)",
   }}
 >
 
@@ -153,6 +158,12 @@ export default function TradingWorkspace() {
  <OrderPanel setOrderOpen={setOrderOpen} />
             </div>
           )}
+
+{rightPanel === "insights" && !orderOpen && (
+  <div className="w-[300px] shrink-0">
+    <TradingInsightsPanel />
+  </div>
+)}
         
         </div>
         
