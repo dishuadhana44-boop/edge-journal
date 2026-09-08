@@ -68,6 +68,30 @@ export default function BrokerIntegrationPage() {
     }
   }, []);
 
+  useEffect(() => {
+    const ws = new WebSocket("ws://localhost:4000/ws");
+  
+    ws.onopen = () => {
+      console.log("🟢 EdgeFlo WebSocket connected");
+    };
+  
+    ws.onmessage = (event) => {
+      console.log("📩 EdgeFlo WebSocket:", JSON.parse(event.data));
+    };
+  
+    ws.onerror = (error) => {
+      console.error("❌ WebSocket error:", error);
+    };
+  
+    ws.onclose = () => {
+      console.log("🔴 EdgeFlo WebSocket disconnected");
+    };
+  
+    return () => {
+      ws.close();
+    };
+  }, []);
+
   // ==========================================
   // CONNECT
   // ==========================================

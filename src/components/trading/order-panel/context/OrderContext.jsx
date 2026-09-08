@@ -2,6 +2,7 @@ import {
   createContext,
   useState,
   useMemo,
+  useEffect,
 } from "react";
 
 import { useMarket } from "../../../../context/MarketContext";
@@ -21,8 +22,10 @@ export function OrderProvider({ children }) {
   ============================================================
   */
 
-  const { bid, ask } = useMarket();
+  const market = useMarket();
 
+  const bid = Number(market?.bid || 0);
+  const ask = Number(market?.ask || 0);
 
   /*
   ============================================================
@@ -32,7 +35,6 @@ export function OrderProvider({ children }) {
 
   const balance = 100158.75;
 
-
   /*
   ============================================================
   ORDER SIDE
@@ -41,16 +43,13 @@ export function OrderProvider({ children }) {
 
   const [side, setSide] = useState("buy");
 
-
   /*
   ============================================================
   ORDER TYPE
   ============================================================
   */
 
-  const [orderType, setOrderType] =
-    useState("Market");
-
+  const [orderType, setOrderType] = useState("Market");
 
   /*
   ============================================================
@@ -58,15 +57,76 @@ export function OrderProvider({ children }) {
   ============================================================
   */
 
-  const [entry, setEntry] =
-    useState("1.08250");
+  /*
+    IMPORTANT:
 
-  const [sl, setSL] =
-    useState("1.08050");
+    Market order entry is controlled by live Bid / Ask.
 
-  const [tp, setTP] =
-    useState("1.08650");
+    We keep entry as state because Limit / Stop orders
+    need a manually entered price.
+  */
 
+  const [entry, setEntry] = useState("");
+
+  const [sl, setSL] = useState("");
+
+  const [tp, setTP] = useState("");
+
+  /*
+  ============================================================
+  LIVE MARKET ENTRY SYNC
+  ============================================================
+  
+  BUY MARKET:
+      Entry = ASK
+
+  SELL MARKET:
+      Entry = BID
+
+  Limit / Stop:
+      Entry remains manually controlled.
+  ============================================================
+  */
+
+  useEffect(() => {
+
+    if (orderType !== "Market") {
+      return;
+    }
+
+    let marketEntry = 0;
+
+    if (side === "buy") {
+      marketEntry = ask;
+    } else {
+      marketEntry = bid;
+    }
+
+    /*
+      Do not put zero into entry.
+
+      cTrader spot events can contain only BID or ASK.
+      Therefore, if the required side is temporarily
+      unavailable, keep the previous valid entry.
+    */
+
+    if (
+      Number.isFinite(marketEntry) &&
+      marketEntry > 0
+    ) {
+
+      setEntry(
+        marketEntry.toFixed(5)
+      );
+
+    }
+
+  }, [
+    orderType,
+    side,
+    bid,
+    ask,
+  ]);
 
   /*
   ============================================================
@@ -74,9 +134,7 @@ export function OrderProvider({ children }) {
   ============================================================
   */
 
-  const [risk, setRisk] =
-    useState(1);
-
+  const [risk, setRisk] = useState(1);
 
   /*
   ============================================================
@@ -84,25 +142,23 @@ export function OrderProvider({ children }) {
   ============================================================
   */
 
-  const [lots, setLots] =
-    useState(5.00);
-
+  const [lots, setLots] = useState(0.01);
 
   /*
   ============================================================
   EDIT MODE
   ============================================================
   
-  risk  -> "risk"
-  lots  -> "lots"
+  "risk":
+      Lot size is calculated automatically.
 
-  Isse infinite loop avoid hota hai.
-
+  "lots":
+      User manually controls lot size.
+  ============================================================
   */
 
   const [lotEditMode, setLotEditMode] =
     useState("risk");
-
 
   /*
   ============================================================
@@ -110,11 +166,11 @@ export function OrderProvider({ children }) {
   ============================================================
   
   MARKET:
-    BUY  -> ASK
-    SELL -> BID
+      BUY  -> ASK
+      SELL -> BID
 
   LIMIT / STOP:
-    User entered price
+      User entered price
   ============================================================
   */
 
@@ -122,10 +178,17 @@ export function OrderProvider({ children }) {
 
     if (orderType === "Market") {
 
-      return side === "buy"
-        ? Number(ask || 0)
-        : Number(bid || 0);
+      if (side === "buy") {
 
+        return ask > 0
+          ? ask
+          : 0;
+
+      }
+
+      return bid > 0
+        ? bid
+        : 0;
     }
 
     return Number(entry || 0);
@@ -133,11 +196,10 @@ export function OrderProvider({ children }) {
   }, [
     orderType,
     side,
-    ask,
     bid,
+    ask,
     entry,
   ]);
-
 
   /*
   ============================================================
@@ -148,9 +210,8 @@ export function OrderProvider({ children }) {
   const riskPips =
     calculatePips(
       effectiveEntry,
-      sl
+      Number(sl || 0)
     );
-
 
   /*
   ============================================================
@@ -161,9 +222,8 @@ export function OrderProvider({ children }) {
   const rewardPips =
     calculatePips(
       effectiveEntry,
-      tp
+      Number(tp || 0)
     );
-
 
   /*
   ============================================================
@@ -177,7 +237,6 @@ export function OrderProvider({ children }) {
       Number(risk)
     );
 
-
   /*
   ============================================================
   R:R
@@ -187,10 +246,9 @@ export function OrderProvider({ children }) {
   const rr =
     calculateRR(
       effectiveEntry,
-      sl,
-      tp
+      Number(sl || 0),
+      Number(tp || 0)
     );
-
 
   /*
   ============================================================
@@ -204,17 +262,16 @@ export function OrderProvider({ children }) {
       Number(riskPips || 0)
     );
 
-
   /*
   ============================================================
   FINAL LOT SIZE
   ============================================================
   
   Risk mode:
-    Lot automatically calculated.
+      Automatically calculated.
 
   Lot mode:
-    User entered lot is used.
+      User entered lots.
   ============================================================
   */
 
@@ -223,16 +280,9 @@ export function OrderProvider({ children }) {
       ? Number(calculatedLotSize || 0)
       : Number(lots || 0);
 
-
   /*
   ============================================================
   RISK FROM LOTS
-  ============================================================
-  
-  Used when user manually changes Lots.
-
-  Approximation based on current
-  calculated lot relationship.
   ============================================================
   */
 
@@ -248,7 +298,9 @@ export function OrderProvider({ children }) {
       calculatedLots <= 0 ||
       enteredLots <= 0
     ) {
+
       return Number(risk || 0);
+
     }
 
     const currentRisk =
@@ -260,7 +312,9 @@ export function OrderProvider({ children }) {
     if (
       calculatedRiskAmount <= 0
     ) {
+
       return currentRisk;
+
     }
 
     const newRiskAmount =
@@ -292,17 +346,15 @@ export function OrderProvider({ children }) {
     balance,
   ]);
 
-
   /*
   ============================================================
-  RISK / LOT HANDLERS
+  RISK HANDLER
   ============================================================
   */
 
   const handleRiskChange = (value) => {
 
-    let newRisk =
-      Number(value);
+    let newRisk = Number(value);
 
     if (!Number.isFinite(newRisk)) {
       newRisk = 0;
@@ -320,13 +372,18 @@ export function OrderProvider({ children }) {
     setLotEditMode("risk");
 
     setRisk(newRisk);
+
   };
 
+  /*
+  ============================================================
+  LOT HANDLER
+  ============================================================
+  */
 
   const handleLotsChange = (value) => {
 
-    let newLots =
-      Number(value);
+    let newLots = Number(value);
 
     if (!Number.isFinite(newLots)) {
       newLots = 0;
@@ -341,8 +398,7 @@ export function OrderProvider({ children }) {
     setLots(newLots);
 
     /*
-      Lots manually changed.
-      Switch calculation mode to lots.
+      Manual lot mode.
     */
 
     setLotEditMode("lots");
@@ -389,10 +445,10 @@ export function OrderProvider({ children }) {
           clampedRisk.toFixed(2)
         )
       );
+
     }
 
   };
-
 
   /*
   ============================================================
@@ -403,7 +459,6 @@ export function OrderProvider({ children }) {
   const rewardAmount =
     Number(riskAmount || 0) *
     Number(rr || 0);
-
 
   /*
   ============================================================
@@ -436,10 +491,35 @@ export function OrderProvider({ children }) {
     const lotsValue =
       Number(lotSize || 0);
 
+    /*
+    ----------------------------------------------------------
+    MARKET DATA
+    ----------------------------------------------------------
+    */
+
+    if (orderType === "Market") {
+
+      if (side === "buy" && currentAsk <= 0) {
+
+        errors.push(
+          "Live Ask price is not available."
+        );
+
+      }
+
+      if (side === "sell" && currentBid <= 0) {
+
+        errors.push(
+          "Live Bid price is not available."
+        );
+
+      }
+
+    }
 
     /*
     ----------------------------------------------------------
-    BASIC VALUES
+    ENTRY
     ----------------------------------------------------------
     */
 
@@ -454,6 +534,11 @@ export function OrderProvider({ children }) {
 
     }
 
+    /*
+    ----------------------------------------------------------
+    STOP LOSS
+    ----------------------------------------------------------
+    */
 
     if (
       !stopLoss ||
@@ -466,6 +551,11 @@ export function OrderProvider({ children }) {
 
     }
 
+    /*
+    ----------------------------------------------------------
+    TAKE PROFIT
+    ----------------------------------------------------------
+    */
 
     if (
       !takeProfit ||
@@ -477,7 +567,6 @@ export function OrderProvider({ children }) {
       );
 
     }
-
 
     /*
     ----------------------------------------------------------
@@ -497,7 +586,6 @@ export function OrderProvider({ children }) {
 
     }
 
-
     /*
     ----------------------------------------------------------
     LOT SIZE
@@ -514,7 +602,6 @@ export function OrderProvider({ children }) {
       );
 
     }
-
 
     /*
     ----------------------------------------------------------
@@ -536,7 +623,6 @@ export function OrderProvider({ children }) {
 
       }
 
-
       if (
         takeProfit > 0 &&
         entryPrice > 0 &&
@@ -550,7 +636,6 @@ export function OrderProvider({ children }) {
       }
 
     }
-
 
     /*
     ----------------------------------------------------------
@@ -572,7 +657,6 @@ export function OrderProvider({ children }) {
 
       }
 
-
       if (
         takeProfit > 0 &&
         entryPrice > 0 &&
@@ -587,86 +671,101 @@ export function OrderProvider({ children }) {
 
     }
 
-
     /*
     ----------------------------------------------------------
-    LIMIT
+    BUY LIMIT
     ----------------------------------------------------------
     */
 
-    if (orderType === "Limit") {
+    if (
+      orderType === "Limit" &&
+      side === "buy"
+    ) {
 
-      if (side === "buy") {
+      if (
+        currentAsk > 0 &&
+        entryPrice >= currentAsk
+      ) {
 
-        if (
-          entryPrice >= currentAsk
-        ) {
-
-          errors.push(
-            "Buy Limit price must be below current Ask."
-          );
-
-        }
-
-      }
-
-
-      if (side === "sell") {
-
-        if (
-          entryPrice <= currentBid
-        ) {
-
-          errors.push(
-            "Sell Limit price must be above current Bid."
-          );
-
-        }
+        errors.push(
+          "Buy Limit price must be below current Ask."
+        );
 
       }
 
     }
 
-
     /*
     ----------------------------------------------------------
-    STOP
+    SELL LIMIT
     ----------------------------------------------------------
     */
 
-    if (orderType === "Stop") {
+    if (
+      orderType === "Limit" &&
+      side === "sell"
+    ) {
 
-      if (side === "buy") {
+      if (
+        currentBid > 0 &&
+        entryPrice <= currentBid
+      ) {
 
-        if (
-          entryPrice <= currentAsk
-        ) {
-
-          errors.push(
-            "Buy Stop price must be above current Ask."
-          );
-
-        }
-
-      }
-
-
-      if (side === "sell") {
-
-        if (
-          entryPrice >= currentBid
-        ) {
-
-          errors.push(
-            "Sell Stop price must be below current Bid."
-          );
-
-        }
+        errors.push(
+          "Sell Limit price must be above current Bid."
+        );
 
       }
 
     }
 
+    /*
+    ----------------------------------------------------------
+    BUY STOP
+    ----------------------------------------------------------
+    */
+
+    if (
+      orderType === "Stop" &&
+      side === "buy"
+    ) {
+
+      if (
+        currentAsk > 0 &&
+        entryPrice <= currentAsk
+      ) {
+
+        errors.push(
+          "Buy Stop price must be above current Ask."
+        );
+
+      }
+
+    }
+
+    /*
+    ----------------------------------------------------------
+    SELL STOP
+    ----------------------------------------------------------
+    */
+
+    if (
+      orderType === "Stop" &&
+      side === "sell"
+    ) {
+
+      if (
+        currentBid > 0 &&
+        entryPrice >= currentBid
+      ) {
+
+        errors.push(
+          "Sell Stop price must be below current Bid."
+        );
+
+      }
+
+    }
 
     /*
     ----------------------------------------------------------
@@ -686,7 +785,6 @@ export function OrderProvider({ children }) {
       );
 
     }
-
 
     /*
     ----------------------------------------------------------
@@ -723,7 +821,6 @@ export function OrderProvider({ children }) {
 
   ]);
 
-
   /*
   ============================================================
   PROVIDER
@@ -736,38 +833,44 @@ export function OrderProvider({ children }) {
       value={{
 
         /*
+        ========================================================
         ACCOUNT
+        ========================================================
         */
 
         balance,
 
-
         /*
+        ========================================================
         MARKET
+        ========================================================
         */
 
         bid,
         ask,
 
-
         /*
+        ========================================================
         SIDE
+        ========================================================
         */
 
         side,
         setSide,
 
-
         /*
+        ========================================================
         ORDER TYPE
+        ========================================================
         */
 
         orderType,
         setOrderType,
 
-
         /*
+        ========================================================
         PRICES
+        ========================================================
         */
 
         entry,
@@ -781,27 +884,32 @@ export function OrderProvider({ children }) {
         tp,
         setTP,
 
-
         /*
+        ========================================================
         RISK
+        ========================================================
         */
 
         risk,
 
-        setRisk: handleRiskChange,
-
+        setRisk:
+          handleRiskChange,
 
         /*
+        ========================================================
         LOTS
+        ========================================================
         */
 
         lots,
 
-        setLots: handleLotsChange,
-
+        setLots:
+          handleLotsChange,
 
         /*
+        ========================================================
         CALCULATIONS
+        ========================================================
         */
 
         riskAmount,
@@ -814,9 +922,20 @@ export function OrderProvider({ children }) {
 
         lotSize,
 
+        /*
+        ========================================================
+        EXTRA
+        ========================================================
+        */
+
+        riskFromLots,
+
+        calculatedLotSize,
 
         /*
+        ========================================================
         VALIDATION
+        ========================================================
         */
 
         validation,

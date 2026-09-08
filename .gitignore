@@ -7,15 +7,22 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build files
+dist/
+dist-ssr/
+build/
+
+# Local files
 *.local
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
@@ -23,7 +30,15 @@ dist-ssr
 *.sln
 *.sw?
 
-# Environment variables
+# Environment variables - NEVER PUSH
 .env
 .env.*
 !.env.example
+
+# cTrader authentication secrets - NEVER PUSH
+server/ctrader-auth.json
+
+# Backup files
+server/*-backup.js
+
+**/*-backup.js

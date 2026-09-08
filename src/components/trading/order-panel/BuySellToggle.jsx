@@ -1,7 +1,6 @@
 import useOrder from "./context/useOrder";
 
 export default function BuySellToggle() {
-
   const {
     side,
     setSide,
@@ -20,7 +19,6 @@ export default function BuySellToggle() {
       ">
 
         {/* BUY */}
-
         <button
           type="button"
           onClick={() => setSide("buy")}
@@ -31,7 +29,6 @@ export default function BuySellToggle() {
             font-semibold
             transition-all
             duration-200
-
             ${
               side === "buy"
                 ? `
@@ -50,9 +47,7 @@ export default function BuySellToggle() {
           Buy
         </button>
 
-
         {/* SELL */}
-
         <button
           type="button"
           onClick={() => setSide("sell")}
@@ -63,7 +58,6 @@ export default function BuySellToggle() {
             font-semibold
             transition-all
             duration-200
-
             ${
               side === "sell"
                 ? `

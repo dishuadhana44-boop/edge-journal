@@ -11,34 +11,203 @@ import { useJournal } from "./JournalContext";
 import { useMarket } from "./MarketContext";
 import { calculatePnL } from "../utils/trading/calculatePnL";
 
-const TradeContext = createContext();
+const TradeContext = createContext(null);
+
+/* ============================================================
+   HELPERS
+============================================================ */
+
+function normalizeNumber(value, fallback = 0) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizeSymbol(symbol) {
+  return String(symbol || "EURUSD")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeSide(side) {
+  const value = String(side || "buy")
+    .trim()
+    .toLowerCase();
+
+  if (value === "buy" || value === "long") {
+    return "buy";
+  }
+
+  if (value === "sell" || value === "short") {
+    return "sell";
+  }
+
+  return "buy";
+}
+
+/* ============================================================
+   NORMALIZE BROKER POSITION
+============================================================ */
+
+function normalizeBrokerPosition(position) {
+  if (!position || typeof position !== "object") {
+    return null;
+  }
+
+  const positionId =
+    position.id ??
+    position.positionId ??
+    position.brokerPositionId;
+
+  if (
+    positionId === undefined ||
+    positionId === null ||
+    String(positionId).trim() === ""
+  ) {
+    console.error("❌ Broker position has no ID:", position);
+    return null;
+  }
+
+  const status = String(
+    position.status || "OPEN"
+  ).toUpperCase();
+
+  const symbol = normalizeSymbol(
+    position.symbol ||
+      position.symbolName ||
+      "EURUSD"
+  );
+
+  return {
+    /* IDENTITY */
+
+    id: String(positionId),
+
+    brokerPositionId: String(
+      position.positionId ??
+        position.brokerPositionId ??
+        positionId
+    ),
+
+    /* STATUS */
+
+    status,
+
+    /* TIME */
+
+    openedAt:
+      position.openedAt ||
+      position.openTime ||
+      position.createdAt ||
+      new Date().toISOString(),
+
+    closedAt:
+      position.closedAt ||
+      position.closeTime ||
+      null,
+
+    /* SYMBOL */
+
+    symbol,
+
+    /* SIDE */
+
+    side: normalizeSide(
+      position.side ||
+        position.tradeSide ||
+        position.direction
+    ),
+
+    /* PRICES */
+
+    entry: normalizeNumber(
+      position.entry ??
+        position.entryPrice ??
+        position.price
+    ),
+
+    currentPrice: normalizeNumber(
+      position.currentPrice ??
+        position.markPrice ??
+        position.entry ??
+        position.entryPrice ??
+        position.price
+    ),
+
+    stopLoss: normalizeNumber(
+      position.stopLoss ??
+        position.sl
+    ),
+
+    takeProfit: normalizeNumber(
+      position.takeProfit ??
+        position.tp
+    ),
+
+    /* QUANTITY */
+
+    quantity: normalizeNumber(
+      position.quantity ??
+        position.lots ??
+        position.volume
+    ),
+
+    /* FINANCIAL DATA */
+
+    margin: normalizeNumber(position.margin),
+
+    pnl: normalizeNumber(
+      position.pnl ??
+        position.netProfit ??
+        position.grossProfit
+    ),
+
+    risk: normalizeNumber(position.risk),
+
+    /* META */
+
+    orderType:
+      position.orderType || "Market",
+
+    broker: "cTrader",
+
+    accountId:
+      position.accountId ||
+      position.ctidTraderAccountId ||
+      null,
+  };
+}
+
+/* ============================================================
+   PROVIDER
+============================================================ */
 
 export function TradeProvider({ children }) {
-  const { bid, ask } = useMarket();
+  const {
+    bid,
+    ask,
+    symbol: activeSymbol,
+  } = useMarket();
+
   const { addTrade } = useJournal();
 
-  /*
-  ============================================================
-  TRADE STATE
-  ============================================================
-  */
+  /* ==========================================================
+     TRADE STATE
+  ========================================================== */
 
   const [openTrades, setOpenTrades] = useState([]);
+
   const [pendingOrders, setPendingOrders] = useState([]);
+
   const [closedTrades, setClosedTrades] = useState([]);
 
-  /*
-  ============================================================
-  ACCOUNT
-  ============================================================
-
-  TEMPORARY ACCOUNT SOURCE
-
-  Later:
-  cTrader account balance/equity will come here.
-
-  UI does NOT need to change.
-  */
+  /* ==========================================================
+     ACCOUNT
+  ========================================================== */
 
   const [account, setAccount] = useState({
     balance: 100158.75,
@@ -46,38 +215,60 @@ export function TradeProvider({ children }) {
     leverage: 100,
   });
 
-  /*
-  ============================================================
-  ACCOUNT VALUES
-  ============================================================
-  */
+  const balance = normalizeNumber(account.balance);
 
-  const balance = Number(account.balance || 0);
+  const leverage =
+    normalizeNumber(account.leverage, 100) || 100;
 
-  const leverage = Number(account.leverage || 100);
+  const currentSymbol = normalizeSymbol(activeSymbol);
 
+  /* ==========================================================
+     LIVE P&L UPDATE
 
-  /*
-  ============================================================
-  LIVE OPEN TRADE P&L
-  ============================================================
-  */
+     IMPORTANT:
+     Only update trades of currently active symbol.
+  ========================================================== */
 
   useEffect(() => {
+    const currentBid = Number(bid);
+    const currentAsk = Number(ask);
+
+    if (
+      !Number.isFinite(currentBid) ||
+      !Number.isFinite(currentAsk) ||
+      currentBid <= 0 ||
+      currentAsk <= 0
+    ) {
+      return;
+    }
+
     setOpenTrades((prevTrades) => {
       return prevTrades.map((trade) => {
+        const tradeSymbol = normalizeSymbol(trade.symbol);
 
-        const currentPrice =
-          String(trade.side).toLowerCase() === "buy"
-            ? Number(bid)
-            : Number(ask);
+        /*
+          Don't use EURUSD price
+          for GBPUSD / XAUUSD etc.
+        */
 
-        if (!currentPrice) {
+        if (tradeSymbol !== currentSymbol) {
           return trade;
         }
 
+        const side = normalizeSide(trade.side);
+
+        /*
+          BUY closes at BID
+          SELL closes at ASK
+        */
+
+        const currentPrice =
+          side === "buy"
+            ? currentBid
+            : currentAsk;
+
         const pnl = calculatePnL(
-          String(trade.side).toLowerCase(),
+          side,
           Number(trade.entry),
           currentPrice,
           Number(trade.quantity)
@@ -85,216 +276,329 @@ export function TradeProvider({ children }) {
 
         return {
           ...trade,
-
           currentPrice,
-
-          pnl: Number(pnl || 0),
+          pnl: normalizeNumber(pnl),
         };
       });
     });
-  }, [bid, ask]);
+  }, [bid, ask, currentSymbol]);
 
-
-  /*
-  ============================================================
-  FLOATING P&L
-  ============================================================
-  */
+  /* ==========================================================
+     FLOATING P&L
+  ========================================================== */
 
   const floatingPnL = useMemo(() => {
-
     return openTrades.reduce(
-      (sum, trade) => {
-        return (
-          sum +
-          Number(trade.pnl || 0)
-        );
-      },
+      (sum, trade) =>
+        sum + normalizeNumber(trade.pnl),
       0
     );
-
   }, [openTrades]);
 
-
-  /*
-  ============================================================
-  EQUITY
-  ============================================================
-  */
+  /* ==========================================================
+     EQUITY
+  ========================================================== */
 
   const equity = useMemo(() => {
+    return balance + floatingPnL;
+  }, [balance, floatingPnL]);
 
-    return (
-      balance +
-      floatingPnL
-    );
-
-  }, [
-    balance,
-    floatingPnL,
-  ]);
-
-
-  /*
-  ============================================================
-  MARGIN USED
-  ============================================================
-  */
+  /* ==========================================================
+     MARGIN USED
+  ========================================================== */
 
   const marginUsed = useMemo(() => {
-
     return openTrades.reduce(
-      (sum, trade) => {
-
-        return (
-          sum +
-          Number(trade.margin || 0)
-        );
-
-      },
+      (sum, trade) =>
+        sum + normalizeNumber(trade.margin),
       0
     );
-
   }, [openTrades]);
 
+  /* ==========================================================
+     FREE MARGIN
+  ========================================================== */
 
-  /*
-  ============================================================
-  FREE MARGIN
-  ============================================================
-  */
+  const freeMargin = useMemo(() => {
+    return equity - marginUsed;
+  }, [equity, marginUsed]);
 
-  const freeMargin =
-    equity -
-    marginUsed;
+  /* ==========================================================
+     TRADE STATISTICS
+  ========================================================== */
 
+  const openTradesCount = openTrades.length;
 
-  /*
-  ============================================================
-  TRADE STATISTICS
-  ============================================================
-  */
+  const closedCount = closedTrades.length;
 
-  const openTradesCount =
-    openTrades.length;
-
-  const closedCount =
-    closedTrades.length;
-
-
-  const winningTrades =
-    closedTrades.filter(
-      (trade) =>
-        Number(trade.pnl || 0) > 0
+  const winningTrades = useMemo(() => {
+    return closedTrades.filter(
+      (trade) => normalizeNumber(trade.pnl) > 0
     ).length;
+  }, [closedTrades]);
 
-
-  const losingTrades =
-    closedTrades.filter(
-      (trade) =>
-        Number(trade.pnl || 0) < 0
+  const losingTrades = useMemo(() => {
+    return closedTrades.filter(
+      (trade) => normalizeNumber(trade.pnl) < 0
     ).length;
+  }, [closedTrades]);
 
+  const winRate = useMemo(() => {
+    if (closedCount === 0) {
+      return 0;
+    }
 
-  const winRate =
-    closedCount === 0
-      ? 0
-      : (
-          winningTrades /
-          closedCount
-        ) * 100;
+    return (
+      (winningTrades / closedCount) * 100
+    );
+  }, [winningTrades, closedCount]);
 
+  /* ==========================================================
+     ADD / UPDATE BROKER POSITION
+  ========================================================== */
 
-  /*
-  ============================================================
-  ADD PENDING ORDER
-  ============================================================
-  */
+  const addBrokerPosition = useCallback(
+    (position) => {
+      const normalizedPosition =
+        normalizeBrokerPosition(position);
 
-  const addPendingOrder =
-    useCallback((order) => {
+      if (!normalizedPosition) {
+        console.error(
+          "❌ Invalid broker position:",
+          position
+        );
 
+        return null;
+      }
+
+      /*
+        CLOSED POSITION
+      */
+
+      if (
+        normalizedPosition.status === "CLOSED"
+      ) {
+        setOpenTrades((prev) =>
+          prev.filter(
+            (trade) =>
+              String(trade.id) !==
+              String(normalizedPosition.id)
+          )
+        );
+
+        return normalizedPosition;
+      }
+
+      /*
+        ADD / UPDATE POSITION
+      */
+
+      setOpenTrades((prev) => {
+        const existingIndex =
+          prev.findIndex(
+            (trade) =>
+              String(trade.id) ===
+              String(normalizedPosition.id)
+          );
+
+        if (existingIndex !== -1) {
+          console.log(
+            "🔄 Updating broker position:",
+            normalizedPosition
+          );
+
+          return prev.map((trade) =>
+            String(trade.id) ===
+            String(normalizedPosition.id)
+              ? {
+                  ...trade,
+                  ...normalizedPosition,
+                }
+              : trade
+          );
+        }
+
+        console.log(
+          "✅ Adding broker position:",
+          normalizedPosition
+        );
+
+        return [
+          ...prev,
+          normalizedPosition,
+        ];
+      });
+
+      return normalizedPosition;
+    },
+    []
+  );
+
+  /* ==========================================================
+     UPDATE BROKER POSITION
+  ========================================================== */
+
+  const updateBrokerPosition = useCallback(
+    (positionId, updates = {}) => {
+      if (
+        positionId === undefined ||
+        positionId === null
+      ) {
+        return;
+      }
+
+      setOpenTrades((prev) =>
+        prev.map((trade) =>
+          String(trade.id) ===
+          String(positionId)
+            ? {
+                ...trade,
+                ...updates,
+              }
+            : trade
+        )
+      );
+    },
+    []
+  );
+
+  /* ==========================================================
+     REMOVE BROKER POSITION
+  ========================================================== */
+
+  const removeBrokerPosition = useCallback(
+    (positionId) => {
+      if (
+        positionId === undefined ||
+        positionId === null
+      ) {
+        return;
+      }
+
+      setOpenTrades((prev) =>
+        prev.filter(
+          (trade) =>
+            String(trade.id) !==
+            String(positionId)
+        )
+      );
+    },
+    []
+  );
+
+  /* ==========================================================
+     SYNC BROKER POSITIONS
+  ========================================================== */
+
+  const syncBrokerPositions = useCallback(
+    (positions = []) => {
+      if (!Array.isArray(positions)) {
+        console.error(
+          "❌ Broker positions must be an array:",
+          positions
+        );
+
+        return;
+      }
+
+      const normalizedPositions =
+        positions
+          .map(normalizeBrokerPosition)
+          .filter(Boolean);
+
+      const brokerOpenPositions =
+        normalizedPositions.filter(
+          (position) =>
+            position.status !== "CLOSED"
+        );
+
+      console.log(
+        "🔄 SYNCING BROKER POSITIONS:",
+        brokerOpenPositions
+      );
+
+      setOpenTrades((prevTrades) => {
+        /*
+          Keep local trades.
+          Replace only cTrader trades.
+        */
+
+        const localTrades =
+          prevTrades.filter(
+            (trade) =>
+              trade.broker !== "cTrader"
+          );
+
+        return [
+          ...localTrades,
+          ...brokerOpenPositions,
+        ];
+      });
+    },
+    []
+  );
+
+  /* ==========================================================
+     ADD PENDING ORDER
+  ========================================================== */
+
+  const addPendingOrder = useCallback(
+    (order) => {
       const newOrder = {
-
-        id: Date.now(),
+        id: `pending-${Date.now()}`,
 
         status: "PENDING",
 
         createdAt:
           new Date().toISOString(),
 
-        symbol:
-          order.symbol || "EURUSD",
+        symbol: normalizeSymbol(
+          order.symbol || currentSymbol
+        ),
 
-        side:
-          String(
-            order.side || "buy"
-          ).toLowerCase(),
+        side: normalizeSide(order.side),
 
         orderType:
           order.orderType || "Limit",
 
-        entry:
-          Number(order.entry || 0),
+        entry: normalizeNumber(order.entry),
 
-        stopLoss:
-          Number(
-            order.stopLoss || 0
-          ),
+        stopLoss: normalizeNumber(
+          order.stopLoss
+        ),
 
-        takeProfit:
-          Number(
-            order.takeProfit || 0
-          ),
+        takeProfit: normalizeNumber(
+          order.takeProfit
+        ),
 
-        quantity:
-          Number(
-            order.quantity || 0
-          ),
+        quantity: normalizeNumber(
+          order.quantity
+        ),
 
-        risk:
-          Number(
-            order.risk || 0
-          ),
+        risk: normalizeNumber(order.risk),
       };
 
-
-      setPendingOrders(
-        (prev) => [
-          ...prev,
-          newOrder,
-        ]
-      );
+      setPendingOrders((prev) => [
+        ...prev,
+        newOrder,
+      ]);
 
       return newOrder;
+    },
+    [currentSymbol]
+  );
 
-    }, []);
+  /* ==========================================================
+     EXECUTE LOCAL MARKET TRADE
+  ========================================================== */
 
-
-  /*
-  ============================================================
-  EXECUTE MARKET TRADE
-  ============================================================
-
-  CURRENTLY:
-  Local execution engine.
-
-  LATER:
-  This exact function can call cTrader.
-  */
-
-  const executeTrade =
-    useCallback((trade) => {
-
-      const side =
-        String(
-          trade.side || "buy"
-        ).toLowerCase();
-
+  const executeTrade = useCallback(
+    (trade) => {
+      const side = normalizeSide(trade.side);
 
       /*
-      BUY executes at ASK.
-      SELL executes at BID.
+        BUY ENTRY = ASK
+        SELL ENTRY = BID
       */
 
       const executionPrice =
@@ -302,208 +606,140 @@ export function TradeProvider({ children }) {
           ? Number(ask)
           : Number(bid);
 
-
-      if (!executionPrice) {
-
+      if (
+        !Number.isFinite(executionPrice) ||
+        executionPrice <= 0
+      ) {
         console.error(
-          "Market price unavailable."
+          "❌ Market price unavailable."
         );
 
         return null;
       }
 
-
-      /*
-      ========================================================
-      POSITION SIZE
-      ========================================================
-      */
-
-      const lots =
-        Number(
-          trade.quantity || 0
-        );
-
+      const lots = normalizeNumber(
+        trade.quantity
+      );
 
       if (lots <= 0) {
-
         console.error(
-          "Invalid lot size."
+          "❌ Invalid lot size."
         );
 
         return null;
       }
 
-
-      /*
-      ========================================================
-      MARGIN
-
-      Current forex approximation.
-
-      Broker integration later will use
-      broker-provided margin requirements.
-      ========================================================
-      */
-
       const contractSize =
-        100000;
-
+        normalizeSymbol(
+          trade.symbol || currentSymbol
+        ) === "XAUUSD"
+          ? 100
+          : 100000;
 
       const margin =
-        (
-          lots *
+        (lots *
           contractSize *
-          executionPrice
-        ) /
+          executionPrice) /
         leverage;
 
-
-      /*
-      ========================================================
-      CREATE POSITION
-      ========================================================
-      */
-
       const newTrade = {
-
-        id: Date.now(),
+        id: `local-${Date.now()}`,
 
         status: "OPEN",
 
         openedAt:
           new Date().toISOString(),
 
-        symbol:
-          trade.symbol || "EURUSD",
+        symbol: normalizeSymbol(
+          trade.symbol || currentSymbol
+        ),
 
         side,
 
-        entry:
-          executionPrice,
+        entry: executionPrice,
 
-        currentPrice:
-          executionPrice,
+        currentPrice: executionPrice,
 
-        stopLoss:
-          Number(
-            trade.stopLoss || 0
-          ),
+        stopLoss: normalizeNumber(
+          trade.stopLoss
+        ),
 
-        takeProfit:
-          Number(
-            trade.takeProfit || 0
-          ),
+        takeProfit: normalizeNumber(
+          trade.takeProfit
+        ),
 
-        quantity:
-          lots,
+        quantity: lots,
 
         margin,
 
         pnl: 0,
 
-        risk:
-          Number(
-            trade.risk || 0
-          ),
+        risk: normalizeNumber(trade.risk),
 
         orderType:
           trade.orderType || "Market",
+
+        broker: "Local",
       };
 
-
       console.log(
-        "LOCAL TRADE EXECUTED:",
+        "✅ LOCAL TRADE EXECUTED:",
         newTrade
       );
 
-
-      setOpenTrades(
-        (prev) => [
-          ...prev,
-          newTrade,
-        ]
-      );
-
+      setOpenTrades((prev) => [
+        ...prev,
+        newTrade,
+      ]);
 
       return newTrade;
-
-    }, [
+    },
+    [
       bid,
       ask,
       leverage,
-    ]);
+      currentSymbol,
+    ]
+  );
 
+  /* ==========================================================
+     CLOSE TRADE
+  ========================================================== */
 
-  /*
-  ============================================================
-  CLOSE TRADE
-  ============================================================
-  */
-
-  const closeTrade =
-    useCallback((id) => {
-
-      const trade =
-        openTrades.find(
-          (item) =>
-            item.id === id
-        );
-
+  const closeTrade = useCallback(
+    (id) => {
+      const trade = openTrades.find(
+        (item) =>
+          String(item.id) === String(id)
+      );
 
       if (!trade) {
-        return;
+        console.error(
+          "❌ Trade not found:",
+          id
+        );
+
+        return null;
       }
 
+      const closedTime = new Date();
 
-      const closedTime =
-        new Date();
+      const openedTime = new Date(
+        trade.openedAt
+      );
 
+      const durationSeconds = Math.max(
+        0,
+        Math.floor(
+          (closedTime - openedTime) / 1000
+        )
+      );
 
-      const openedTime =
-        new Date(
-          trade.openedAt
-        );
-
-
-      /*
-      ========================================================
-      TRADE DURATION
-      ========================================================
-      */
-
-      const durationSeconds =
-        Math.max(
-          0,
-          Math.floor(
-            (
-              closedTime -
-              openedTime
-            ) / 1000
-          )
-        );
-
-
-      /*
-      ========================================================
-      FINAL P&L
-      ========================================================
-      */
-
-      const pnl =
-        Number(
-          trade.pnl || 0
-        );
-
-
-      /*
-      ========================================================
-      CLOSED TRADE
-      ========================================================
-      */
+      const pnl = normalizeNumber(
+        trade.pnl
+      );
 
       const closedTrade = {
-
         ...trade,
 
         status: "CLOSED",
@@ -513,48 +749,23 @@ export function TradeProvider({ children }) {
 
         durationSeconds,
 
-        date:
-          closedTime
-            .toISOString()
-            .split("T")[0],
+        date: closedTime
+          .toISOString()
+          .split("T")[0],
 
-        pair:
-          trade.symbol,
+        pair: trade.symbol,
 
         direction:
-          String(
-            trade.side
-          ).toLowerCase() === "buy"
+          normalizeSide(trade.side) === "buy"
             ? "Long"
             : "Short",
 
         entryPrice:
-          Number(
-            trade.entry
-          ),
+          normalizeNumber(trade.entry),
 
-        exitPrice:
-          Number(
-            trade.currentPrice ??
-            trade.entry
-          ),
-
-        stopLoss:
-          Number(
-            trade.stopLoss || 0
-          ),
-
-        takeProfit:
-          Number(
-            trade.takeProfit || 0
-          ),
-
-        quantity:
-          Number(
-            trade.quantity || 0
-          ),
-
-        pnl,
+        exitPrice: normalizeNumber(
+          trade.currentPrice ?? trade.entry
+        ),
 
         result:
           pnl > 0
@@ -564,232 +775,147 @@ export function TradeProvider({ children }) {
             : "Breakeven",
       };
 
-
-      /*
-      ========================================================
-      REMOVE FROM OPEN
-      ========================================================
-      */
-
-      setOpenTrades(
-        (prev) =>
-          prev.filter(
-            (item) =>
-              item.id !== id
-          )
+      setOpenTrades((prev) =>
+        prev.filter(
+          (item) =>
+            String(item.id) !== String(id)
+        )
       );
 
+      setClosedTrades((prev) => [
+        ...prev,
+        closedTrade,
+      ]);
 
-      /*
-      ========================================================
-      ADD TO CLOSED
-      ========================================================
-      */
-
-      setClosedTrades(
-        (prev) => [
-          ...prev,
-          closedTrade,
-        ]
-      );
-
-
-      /*
-      ========================================================
-      SAVE TO TRADE LOG / JOURNAL
-      ========================================================
-      */
-
-      addTrade(
-        closedTrade
-      );
-
+      addTrade?.(closedTrade);
 
       console.log(
-        "TRADE CLOSED:",
+        "✅ TRADE CLOSED:",
         closedTrade
       );
 
-
       return closedTrade;
+    },
+    [openTrades, addTrade]
+  );
 
-    }, [
-      openTrades,
-      addTrade,
-    ]);
+  /* ==========================================================
+     DELETE TRADE
+  ========================================================== */
 
+  const deleteTrade = useCallback(
+    (id) => {
+      const targetId = String(id);
 
-  /*
-  ============================================================
-  DELETE TRADE
-  ============================================================
-  */
-
-  const deleteTrade =
-    useCallback((id) => {
-
-      setOpenTrades(
-        (prev) =>
-          prev.filter(
-            (trade) =>
-              trade.id !== id
-          )
+      setOpenTrades((prev) =>
+        prev.filter(
+          (trade) =>
+            String(trade.id) !== targetId
+        )
       );
 
-
-      setClosedTrades(
-        (prev) =>
-          prev.filter(
-            (trade) =>
-              trade.id !== id
-          )
+      setClosedTrades((prev) =>
+        prev.filter(
+          (trade) =>
+            String(trade.id) !== targetId
+        )
       );
 
-
-      setPendingOrders(
-        (prev) =>
-          prev.filter(
-            (order) =>
-              order.id !== id
-          )
+      setPendingOrders((prev) =>
+        prev.filter(
+          (order) =>
+            String(order.id) !== targetId
+        )
       );
+    },
+    []
+  );
 
-    }, []);
+  /* ==========================================================
+     UPDATE ACCOUNT
+  ========================================================== */
 
+  const updateAccount = useCallback(
+    (data = {}) => {
+      setAccount((prev) => ({
+        ...prev,
+        ...data,
+      }));
+    },
+    []
+  );
 
-  /*
-  ============================================================
-  UPDATE ACCOUNT
+  /* ==========================================================
+     CONTEXT VALUE
+  ========================================================== */
 
-  Broker integration ke time:
-  setAccount({
+  const value = {
+    /* TRADES */
+
+    openTrades,
+    closedTrades,
+    pendingOrders,
+
+    /* TRADE ACTIONS */
+
+    executeTrade,
+    addPendingOrder,
+    closeTrade,
+    deleteTrade,
+
+    /* BROKER ACTIONS */
+
+    addBrokerPosition,
+    updateBrokerPosition,
+    removeBrokerPosition,
+    syncBrokerPositions,
+
+    /* ACCOUNT */
+
+    account,
+    updateAccount,
+
     balance,
-    currency,
-    leverage
-  })
-  ============================================================
-  */
+    equity,
+    leverage,
 
-  const updateAccount =
-    useCallback((data) => {
+    /* P&L */
 
-      setAccount(
-        (prev) => ({
-          ...prev,
-          ...data,
-        })
-      );
+    floatingPnL,
 
-    }, []);
+    /* MARGIN */
 
+    marginUsed,
+    freeMargin,
 
-  /*
-  ============================================================
-  PROVIDER
-  ============================================================
-  */
+    /* STATISTICS */
+
+    openTradesCount,
+    closedCount,
+    winningTrades,
+    losingTrades,
+    winRate,
+  };
 
   return (
-
-    <TradeContext.Provider
-      value={{
-
-        /*
-        ========================================================
-        TRADES
-        ========================================================
-        */
-
-        openTrades,
-
-        closedTrades,
-
-        pendingOrders,
-
-
-        /*
-        ========================================================
-        ACTIONS
-        ========================================================
-        */
-
-        executeTrade,
-
-        addPendingOrder,
-
-        closeTrade,
-
-        deleteTrade,
-
-
-        /*
-        ========================================================
-        ACCOUNT
-        ========================================================
-        */
-
-        account,
-
-        updateAccount,
-
-        balance,
-
-        equity,
-
-        leverage,
-
-
-        /*
-        ========================================================
-        P&L
-        ========================================================
-        */
-
-        floatingPnL,
-
-
-        /*
-        ========================================================
-        MARGIN
-        ========================================================
-        */
-
-        marginUsed,
-
-        freeMargin,
-
-
-        /*
-        ========================================================
-        STATISTICS
-        ========================================================
-        */
-
-        openTradesCount,
-
-        closedCount,
-
-        winningTrades,
-
-        losingTrades,
-
-        winRate,
-
-      }}
-    >
-
+    <TradeContext.Provider value={value}>
       {children}
-
     </TradeContext.Provider>
-
   );
 }
 
+/* ============================================================
+   HOOK
+============================================================ */
 
 export function useTrade() {
+  const context = useContext(TradeContext);
 
-  return useContext(
-    TradeContext
-  );
+  if (!context) {
+    throw new Error(
+      "useTrade must be used inside TradeProvider"
+    );
+  }
 
+  return context;
 }

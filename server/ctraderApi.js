@@ -1,7 +1,7 @@
 import WebSocket from "ws";
 import protobuf from "protobufjs";
 
-const WS_URL = "wss://demo.ctraderapi.com:5036";
+const WS_URL = "wss://demo.ctraderapi.com:5035";
 
 const PROTO_FILES = [
   "./openapi-proto-messages/OpenApiCommonMessages.proto",
