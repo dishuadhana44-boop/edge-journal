@@ -13,7 +13,7 @@ export default function OrderTabs() {
   } = useOrder();
 
   return (
-    <div className="px-4 pt-4">
+    <div className="px-4 pt-2">
 
       <div className="grid grid-cols-3 rounded-xl bg-gray-100 p-1">
 

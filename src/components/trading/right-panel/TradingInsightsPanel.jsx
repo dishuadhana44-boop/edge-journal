@@ -3,35 +3,132 @@ import {
   CircleCheck,
   AlertTriangle,
   ChevronUp,
+  ChevronDown,
   List,
   Bell,
   ClipboardList,
   Plus,
   Trash2,
   X,
-  Save,
 } from "lucide-react";
 
 import { useTrade } from "../../../context/TradeContext";
 
+
+/* ============================================================
+   DEFAULT GUARDRAILS
+============================================================ */
+
 const DEFAULT_GUARDRAILS = {
   enabled: true,
   maxTradesPerDay: 10,
-  maxDailyLoss: 500,
-  maxDailyProfit: 1000,
+  maxDailyLoss: 3000,
+  maxDailyProfit: 10000,
   tradingWindowStart: "10:30",
   tradingWindowEnd: "13:30",
 };
 
+
+/* ============================================================
+   DEFAULT WATCHLIST
+============================================================ */
+
+const DEFAULT_WATCHLIST = [];
+
+
+/* ============================================================
+   COMPONENT
+============================================================ */
+
 export default function TradingInsightsPanel() {
+
   const { trades = [] } = useTrade();
 
   const [activeTab, setActiveTab] = useState("watchlist");
-  
+
+  const [isGuardrailsOpen, setIsGuardrailsOpen] =
+    useState(true);
+
+
+  /* ============================================================
+     WATCHLIST
+  ============================================================ */
+
+  const [watchlist, setWatchlist] = useState(() => {
+
+    try {
+
+      const saved =
+        localStorage.getItem("edgefloWatchlist");
+
+      return saved
+        ? JSON.parse(saved)
+        : DEFAULT_WATCHLIST;
+
+    } catch {
+
+      return DEFAULT_WATCHLIST;
+
+    }
+
+  });
+
+
+  const [showWatchlistInput, setShowWatchlistInput] =
+    useState(false);
+
+  const [newSymbol, setNewSymbol] =
+    useState("");
+
+
+  /* ============================================================
+     ALERTS
+  ============================================================ */
+
+  const [alerts, setAlerts] = useState(() => {
+
+    try {
+
+      const saved =
+        localStorage.getItem("edgefloAlerts");
+
+      return saved
+        ? JSON.parse(saved)
+        : [];
+
+    } catch {
+
+      return [];
+
+    }
+
+  });
+
+
+  const [showAlertForm, setShowAlertForm] =
+    useState(false);
+
+
+  const [alertSymbol, setAlertSymbol] =
+    useState("EURUSD");
+
+  const [alertCondition, setAlertCondition] =
+    useState("above");
+
+  const [alertPrice, setAlertPrice] =
+    useState("");
+
+
+  /* ============================================================
+     GUARDRAILS
+  ============================================================ */
 
   const [guardrails, setGuardrails] = useState(() => {
+
     try {
-      const saved = localStorage.getItem("tradingGuardrails");
+
+      const saved =
+        localStorage.getItem("tradingGuardrails");
 
       return saved
         ? {
@@ -39,348 +136,1046 @@ export default function TradingInsightsPanel() {
             ...JSON.parse(saved),
           }
         : DEFAULT_GUARDRAILS;
+
     } catch {
+
       return DEFAULT_GUARDRAILS;
+
     }
+
   });
 
-  const [selectedPlan, setSelectedPlan] =
-  useState(null);
-  const [selectedEdgePlan, setSelectedEdgePlan] = useState(null);
+
+  /* ============================================================
+     SELECTED EDGE PLAN
+  ============================================================ */
+
+  const [selectedEdgePlan, setSelectedEdgePlan] =
+    useState(null);
+
+
+  /* ============================================================
+     TRADE PLAN CHECKLIST STATE
+  ============================================================ */
+
+  const [checkedItems, setCheckedItems] =
+    useState({});
+
+
+  /* ============================================================
+     SAVE WATCHLIST
+  ============================================================ */
 
   useEffect(() => {
+
+    localStorage.setItem(
+      "edgefloWatchlist",
+      JSON.stringify(watchlist)
+    );
+
+  }, [watchlist]);
+
+
+  /* ============================================================
+     SAVE ALERTS
+  ============================================================ */
+
+  useEffect(() => {
+
+    localStorage.setItem(
+      "edgefloAlerts",
+      JSON.stringify(alerts)
+    );
+
+  }, [alerts]);
+
+
+  /* ============================================================
+     LOAD CHECKLIST STATE
+  ============================================================ */
+
+  useEffect(() => {
+
+    try {
+
+      const saved =
+        localStorage.getItem("edgefloTradePlanChecklist");
+
+      setCheckedItems(
+        saved ? JSON.parse(saved) : {}
+      );
+
+    } catch {
+
+      setCheckedItems({});
+
+    }
+
+  }, []);
+
+
+  /* ============================================================
+     SAVE CHECKLIST STATE
+  ============================================================ */
+
+  useEffect(() => {
+
+    localStorage.setItem(
+      "edgefloTradePlanChecklist",
+      JSON.stringify(checkedItems)
+    );
+
+  }, [checkedItems]);
+
+
+  /* ============================================================
+     LOAD SELECTED EDGE PLAN
+  ============================================================ */
+
+  useEffect(() => {
+
     const loadSelectedPlan = () => {
+
       try {
-        const saved = localStorage.getItem("selectedEdgePlan");
-  
+
+        const saved =
+          localStorage.getItem("selectedEdgePlan");
+
         setSelectedEdgePlan(
           saved ? JSON.parse(saved) : null
         );
+
       } catch (error) {
-        console.error("Failed to load selected Edge plan:", error);
+
+        console.error(
+          "Failed to load selected Edge plan:",
+          error
+        );
+
         setSelectedEdgePlan(null);
+
       }
+
     };
-  
+
+
     loadSelectedPlan();
-  
+
+
     window.addEventListener(
       "selectedEdgePlanUpdated",
       loadSelectedPlan
     );
-  
+
+
     window.addEventListener(
       "storage",
       loadSelectedPlan
     );
-  
+
+
     return () => {
+
       window.removeEventListener(
         "selectedEdgePlanUpdated",
         loadSelectedPlan
       );
-  
+
       window.removeEventListener(
         "storage",
         loadSelectedPlan
       );
+
     };
+
   }, []);
 
-  const getChecklistItems = (value) => {
-  if (!value) return [];
 
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (typeof item === "string") {
-          return item;
-        }
-
-        if (typeof item === "object") {
-          return (
-            item.text ??
-            item.title ??
-            item.name ??
-            item.description ??
-            ""
-          );
-        }
-
-        return "";
-      })
-      .filter(Boolean);
-  }
-
-  if (typeof value === "string") {
-    return value
-      .split("\n")
-      .map((item) =>
-        item
-          .replace(/^[-•*]\s*/, "")
-          .trim()
-      )
-      .filter(Boolean);
-  }
-
-  return [];
-};
-
-  /*
-  ============================================================
-  LOAD GUARDRAILS
-  ============================================================
-  */
+  /* ============================================================
+     LOAD GUARDRAILS
+  ============================================================ */
 
   useEffect(() => {
+
     const loadGuardrails = () => {
+
       try {
-        const saved = localStorage.getItem("tradingGuardrails");
+
+        const saved =
+          localStorage.getItem("tradingGuardrails");
 
         if (saved) {
+
           setGuardrails({
             ...DEFAULT_GUARDRAILS,
             ...JSON.parse(saved),
           });
+
         }
+
       } catch (error) {
-        console.error("Failed to load guardrails:", error);
+
+        console.error(
+          "Failed to load guardrails:",
+          error
+        );
+
       }
+
     };
+
 
     loadGuardrails();
 
-    window.addEventListener("storage", loadGuardrails);
-    window.addEventListener("guardrailsUpdated", loadGuardrails);
+
+    window.addEventListener(
+      "storage",
+      loadGuardrails
+    );
+
+    window.addEventListener(
+      "guardrailsUpdated",
+      loadGuardrails
+    );
+
 
     return () => {
-      window.removeEventListener("storage", loadGuardrails);
+
+      window.removeEventListener(
+        "storage",
+        loadGuardrails
+      );
+
       window.removeEventListener(
         "guardrailsUpdated",
         loadGuardrails
       );
+
     };
+
   }, []);
 
-  /*
-  ============================================================
-  TODAY'S TRADES
-  ============================================================
-  */
+
+  /* ============================================================
+     TODAY'S TRADES
+  ============================================================ */
 
   const todayTrades = useMemo(() => {
+
     const today = new Date();
 
+
     return trades.filter((trade) => {
+
       const dateValue =
         trade.date ??
         trade.createdAt ??
-        trade.openedAt;
+        trade.openedAt ??
+        trade.timestamp;
+
 
       if (!dateValue) return false;
 
-      const tradeDate = new Date(dateValue);
 
-      if (Number.isNaN(tradeDate.getTime())) {
+      const tradeDate =
+        new Date(dateValue);
+
+
+      if (
+        Number.isNaN(
+          tradeDate.getTime()
+        )
+      ) {
         return false;
       }
 
+
       return (
-        tradeDate.getFullYear() === today.getFullYear() &&
-        tradeDate.getMonth() === today.getMonth() &&
-        tradeDate.getDate() === today.getDate()
+
+        tradeDate.getFullYear() ===
+          today.getFullYear() &&
+
+        tradeDate.getMonth() ===
+          today.getMonth() &&
+
+        tradeDate.getDate() ===
+          today.getDate()
+
       );
+
     });
+
   }, [trades]);
 
-  /*
-  ============================================================
-  TRADE COUNT
-  ============================================================
-  */
 
-  const tradeCount = todayTrades.length;
+  /* ============================================================
+     TRADE COUNT
+  ============================================================ */
+
+  const tradeCount =
+    todayTrades.length;
+
 
   const maxTrades = Math.max(
-    Number(guardrails.maxTradesPerDay) || 1,
+
+    Number(
+      guardrails.maxTradesPerDay
+    ) || 1,
+
     1
+
   );
 
-  /*
-  ============================================================
-  DAILY P&L
-  ============================================================
-  */
+
+  /* ============================================================
+     DAILY PNL
+  ============================================================ */
 
   const dailyPnL = useMemo(() => {
-    return todayTrades.reduce((total, trade) => {
-      const pnl = Number(
-        trade.pnl ??
+
+    return todayTrades.reduce(
+      (total, trade) => {
+
+        const pnl = Number(
+
+          trade.pnl ??
           trade.profit ??
           trade.realizedPnL ??
           trade.netPnL ??
           0
-      );
 
-      return total + pnl;
-    }, 0);
+        );
+
+
+        return total + pnl;
+
+      },
+
+      0
+    );
+
   }, [todayTrades]);
 
-  /*
-  ============================================================
-  GUARDRAIL LIMITS
-  ============================================================
-  */
+
+  /* ============================================================
+     GUARDRAIL LIMITS
+  ============================================================ */
 
   const maxDailyLoss = Math.max(
-    Number(guardrails.maxDailyLoss) || 0,
+
+    Number(
+      guardrails.maxDailyLoss
+    ) || 0,
+
     0
+
   );
+
 
   const maxDailyProfit = Math.max(
-    Number(guardrails.maxDailyProfit) || 0,
+
+    Number(
+      guardrails.maxDailyProfit
+    ) || 0,
+
     0
+
   );
 
-  /*
-  ============================================================
-  PROGRESS
-  ============================================================
-  */
+
+  /* ============================================================
+     PNL PROGRESS
+  ============================================================ */
 
   const lossProgress =
+
     maxDailyLoss > 0
+
       ? Math.min(
-          Math.abs(Math.min(dailyPnL, 0)) /
-            maxDailyLoss,
+
+          Math.abs(
+            Math.min(dailyPnL, 0)
+          ) / maxDailyLoss,
+
           1
+
         )
+
       : 0;
+
 
   const profitProgress =
+
     maxDailyProfit > 0
+
       ? Math.min(
+
           Math.max(dailyPnL, 0) /
             maxDailyProfit,
+
           1
+
         )
+
       : 0;
 
-  /*
-  ============================================================
-  FORMATTERS
-  ============================================================
-  */
+
+  /* ============================================================
+     FORMATTERS
+  ============================================================ */
 
   const formatMoney = (value) => {
-    return Number(value || 0).toLocaleString(
-      "en-US",
-      {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }
-    );
+
+    return Number(value || 0)
+      .toLocaleString(
+        "en-US",
+        {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }
+      );
+
   };
+
 
   const formatCompactMoney = (value) => {
-    const number = Number(value || 0);
+
+    const number =
+      Number(value || 0);
+
 
     if (number >= 1000000) {
-      return `$${(number / 1000000).toFixed(1)}M`;
+
+      return `$${(
+        number / 1000000
+      ).toFixed(1)}M`;
+
     }
+
 
     if (number >= 1000) {
-      return `$${(number / 1000).toFixed(1)}K`;
+
+      return `$${(
+        number / 1000
+      ).toFixed(1)}K`;
+
     }
+
 
     return `$${formatMoney(number)}`;
+
   };
+
 
   const formatPnL = (value) => {
-    const number = Number(value || 0);
+
+    const number =
+      Number(value || 0);
+
 
     if (number > 0) {
+
       return `+$${formatMoney(number)}`;
+
     }
+
 
     if (number < 0) {
-      return `-$${formatMoney(Math.abs(number))}`;
+
+      return `-$${formatMoney(
+        Math.abs(number)
+      )}`;
+
     }
+
 
     return "$0.00";
+
   };
 
-  /*
-  ============================================================
-  RULE STATUS
-  ============================================================
-  */
+
+  /* ============================================================
+     TRADING WINDOW
+  ============================================================ */
+
+  const isTradingWindowOpen = () => {
+
+    if (!guardrails.enabled) {
+      return true;
+    }
+
+
+    const now = new Date();
+
+
+    const currentMinutes =
+
+      now.getUTCHours() * 60 +
+      now.getUTCMinutes();
+
+
+    const [
+      startHour,
+      startMinute
+    ] =
+      (
+        guardrails.tradingWindowStart ||
+        "10:30"
+      )
+        .split(":")
+        .map(Number);
+
+
+    const [
+      endHour,
+      endMinute
+    ] =
+      (
+        guardrails.tradingWindowEnd ||
+        "13:30"
+      )
+        .split(":")
+        .map(Number);
+
+
+    const startMinutes =
+
+      startHour * 60 +
+      startMinute;
+
+
+    const endMinutes =
+
+      endHour * 60 +
+      endMinute;
+
+
+    /* NORMAL WINDOW */
+
+    if (
+      startMinutes <= endMinutes
+    ) {
+
+      return (
+
+        currentMinutes >= startMinutes &&
+        currentMinutes <= endMinutes
+
+      );
+
+    }
+
+
+    /* OVERNIGHT WINDOW */
+
+    return (
+
+      currentMinutes >= startMinutes ||
+      currentMinutes <= endMinutes
+
+    );
+
+  };
+
+
+  const tradingWindowOpen =
+    isTradingWindowOpen();
+
+
+  /* ============================================================
+     RULE VIOLATION
+  ============================================================ */
 
   const ruleViolation = useMemo(() => {
+
     if (!guardrails.enabled) {
+
       return null;
+
     }
 
+
     if (
+
       maxTrades > 0 &&
+
       tradeCount >= maxTrades
+
     ) {
+
       return `Daily trade limit reached (${tradeCount}/${maxTrades}).`;
+
     }
 
+
     if (
+
       maxDailyLoss > 0 &&
+
       dailyPnL <= -maxDailyLoss
+
     ) {
+
       return `Maximum daily loss reached (${formatPnL(
         dailyPnL
       )}).`;
+
     }
 
+
     if (
+
       maxDailyProfit > 0 &&
+
       dailyPnL >= maxDailyProfit
+
     ) {
+
       return `Daily profit target reached (${formatPnL(
         dailyPnL
       )}).`;
+
     }
 
+
+    if (!tradingWindowOpen) {
+
+      return "Trading window is currently closed.";
+
+    }
+
+
     return null;
+
   }, [
+
     guardrails.enabled,
+
     maxTrades,
+
     tradeCount,
+
     maxDailyLoss,
+
     maxDailyProfit,
+
     dailyPnL,
+
+    tradingWindowOpen,
+
   ]);
 
+
   const tradingStart =
-    guardrails.tradingWindowStart || "10:30";
+    guardrails.tradingWindowStart ||
+    "10:30";
+
 
   const tradingEnd =
-    guardrails.tradingWindowEnd || "13:30";
+    guardrails.tradingWindowEnd ||
+    "13:30";
 
-  /*
-  ============================================================
-  UI
-  ============================================================
-  */
+
+  /* ============================================================
+     WATCHLIST FUNCTIONS
+  ============================================================ */
+
+  const addToWatchlist = () => {
+
+    const symbol =
+      newSymbol
+        .trim()
+        .toUpperCase();
+
+
+    if (!symbol) return;
+
+
+    const alreadyExists =
+      watchlist.some(
+
+        (item) =>
+          item.symbol === symbol
+
+      );
+
+
+    if (alreadyExists) {
+
+      setNewSymbol("");
+      setShowWatchlistInput(false);
+
+      return;
+
+    }
+
+
+    const item = {
+
+      id: Date.now(),
+
+      symbol,
+
+      createdAt:
+        new Date().toISOString(),
+
+    };
+
+
+    setWatchlist((previous) => [
+
+      ...previous,
+
+      item,
+
+    ]);
+
+
+    setNewSymbol("");
+
+    setShowWatchlistInput(false);
+
+  };
+
+
+  const removeFromWatchlist = (id) => {
+
+    setWatchlist((previous) =>
+
+      previous.filter(
+        (item) => item.id !== id
+      )
+
+    );
+
+  };
+
+
+  const selectWatchlistSymbol = (
+    symbol
+  ) => {
+
+    localStorage.setItem(
+      "selectedSymbol",
+      symbol
+    );
+
+
+    window.dispatchEvent(
+
+      new CustomEvent(
+        "selectedSymbolUpdated",
+        {
+          detail: {
+            symbol,
+          },
+        }
+      )
+
+    );
+
+  };
+
+
+  /* ============================================================
+     ALERT FUNCTIONS
+  ============================================================ */
+
+  const addAlert = () => {
+
+    const symbol =
+      alertSymbol
+        .trim()
+        .toUpperCase();
+
+
+    const price =
+      Number(alertPrice);
+
+
+    if (!symbol || !price) {
+
+      return;
+
+    }
+
+
+    const alert = {
+
+      id: Date.now(),
+
+      symbol,
+
+      condition:
+        alertCondition,
+
+      price,
+
+      active: true,
+
+      createdAt:
+        new Date().toISOString(),
+
+    };
+
+
+    setAlerts((previous) => [
+
+      ...previous,
+
+      alert,
+
+    ]);
+
+
+    setAlertPrice("");
+
+    setShowAlertForm(false);
+
+  };
+
+
+  const removeAlert = (id) => {
+
+    setAlerts((previous) =>
+
+      previous.filter(
+        (alert) =>
+          alert.id !== id
+      )
+
+    );
+
+  };
+
+
+  /* ============================================================
+     TRADE PLAN FUNCTIONS
+  ============================================================ */
+
+  const getChecklistItems = (value) => {
+
+    if (!value) return [];
+
+
+    if (Array.isArray(value)) {
+
+      return value
+
+        .map((item) => {
+
+          if (
+            typeof item === "string"
+          ) {
+            return item;
+          }
+
+
+          if (
+            typeof item === "object"
+          ) {
+
+            return (
+
+              item.text ??
+              item.title ??
+              item.name ??
+              item.description ??
+              ""
+
+            );
+
+          }
+
+
+          return "";
+
+        })
+
+        .filter(Boolean);
+
+    }
+
+
+    if (
+      typeof value === "string"
+    ) {
+
+      return value
+
+        .split("\n")
+
+        .map((item) =>
+
+          item
+            .replace(/^[-•*]\s*/, "")
+            .trim()
+
+        )
+
+        .filter(Boolean);
+
+    }
+
+
+    return [];
+
+  };
+
+
+  const toggleChecklistItem = (key) => {
+
+    setCheckedItems((previous) => ({
+
+      ...previous,
+
+      [key]:
+        !previous[key],
+
+    }));
+
+  };
+
+
+  /* ============================================================
+     TRADE PLAN SECTION
+  ============================================================ */
+
+  const TradePlanSection = ({
+
+    title,
+
+    items,
+
+    sectionKey,
+
+  }) => {
+
+    if (!items.length) {
+
+      return null;
+
+    }
+
+
+    return (
+
+      <div
+        className="
+          rounded-xl
+          border
+          border-gray-200
+          bg-gray-50
+          p-3
+        "
+      >
+
+        <p
+          className="
+            text-[11px]
+            font-semibold
+            text-gray-800
+            mb-3
+          "
+        >
+          {title}
+        </p>
+
+
+        <div className="space-y-2">
+
+          {items.map(
+            (item, index) => {
+
+              const key =
+                `${sectionKey}-${index}`;
+
+
+              return (
+
+                <label
+                  key={key}
+                  className="
+                    flex
+                    items-start
+                    gap-2
+                    cursor-pointer
+                  "
+                >
+
+                  <input
+
+                    type="checkbox"
+
+                    checked={
+                      !!checkedItems[key]
+                    }
+
+                    onChange={() =>
+                      toggleChecklistItem(key)
+                    }
+
+                    className="
+                      mt-[2px]
+                      accent-violet-600
+                    "
+
+                  />
+
+
+                  <span
+                    className={`
+                      text-[11px]
+                      leading-relaxed
+                      ${
+                        checkedItems[key]
+
+                          ? "text-gray-400 line-through"
+
+                          : "text-gray-700"
+                      }
+                    `}
+                  >
+
+                    {item}
+
+                  </span>
+
+                </label>
+
+              );
+
+            }
+          )}
+
+        </div>
+
+      </div>
+
+    );
+
+  };
+
+
+  /* ============================================================
+     UI
+  ============================================================ */
 
   return (
     <div
       className="
         w-full
         h-full
+        min-h-0
         flex
         flex-col
         gap-1
       "
     >
 
+
       {/* ======================================================
-          PART 1 — GUARDRAILS CARD
+          GUARDRAILS
       ====================================================== */}
 
       <div
@@ -396,7 +1191,8 @@ export default function TradingInsightsPanel() {
         "
       >
 
-        <div className="px-4 pt-4 pb-4">
+        <div className="px-4 py-4">
+
 
           {/* HEADER */}
 
@@ -412,7 +1208,7 @@ export default function TradingInsightsPanel() {
               className="
                 flex
                 items-center
-                gap-2
+                gap-5
                 min-w-0
               "
             >
@@ -427,6 +1223,7 @@ export default function TradingInsightsPanel() {
                 Trades Today
               </h3>
 
+
               <span
                 className="
                   text-[12px]
@@ -437,39 +1234,44 @@ export default function TradingInsightsPanel() {
                 {tradeCount}/{maxTrades}
               </span>
 
-              <div
-                className="
-                  flex
-                  items-center
-                  gap-1
-                "
-              >
+
+              <div className="flex gap-2">
+
                 {Array.from({
-                  length: maxTrades,
+
+                  length:
+                    Math.min(maxTrades, 8),
+
                 }).map((_, index) => (
+
                   <span
+
                     key={index}
+
                     className={`
                       w-[7px]
                       h-[7px]
                       rounded-full
-                      transition-all
-                      duration-200
                       ${
                         index < tradeCount
-                          ? "bg-red-400"
+
+                          ? "bg-violet-500"
+
                           : "bg-gray-200"
                       }
                     `}
+
                   />
+
                 ))}
+
               </div>
+
 
               <span
                 className="
-                  text-[11px]
+                  text-[10px]
                   text-gray-500
-                  ml-1
                 "
               >
                 Daily limit
@@ -477,356 +1279,431 @@ export default function TradingInsightsPanel() {
 
             </div>
 
+
             <button
+
               type="button"
+
+              onClick={() =>
+                setIsGuardrailsOpen(
+                  !isGuardrailsOpen
+                )
+              }
+
               className="
-                w-6
-                h-6
-                rounded-md
+                w-7
+                h-7
+                rounded-lg
                 flex
                 items-center
                 justify-center
                 text-gray-400
                 hover:bg-gray-100
+                transition
               "
+
             >
-              <ChevronUp size={14} />
+
+              {isGuardrailsOpen ? (
+
+                <ChevronUp size={15} />
+
+              ) : (
+
+                <ChevronDown size={15} />
+
+              )}
+
             </button>
 
           </div>
 
 
-          {/* TRADING WINDOW */}
+          {/* CONTENT */}
 
-          <div className="mt-4">
+          {isGuardrailsOpen && (
 
-            <div
-              className="
-                flex
-                items-center
-                justify-between
-              "
-            >
-
-              <span
-                className="
-                  text-[11px]
-                  uppercase
-                  tracking-wide
-                  font-medium
-                  text-gray-800
-                "
-              >
-                Trading Window
-              </span>
-
-              <span
-                className="
-                  px-2
-                  py-0.5
-                  rounded-full
-                  bg-violet-50
-                  border
-                  border-violet-100
-                  text-violet-700
-                  text-[10px]
-                  font-medium
-                "
-              >
-                Open
-              </span>
-
-            </div>
-
-            <p
-              className="
-                mt-1
-                text-[12px]
-                font-medium
-                text-gray-900
-              "
-            >
-              {tradingStart} - {tradingEnd} (UTC)
-            </p>
-
-          </div>
+            <>
 
 
-          {/* P&L */}
+              {/* TRADING WINDOW */}
 
-          <div className="mt-5">
-
-            <div
-              className="
-                flex
-                items-center
-                justify-between
-              "
-            >
-
-              <p
-                className="
-                  text-[11px]
-                  uppercase
-                  tracking-wide
-                  font-medium
-                  text-gray-800
-                "
-              >
-                Today's Net P&L
-              </p>
-
-              <p
-                className={`
-                  text-[13px]
-                  font-semibold
-                  ${
-                    dailyPnL < 0
-                      ? "text-red-500"
-                      : dailyPnL > 0
-                      ? "text-emerald-500"
-                      : "text-gray-900"
-                  }
-                `}
-              >
-                {formatPnL(dailyPnL)}
-              </p>
-
-            </div>
-
-
-            {/* CENTERED BAR */}
-
-            <div className="mt-2">
-
-              <div
-                className="
-                  relative
-                  w-full
-                  h-[9px]
-                  rounded-full
-                  bg-gray-100
-                  overflow-hidden
-                "
-              >
-
-                {/* LOSS */}
-
-                {dailyPnL < 0 && (
-                  <div
-                    className="
-                      absolute
-                      right-1/2
-                      top-0
-                      h-full
-                      bg-red-400
-                      rounded-l-full
-                      transition-all
-                      duration-300
-                    "
-                    style={{
-                      width: `${lossProgress * 50}%`,
-                    }}
-                  />
-                )}
-
-                {/* PROFIT */}
-
-                {dailyPnL > 0 && (
-                  <div
-                    className="
-                      absolute
-                      left-1/2
-                      top-0
-                      h-full
-                      bg-emerald-400
-                      rounded-r-full
-                      transition-all
-                      duration-300
-                    "
-                    style={{
-                      width: `${profitProgress * 50}%`,
-                    }}
-                  />
-                )}
-
-                {/* CENTER */}
+              <div className="mt-4">
 
                 <div
                   className="
-                    absolute
-                    left-1/2
-                    top-1/2
-                    -translate-x-1/2
-                    -translate-y-1/2
-                    w-[2px]
-                    h-[13px]
-                    bg-gray-400
-                    rounded-full
-                    z-10
+                    flex
+                    items-center
+                    justify-between
                   "
-                />
+                >
+
+                  <span
+                    className="
+                      text-[11px]
+                      uppercase
+                      tracking-wide
+                      font-medium
+                      text-gray-800
+                    "
+                  >
+                    Trading Window
+                  </span>
+
+
+                  <span
+                    className={`
+                      px-2
+                      py-0.5
+                      rounded-full
+                      border
+                      text-[10px]
+                      font-medium
+                      ${
+                        tradingWindowOpen
+
+                          ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+
+                          : "bg-red-50 border-red-100 text-red-600"
+                      }
+                    `}
+                  >
+
+                    {tradingWindowOpen
+                      ? "Open"
+                      : "Closed"}
+
+                  </span>
+
+                </div>
+
+
+                <p
+                  className="
+                    mt-1
+                    text-[12px]
+                    font-medium
+                    text-gray-900
+                  "
+                >
+                  {tradingStart} - {tradingEnd} UTC
+                </p>
 
               </div>
 
+
+              {/* PNL */}
+
+              <div className="mt-5">
+
+                <div
+                  className="
+                    flex
+                    items-center
+                    justify-between
+                  "
+                >
+
+                  <p
+                    className="
+                      text-[11px]
+                      uppercase
+                      tracking-wide
+                      font-medium
+                      text-gray-800
+                    "
+                  >
+                    Today's Net P&L
+                  </p>
+
+
+                  <p
+                    className={`
+                      text-[13px]
+                      font-semibold
+                      ${
+                        dailyPnL < 0
+
+                          ? "text-red-500"
+
+                          : dailyPnL > 0
+
+                          ? "text-emerald-500"
+
+                          : "text-gray-900"
+                      }
+                    `}
+                  >
+                    {formatPnL(dailyPnL)}
+                  </p>
+
+                </div>
+
+
+                <div className="mt-1">
+
+                  <div
+                    className="
+                      relative
+                      w-full
+                      h-[8px]
+                      rounded-full
+                      bg-gray-100
+                      overflow-visible
+                    "
+                  >
+
+                    {dailyPnL < 0 && (
+
+                      <div
+                        className="
+                          absolute
+                          right-1/2
+                          top-0
+                          h-full
+                          bg-red-400
+                          rounded-l-full
+                        "
+                        style={{
+
+                          width:
+                            `${lossProgress * 50}%`,
+
+                        }}
+                      />
+
+                    )}
+
+
+                    {dailyPnL > 0 && (
+
+                      <div
+                        className="
+                          absolute
+                          left-1/2
+                          top-0
+                          h-full
+                          bg-emerald-400
+                          rounded-r-full
+                        "
+                        style={{
+
+                          width:
+                            `${profitProgress * 50}%`,
+
+                        }}
+                      />
+
+                    )}
+
+
+                    <div
+                      className="
+                        absolute
+                        left-1/2
+                        top-1/2
+                        -translate-x-1/2
+                        -translate-y-1/2
+                        w-[2px]
+                        h-[13px]
+                        bg-gray-400
+                      "
+                    />
+
+                  </div>
+
+
+                  <div
+                    className="
+                      mt-1
+                      flex
+                      justify-between
+                      text-[9px]
+                    "
+                  >
+
+                    <span className="text-gray-500">
+
+                      -{formatCompactMoney(
+                        maxDailyLoss
+                      )}
+
+                    </span>
+
+
+                    <span className="text-gray-400">
+                      $0
+                    </span>
+
+
+                    <span className="text-gray-500">
+
+                      +
+                      {formatCompactMoney(
+                        maxDailyProfit
+                      )}
+
+                    </span>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+
+              {/* LIMITS */}
 
               <div
                 className="
-                  mt-1
-                  flex
-                  justify-between
-                  text-[9px]
+                  grid
+                  grid-cols-2
+                  gap-4
+                  mt-5
                 "
               >
 
-                <span className="text-gray-500">
-                  -{formatCompactMoney(maxDailyLoss)}
-                </span>
+                <div>
 
-                <span className="text-gray-400">
-                  $0
-                </span>
+                  <p
+                    className="
+                      text-[11px]
+                      uppercase
+                      tracking-wide
+                      font-medium
+                      text-gray-800
+                    "
+                  >
+                    Max Loss
+                  </p>
 
-                <span className="text-gray-500">
-                  +{formatCompactMoney(maxDailyProfit)}
-                </span>
+
+                  <p
+                    className="
+                      mt-1
+                      text-[12px]
+                      font-semibold
+                      text-gray-900
+                    "
+                  >
+                    {formatCompactMoney(
+                      maxDailyLoss
+                    )}
+                  </p>
+
+                </div>
+
+
+                <div>
+
+                  <p
+                    className="
+                      text-[11px]
+                      uppercase
+                      tracking-wide
+                      font-medium
+                      text-gray-800
+                    "
+                  >
+                    Daily Target
+                  </p>
+
+
+                  <p
+                    className="
+                      mt-1
+                      text-[12px]
+                      font-semibold
+                      text-gray-900
+                    "
+                  >
+                    {formatCompactMoney(
+                      maxDailyProfit
+                    )}
+                  </p>
+
+                </div>
 
               </div>
 
-            </div>
 
-          </div>
+              {/* RULE STATUS */}
 
+              <div
+                className={`
+                  mt-3
+                  flex
+                  items-center
+                  gap-3
+                  rounded-lg
+                  border
+                  px-3
+                  py-2.5
+                  ${
+                    ruleViolation
 
-          {/* LIMITS */}
+                      ? "bg-red-50 border-red-100"
 
-          <div
-            className="
-              grid
-              grid-cols-2
-              gap-4
-              mt-5
-            "
-          >
-
-            <div>
-
-              <p
-                className="
-                  text-[11px]
-                  uppercase
-                  tracking-wide
-                  font-medium
-                  text-gray-800
-                "
+                      : "bg-emerald-50 border-emerald-100"
+                  }
+                `}
               >
-                Max Loss
-              </p>
 
-              <p
-                className="
-                  mt-1
-                  text-[12px]
-                  font-semibold
-                  text-gray-900
-                "
-              >
-                {formatCompactMoney(maxDailyLoss)}
-              </p>
+                {ruleViolation ? (
 
-            </div>
+                  <>
 
+                    <AlertTriangle
+                      size={14}
+                      className="
+                        text-red-500
+                        shrink-0
+                      "
+                    />
 
-            <div>
+                    <span
+                      className="
+                        text-[11px]
+                        font-medium
+                        text-red-600
+                      "
+                    >
+                      {ruleViolation}
+                    </span>
 
-              <p
-                className="
-                  text-[11px]
-                  uppercase
-                  tracking-wide
-                  font-medium
-                  text-gray-800
-                "
-              >
-                Daily Target
-              </p>
+                  </>
 
-              <p
-                className="
-                  mt-1
-                  text-[12px]
-                  font-semibold
-                  text-gray-900
-                "
-              >
-                {formatCompactMoney(maxDailyProfit)}
-              </p>
+                ) : (
 
-            </div>
+                  <>
 
-          </div>
+                    <CircleCheck
+                      size={14}
+                      className="
+                        text-emerald-500
+                        shrink-0
+                      "
+                    />
 
+                    <span
+                      className="
+                        text-[11px]
+                        font-medium
+                        text-emerald-600
+                      "
+                    >
+                      No rule violations today
+                    </span>
 
-          {/* RULE STATUS */}
+                  </>
 
-          <div
-            className={`
-              mt-5
-              flex
-              items-center
-              gap-2
-              rounded-lg
-              border
-              px-3
-              py-2.5
-              ${
-                ruleViolation
-                  ? "bg-red-50 border-red-100"
-                  : "bg-emerald-50 border-emerald-100"
-              }
-            `}
-          >
+                )}
 
-            {ruleViolation ? (
-              <>
-                <AlertTriangle
-                  size={14}
-                  className="text-red-500 shrink-0"
-                />
+              </div>
 
-                <span
-                  className="
-                    text-[11px]
-                    font-medium
-                    text-red-600
-                  "
-                >
-                  {ruleViolation}
-                </span>
-              </>
-            ) : (
-              <>
-                <CircleCheck
-                  size={14}
-                  className="
-                    text-emerald-500
-                    shrink-0
-                  "
-                />
+            </>
 
-                <span
-                  className="
-                    text-[11px]
-                    font-medium
-                    text-emerald-600
-                  "
-                >
-                  No rule violations today
-                </span>
-              </>
-            )}
-
-          </div>
+          )}
 
         </div>
 
@@ -834,13 +1711,14 @@ export default function TradingInsightsPanel() {
 
 
       {/* ======================================================
-          PART 2 — WATCHLIST / ALERTS / TRADE PLAN
+          BOTTOM PANEL
       ====================================================== */}
 
-     <div
+<div
   className="
     flex-1
-    min-h-[441px]
+    min-h-0
+    h-full
     w-full
     rounded-2xl
     border
@@ -853,6 +1731,7 @@ export default function TradingInsightsPanel() {
   "
 >
 
+
         {/* TABS */}
 
         <div
@@ -862,15 +1741,20 @@ export default function TradingInsightsPanel() {
             grid-cols-3
             border-b
             border-gray-200
-            bg-white
           "
         >
 
-          {/* WATCHLIST */}
+
+          {/* WATCHLIST TAB */}
 
           <button
+
             type="button"
-            onClick={() => setActiveTab("watchlist")}
+
+            onClick={() =>
+              setActiveTab("watchlist")
+            }
+
             className={`
               relative
               h-12
@@ -880,20 +1764,24 @@ export default function TradingInsightsPanel() {
               gap-2
               text-[11px]
               font-medium
-              transition
               ${
                 activeTab === "watchlist"
+
                   ? "text-violet-600"
+
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
+
           >
 
             <List size={15} />
 
             Watchlist
 
+
             {activeTab === "watchlist" && (
+
               <span
                 className="
                   absolute
@@ -902,19 +1790,24 @@ export default function TradingInsightsPanel() {
                   right-3
                   h-[2px]
                   bg-violet-600
-                  rounded-full
                 "
               />
+
             )}
 
           </button>
 
 
-          {/* ALERTS */}
+          {/* ALERTS TAB */}
 
           <button
+
             type="button"
-            onClick={() => setActiveTab("alerts")}
+
+            onClick={() =>
+              setActiveTab("alerts")
+            }
+
             className={`
               relative
               h-12
@@ -924,20 +1817,24 @@ export default function TradingInsightsPanel() {
               gap-2
               text-[11px]
               font-medium
-              transition
               ${
                 activeTab === "alerts"
+
                   ? "text-violet-600"
+
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
+
           >
 
             <Bell size={15} />
 
             Alerts
 
+
             {activeTab === "alerts" && (
+
               <span
                 className="
                   absolute
@@ -946,19 +1843,24 @@ export default function TradingInsightsPanel() {
                   right-3
                   h-[2px]
                   bg-violet-600
-                  rounded-full
                 "
               />
+
             )}
 
           </button>
 
 
-          {/* TRADE PLAN */}
+          {/* TRADE PLAN TAB */}
 
           <button
+
             type="button"
-            onClick={() => setActiveTab("tradeplan")}
+
+            onClick={() =>
+              setActiveTab("tradeplan")
+            }
+
             className={`
               relative
               h-12
@@ -968,20 +1870,24 @@ export default function TradingInsightsPanel() {
               gap-2
               text-[11px]
               font-medium
-              transition
               ${
                 activeTab === "tradeplan"
+
                   ? "text-violet-600"
+
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
+
           >
 
             <ClipboardList size={15} />
 
             Trade Plan
 
+
             {activeTab === "tradeplan" && (
+
               <span
                 className="
                   absolute
@@ -990,9 +1896,9 @@ export default function TradingInsightsPanel() {
                   right-3
                   h-[2px]
                   bg-violet-600
-                  rounded-full
                 "
               />
+
             )}
 
           </button>
@@ -1000,7 +1906,9 @@ export default function TradingInsightsPanel() {
         </div>
 
 
-        {/* TAB CONTENT */}
+        {/* ======================================================
+            TAB CONTENT
+        ====================================================== */}
 
         <div
           className="
@@ -1011,17 +1919,21 @@ export default function TradingInsightsPanel() {
           "
         >
 
-          {/* WATCHLIST */}
+
+          {/* ==================================================
+              WATCHLIST
+          ================================================== */}
 
           {activeTab === "watchlist" && (
-            <div className="h-full">
+
+            <div>
 
               <div
                 className="
                   flex
                   items-center
                   justify-between
-                  mb-2
+                  mb-3
                 "
               >
 
@@ -1035,8 +1947,17 @@ export default function TradingInsightsPanel() {
                   Watchlist
                 </h3>
 
+
                 <button
+
                   type="button"
+
+                  onClick={() =>
+                    setShowWatchlistInput(
+                      !showWatchlistInput
+                    )
+                  }
+
                   className="
                     flex
                     items-center
@@ -1048,66 +1969,228 @@ export default function TradingInsightsPanel() {
                     text-violet-600
                     text-[10px]
                     font-medium
-                    hover:bg-violet-100
-                    transition
                   "
+
                 >
+
                   <Plus size={12} />
+
                   Add
+
                 </button>
 
               </div>
 
 
-              <div
-                className="
-                  min-h-[115px]
-                  rounded-xl
-                  border
-                  border-dashed
-                  border-gray-200
-                  flex
-                  flex-col
-                  items-center
-                  justify-center
-                  text-center
-                "
-              >
+              {/* ADD SYMBOL */}
 
-                <List
-                  size={20}
-                  className="
-                    text-gray-300
-                    mb-2
-                  "
-                />
+              {showWatchlistInput && (
 
-                <p
+                <div
                   className="
-                    text-[11px]
-                    text-gray-500
+                    flex
+                    gap-2
+                    mb-3
                   "
                 >
-                  No instruments in your watchlist
-                </p>
+
+                  <input
+
+                    value={newSymbol}
+
+                    onChange={(event) =>
+                      setNewSymbol(
+                        event.target.value
+                      )
+                    }
+
+                    onKeyDown={(event) => {
+
+                      if (
+                        event.key === "Enter"
+                      ) {
+
+                        addToWatchlist();
+
+                      }
+
+                    }}
+
+                    placeholder="EURUSD"
+
+                    className="
+                      flex-1
+                      px-3
+                      py-2
+                      rounded-lg
+                      border
+                      border-gray-200
+                      text-[11px]
+                      outline-none
+                      focus:border-violet-400
+                    "
+
+                  />
+
+
+                  <button
+
+                    type="button"
+
+                    onClick={addToWatchlist}
+
+                    className="
+                      px-3
+                      rounded-lg
+                      bg-violet-600
+                      text-white
+                      text-[11px]
+                    "
+
+                  >
+                    Add
+                  </button>
+
+                </div>
+
+              )}
+
+
+              {/* EMPTY */}
+
+              {watchlist.length === 0 && (
+
+                <div
+                  className="
+                    min-h-[115px]
+                    rounded-xl
+                    border
+                    border-dashed
+                    border-gray-200
+                    flex
+                    flex-col
+                    items-center
+                    justify-center
+                  "
+                >
+
+                  <List
+                    size={20}
+                    className="
+                      text-gray-300
+                      mb-2
+                    "
+                  />
+
+                  <p
+                    className="
+                      text-[11px]
+                      text-gray-500
+                    "
+                  >
+                    No instruments in your watchlist
+                  </p>
+
+                </div>
+
+              )}
+
+
+              {/* WATCHLIST ITEMS */}
+
+              <div className="space-y-2">
+
+                {watchlist.map((item) => (
+
+                  <div
+
+                    key={item.id}
+
+                    className="
+                      flex
+                      items-center
+                      justify-between
+                      px-3
+                      py-2.5
+                      rounded-xl
+                      border
+                      border-gray-100
+                      hover:border-violet-200
+                      transition
+                    "
+
+                  >
+
+                    <button
+
+                      type="button"
+
+                      onClick={() =>
+                        selectWatchlistSymbol(
+                          item.symbol
+                        )
+                      }
+
+                      className="
+                        text-[12px]
+                        font-semibold
+                        text-gray-800
+                        hover:text-violet-600
+                      "
+
+                    >
+
+                      {item.symbol}
+
+                    </button>
+
+
+                    <button
+
+                      type="button"
+
+                      onClick={() =>
+                        removeFromWatchlist(
+                          item.id
+                        )
+                      }
+
+                      className="
+                        text-gray-400
+                        hover:text-red-500
+                      "
+
+                    >
+
+                      <Trash2 size={14} />
+
+                    </button>
+
+                  </div>
+
+                ))}
 
               </div>
 
             </div>
+
           )}
 
 
-          {/* ALERTS */}
+          {/* ==================================================
+              ALERTS
+          ================================================== */}
 
           {activeTab === "alerts" && (
-            <div className="h-full">
+
+            <div>
 
               <div
                 className="
                   flex
                   items-center
                   justify-between
-                  mb-2
+                  mb-3
                 "
               >
 
@@ -1121,312 +2204,431 @@ export default function TradingInsightsPanel() {
                   Alerts
                 </h3>
 
+
+                <button
+
+                  type="button"
+
+                  onClick={() =>
+                    setShowAlertForm(
+                      !showAlertForm
+                    )
+                  }
+
+                  className="
+                    flex
+                    items-center
+                    gap-1
+                    px-3
+                    py-1.5
+                    rounded-lg
+                    bg-violet-50
+                    text-violet-600
+                    text-[10px]
+                    font-medium
+                  "
+
+                >
+
+                  <Plus size={12} />
+
+                  Add
+
+                </button>
+
               </div>
 
-              <div
-                className="
-                  min-h-[115px]
-                  rounded-xl
-                  border
-                  border-dashed
-                  border-gray-200
-                  flex
-                  flex-col
-                  items-center
-                  justify-center
-                  text-center
-                "
-              >
 
-                <Bell
-                  size={20}
-                  className="
-                    text-gray-300
-                    mb-2
-                  "
-                />
+              {/* ALERT FORM */}
 
-                <p
+              {showAlertForm && (
+
+                <div
                   className="
-                    text-[11px]
-                    text-gray-500
+                    mb-4
+                    p-3
+                    rounded-xl
+                    bg-gray-50
+                    border
+                    border-gray-200
+                    space-y-2
                   "
                 >
-                  No active alerts
-                </p>
+
+                  <input
+
+                    value={alertSymbol}
+
+                    onChange={(event) =>
+                      setAlertSymbol(
+                        event.target.value
+                      )
+                    }
+
+                    placeholder="Symbol"
+
+                    className="
+                      w-full
+                      px-3
+                      py-2
+                      rounded-lg
+                      border
+                      border-gray-200
+                      text-[11px]
+                    "
+
+                  />
+
+
+                  <div className="flex gap-2">
+
+                    <select
+
+                      value={alertCondition}
+
+                      onChange={(event) =>
+                        setAlertCondition(
+                          event.target.value
+                        )
+                      }
+
+                      className="
+                        flex-1
+                        px-2
+                        py-2
+                        rounded-lg
+                        border
+                        border-gray-200
+                        text-[11px]
+                      "
+
+                    >
+
+                      <option value="above">
+                        Above
+                      </option>
+
+                      <option value="below">
+                        Below
+                      </option>
+
+                    </select>
+
+
+                    <input
+
+                      type="number"
+
+                      value={alertPrice}
+
+                      onChange={(event) =>
+                        setAlertPrice(
+                          event.target.value
+                        )
+                      }
+
+                      placeholder="Price"
+
+                      className="
+                        flex-1
+                        px-3
+                        py-2
+                        rounded-lg
+                        border
+                        border-gray-200
+                        text-[11px]
+                      "
+
+                    />
+
+                  </div>
+
+
+                  <button
+
+                    type="button"
+
+                    onClick={addAlert}
+
+                    className="
+                      w-full
+                      py-2
+                      rounded-lg
+                      bg-violet-600
+                      text-white
+                      text-[11px]
+                      font-medium
+                    "
+
+                  >
+                    Create Alert
+                  </button>
+
+                </div>
+
+              )}
+
+
+              {/* EMPTY */}
+
+              {alerts.length === 0 && (
+
+                <div
+                  className="
+                    min-h-[115px]
+                    rounded-xl
+                    border
+                    border-dashed
+                    border-gray-200
+                    flex
+                    flex-col
+                    items-center
+                    justify-center
+                  "
+                >
+
+                  <Bell
+                    size={20}
+                    className="
+                      text-gray-300
+                      mb-2
+                    "
+                  />
+
+                  <p
+                    className="
+                      text-[11px]
+                      text-gray-500
+                    "
+                  >
+                    No active alerts
+                  </p>
+
+                </div>
+
+              )}
+
+
+              {/* ALERT LIST */}
+
+              <div className="space-y-2">
+
+                {alerts.map((alert) => (
+
+                  <div
+
+                    key={alert.id}
+
+                    className="
+                      flex
+                      items-center
+                      justify-between
+                      p-3
+                      rounded-xl
+                      border
+                      border-gray-100
+                    "
+
+                  >
+
+                    <div>
+
+                      <p
+                        className="
+                          text-[12px]
+                          font-semibold
+                          text-gray-800
+                        "
+                      >
+                        {alert.symbol}
+                      </p>
+
+
+                      <p
+                        className="
+                          mt-1
+                          text-[10px]
+                          text-gray-500
+                        "
+                      >
+                        {alertCondition === "above"
+                          ? "Above"
+                          : alert.condition === "above"
+                          ? "Above"
+                          : "Below"}{" "}
+                        {alert.price}
+
+                      </p>
+
+                    </div>
+
+
+                    <button
+
+                      type="button"
+
+                      onClick={() =>
+                        removeAlert(alert.id)
+                      }
+
+                      className="
+                        text-gray-400
+                        hover:text-red-500
+                      "
+
+                    >
+
+                      <Trash2 size={14} />
+
+                    </button>
+
+                  </div>
+
+                ))}
 
               </div>
 
             </div>
+
           )}
 
 
-          {/* TRADE PLAN */}
+          {/* ==================================================
+              TRADE PLAN
+          ================================================== */}
 
           {activeTab === "tradeplan" && (
-  <div className="h-full">
 
-    <div className="flex items-center justify-between mb-1">
-      <h3 className="text-[12px] font-semibold text-gray-900">
-        Trade Plan
-      </h3>
-    </div>
+            <div>
 
-    {!selectedEdgePlan ? (
-      <div className="
-        min-h-[115px]
-        rounded-xl
-        border
-        border-dashed
-        border-gray-200
-        flex
-        flex-col
-        items-center
-        justify-center
-        text-center
-      ">
-        <ClipboardList
-          size={20}
-          className="text-gray-300 mb-2"
-        />
+              <div className="mb-0">
 
-        <p className="text-[11px] text-gray-500">
-          Select a plan from Edge
-        </p>
-      </div>
-   ) : (
-
-    <div className="space-y-2">
-  
-      {/* CHARTING PROCESS */}
-  
-      {selectedEdgePlan.chartingProcess?.length > 0 && (
-  
-        <div
-          className="
-            rounded-xl
-            border
-            border-gray-200
-            bg-gray-50
-            p-3
-          "
-        >
-  
-          <p
-            className="
-              text-[11px]
-              font-semibold
-              text-gray-800
-              mb-2
-            "
-          >
-            Charting Process
-          </p>
-  
-          <div className="space-y-2">
-  
-            {selectedEdgePlan.chartingProcess.map(
-              (item, index) => (
-  
-                <label
-                  key={index}
+                <h3
                   className="
-                    flex
-                    items-start
-                    gap-2
-                    cursor-pointer
+                    text-[12px]
+                    font-semibold
+                    text-gray-900
                   "
                 >
-  
-                  <input
-                    type="checkbox"
-                    className="
-                      mt-[2px]
-                      accent-violet-600
-                    "
-                  />
-  
-                  <span
-                    className="
-                      text-[11px]
-                      text-gray-700
-                    "
-                  >
-                    {typeof item === "string"
-                      ? item
-                      : item.name ||
-                        item.text ||
-                        item.title}
-                  </span>
-  
-                </label>
-  
-              )
-            )}
-  
-          </div>
-  
-        </div>
-  
-      )}
-  
-  
-      {/* ENTRY CRITERIA */}
-  
-      {selectedEdgePlan.entryCriteria?.length > 0 && (
-  
-        <div
-          className="
-            rounded-xl
-            border
-            border-gray-200
-            bg-gray-50
-            p-3
-          "
-        >
-  
-          <p
-            className="
-              text-[11px]
-              font-semibold
-              text-gray-800
-              mb-2
-            "
-          >
-            Entry Criteria
-          </p>
-  
-          <div className="space-y-2">
-  
-            {selectedEdgePlan.entryCriteria.map(
-              (item, index) => (
-  
-                <label
-                  key={index}
-                  className="
-                    flex
-                    items-start
-                    gap-2
-                    cursor-pointer
-                  "
-                >
-  
-                  <input
-                    type="checkbox"
-                    className="
-                      mt-[2px]
-                      accent-violet-600
-                    "
-                  />
-  
-                  <span
-                    className="
-                      text-[11px]
-                      text-gray-700
-                    "
-                  >
-                    {typeof item === "string"
-                      ? item
-                      : item.name ||
-                        item.text ||
-                        item.title}
-                  </span>
-  
-                </label>
-  
-              )
-            )}
-  
-          </div>
-  
-        </div>
-  
-      )}
-  
-  
-      {/* EXIT CRITERIA */}
-  
-      {selectedEdgePlan.exitCriteria?.length > 0 && (
-  
-        <div
-          className="
-            rounded-xl
-            border
-            border-gray-200
-            bg-gray-50
-            p-3
-          "
-        >
-  
-          <p
-            className="
-              text-[11px]
-              font-semibold
-              text-gray-800
-              mb-2
-            "
-          >
-            Exit Criteria
-          </p>
-  
-          <div className="space-y-2">
-  
-            {selectedEdgePlan.exitCriteria.map(
-              (item, index) => (
-  
-                <label
-                  key={index}
-                  className="
-                    flex
-                    items-start
-                    gap-2
-                    cursor-pointer
-                  "
-                >
-  
-                  <input
-                    type="checkbox"
-                    className="
-                      mt-[2px]
-                      accent-violet-600
-                    "
-                  />
-  
-                  <span
-                    className="
-                      text-[11px]
-                      text-gray-700
-                    "
-                  >
-                    {typeof item === "string"
-                      ? item
-                      : item.name ||
-                        item.text ||
-                        item.title}
-                  </span>
-  
-                </label>
-  
-              )
-            )}
-  
-          </div>
-  
-        </div>
-  
-      )}
-  
-    </div>
-  
-  )}
+                  Trade Plan
+                </h3>
 
-  </div>
-)}
+
+                {selectedEdgePlan?.name && (
+
+                  <p
+                    className="
+                      mt-1
+                      text-[10px]
+                      text-violet-600
+                    "
+                  >
+                    {selectedEdgePlan.name}
+                  </p>
+
+                )}
+
+              </div>
+
+
+              {!selectedEdgePlan ? (
+
+                <div
+                  className="
+                    min-h-[115px]
+                    rounded-xl
+                    border
+                    border-dashed
+                    border-gray-200
+                    flex
+                    flex-col
+                    items-center
+                    justify-center
+                    text-center
+                  "
+                >
+
+                  <ClipboardList
+                    size={20}
+                    className="
+                      text-gray-300
+                      mb-2
+                    "
+                  />
+
+                  <p
+                    className="
+                      text-[11px]
+                      text-gray-500
+                    "
+                  >
+                    Select a plan from Edge
+                  </p>
+
+                </div>
+
+              ) : (
+
+                <div className="space-y-1">
+
+                  <TradePlanSection
+
+                    title="Charting Process"
+
+                    items={
+                      getChecklistItems(
+                        selectedEdgePlan.chartingProcess
+                      )
+                    }
+
+                    sectionKey="charting"
+
+                  />
+
+
+                  <TradePlanSection
+
+                    title="Entry Criteria"
+
+                    items={
+                      getChecklistItems(
+                        selectedEdgePlan.entryCriteria
+                      )
+                    }
+
+                    sectionKey="entry"
+
+                  />
+
+
+                  <TradePlanSection
+
+                    title="Exit Criteria"
+
+                    items={
+                      getChecklistItems(
+                        selectedEdgePlan.exitCriteria
+                      )
+                    }
+
+                    sectionKey="exit"
+
+                  />
+
+                </div>
+
+              )}
+
+            </div>
+
+          )}
 
         </div>
 
       </div>
 
     </div>
+
   );
+
 }

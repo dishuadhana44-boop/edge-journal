@@ -1,8 +1,8 @@
 import {
   createContext,
-  useState,
   useMemo,
   useEffect,
+  useState,
 } from "react";
 
 import { useMarket } from "../../../../context/MarketContext";
@@ -12,115 +12,87 @@ import { calculatePips } from "../../../../utils/calculator/pipCalculator";
 import { calculateRR } from "../../../../utils/calculator/rrCalculator";
 import { calculateRiskAmount } from "../../../../utils/calculator/riskCalculator";
 
-export const OrderContext = createContext();
+export const OrderContext = createContext(null);
+
+// ============================================================
+// DEFAULT GUARDRAILS
+// ============================================================
+
+const DEFAULT_GUARDRAILS = {
+  enabled: true,
+  riskPerTrade: 1,
+};
 
 export function OrderProvider({ children }) {
-
-  /*
-  ============================================================
-  MARKET DATA
-  ============================================================
-  */
+  // ==========================================================
+  // MARKET DATA
+  // ==========================================================
 
   const market = useMarket();
 
   const bid = Number(market?.bid || 0);
   const ask = Number(market?.ask || 0);
 
-  /*
-  ============================================================
-  ACCOUNT
-  ============================================================
-  */
+  // ==========================================================
+  // ACCOUNT
+  // ==========================================================
 
   const balance = 100158.75;
 
-  /*
-  ============================================================
-  ORDER SIDE
-  ============================================================
-  */
+  // ==========================================================
+  // ORDER SIDE
+  // ==========================================================
 
   const [side, setSide] = useState("buy");
 
-  /*
-  ============================================================
-  ORDER TYPE
-  ============================================================
-  */
+  // ==========================================================
+  // ORDER TYPE
+  // ==========================================================
 
   const [orderType, setOrderType] = useState("Market");
 
-  /*
-  ============================================================
-  PRICES
-  ============================================================
-  */
-
-  /*
-    IMPORTANT:
-
-    Market order entry is controlled by live Bid / Ask.
-
-    We keep entry as state because Limit / Stop orders
-    need a manually entered price.
-  */
+  // ==========================================================
+  // PRICES
+  // ==========================================================
 
   const [entry, setEntry] = useState("");
-
   const [sl, setSL] = useState("");
-
   const [tp, setTP] = useState("");
 
-  /*
-  ============================================================
-  LIVE MARKET ENTRY SYNC
-  ============================================================
-  
-  BUY MARKET:
-      Entry = ASK
-
-  SELL MARKET:
-      Entry = BID
-
-  Limit / Stop:
-      Entry remains manually controlled.
-  ============================================================
-  */
+  // ==========================================================
+  // LIVE MARKET ENTRY SYNC
+  //
+  // BUY  MARKET -> ASK
+  // SELL MARKET -> BID
+  //
+  // This is the SINGLE SOURCE OF TRUTH for market entry.
+  // ==========================================================
 
   useEffect(() => {
-
     if (orderType !== "Market") {
       return;
     }
 
-    let marketEntry = 0;
-
-    if (side === "buy") {
-      marketEntry = ask;
-    } else {
-      marketEntry = bid;
-    }
-
-    /*
-      Do not put zero into entry.
-
-      cTrader spot events can contain only BID or ASK.
-      Therefore, if the required side is temporarily
-      unavailable, keep the previous valid entry.
-    */
+    const marketEntry =
+      side === "buy"
+        ? ask
+        : bid;
 
     if (
       Number.isFinite(marketEntry) &&
       marketEntry > 0
     ) {
+      const formattedEntry =
+        marketEntry.toFixed(5);
 
-      setEntry(
-        marketEntry.toFixed(5)
-      );
+      setEntry((previousEntry) => {
+        if (previousEntry === formattedEntry) {
+          return previousEntry;
+        }
 
+        return formattedEntry;
+      });
     }
-
   }, [
     orderType,
     side,
@@ -128,62 +100,105 @@ export function OrderProvider({ children }) {
     ask,
   ]);
 
-  /*
-  ============================================================
-  RISK
-  ============================================================
-  */
+  // ==========================================================
+  // TRADING GUARDRAILS
+  // ==========================================================
 
-  const [risk, setRisk] = useState(1);
+  const [guardrails, setGuardrails] =
+    useState(() => {
+      try {
+        const saved =
+          localStorage.getItem(
+            "tradingGuardrails"
+          );
 
-  /*
-  ============================================================
-  LOT SIZE
-  ============================================================
-  */
+        return saved
+          ? {
+              ...DEFAULT_GUARDRAILS,
+              ...JSON.parse(saved),
+            }
+          : DEFAULT_GUARDRAILS;
+      } catch (error) {
+        console.error(
+          "Failed to load trading guardrails:",
+          error
+        );
 
-  const [lots, setLots] = useState(0.01);
+        return DEFAULT_GUARDRAILS;
+      }
+    });
 
-  /*
-  ============================================================
-  EDIT MODE
-  ============================================================
-  
-  "risk":
-      Lot size is calculated automatically.
+  // ==========================================================
+  // LISTEN FOR GUARDRAILS UPDATES
+  // ==========================================================
 
-  "lots":
-      User manually controls lot size.
-  ============================================================
-  */
+  useEffect(() => {
+    const handleGuardrailsUpdate = () => {
+      try {
+        const saved =
+          localStorage.getItem(
+            "tradingGuardrails"
+          );
 
-  const [lotEditMode, setLotEditMode] =
-    useState("risk");
+        if (saved) {
+          setGuardrails({
+            ...DEFAULT_GUARDRAILS,
+            ...JSON.parse(saved),
+          });
+        }
+      } catch (error) {
+        console.error(
+          "Failed to update trading guardrails:",
+          error
+        );
+      }
+    };
 
-  /*
-  ============================================================
-  EFFECTIVE ENTRY
-  ============================================================
-  
-  MARKET:
-      BUY  -> ASK
-      SELL -> BID
+    window.addEventListener(
+      "guardrailsUpdated",
+      handleGuardrailsUpdate
+    );
 
-  LIMIT / STOP:
-      User entered price
-  ============================================================
-  */
+    return () => {
+      window.removeEventListener(
+        "guardrailsUpdated",
+        handleGuardrailsUpdate
+      );
+    };
+  }, []);
+
+  // ==========================================================
+  // FIXED RISK FROM GUARDRAILS
+  // ==========================================================
+
+  const risk = useMemo(() => {
+    const configuredRisk =
+      Number(
+        guardrails?.riskPerTrade || 0
+      );
+
+    return configuredRisk;
+  }, [
+    guardrails?.riskPerTrade,
+  ]);
+
+  // ==========================================================
+  // EFFECTIVE ENTRY
+  //
+  // MARKET:
+  // BUY  -> ASK
+  // SELL -> BID
+  //
+  // LIMIT / STOP:
+  // Manual entry
+  // ==========================================================
 
   const effectiveEntry = useMemo(() => {
-
     if (orderType === "Market") {
-
       if (side === "buy") {
-
         return ask > 0
           ? ask
           : 0;
-
       }
 
       return bid > 0
@@ -192,7 +207,6 @@ export function OrderProvider({ children }) {
     }
 
     return Number(entry || 0);
-
   }, [
     orderType,
     side,
@@ -201,273 +215,139 @@ export function OrderProvider({ children }) {
     entry,
   ]);
 
-  /*
-  ============================================================
-  RISK PIPS
-  ============================================================
-  */
+  // ==========================================================
+  // RISK PIPS
+  // ==========================================================
 
-  const riskPips =
-    calculatePips(
-      effectiveEntry,
-      Number(sl || 0)
+  const riskPips = useMemo(() => {
+    if (
+      !effectiveEntry ||
+      !sl
+    ) {
+      return 0;
+    }
+
+    return calculatePips(
+      Number(effectiveEntry),
+      Number(sl)
     );
+  }, [
+    effectiveEntry,
+    sl,
+  ]);
 
-  /*
-  ============================================================
-  REWARD PIPS
-  ============================================================
-  */
+  // ==========================================================
+  // REWARD PIPS
+  // ==========================================================
 
-  const rewardPips =
-    calculatePips(
-      effectiveEntry,
-      Number(tp || 0)
+  const rewardPips = useMemo(() => {
+    if (
+      !effectiveEntry ||
+      !tp
+    ) {
+      return 0;
+    }
+
+    return calculatePips(
+      Number(effectiveEntry),
+      Number(tp)
     );
+  }, [
+    effectiveEntry,
+    tp,
+  ]);
 
-  /*
-  ============================================================
-  RISK AMOUNT
-  ============================================================
-  */
+  // ==========================================================
+  // RISK AMOUNT
+  // ==========================================================
 
-  const riskAmount =
-    calculateRiskAmount(
+  const riskAmount = useMemo(() => {
+    return calculateRiskAmount(
       Number(balance),
       Number(risk)
     );
-
-  /*
-  ============================================================
-  R:R
-  ============================================================
-  */
-
-  const rr =
-    calculateRR(
-      effectiveEntry,
-      Number(sl || 0),
-      Number(tp || 0)
-    );
-
-  /*
-  ============================================================
-  AUTO LOT CALCULATION
-  ============================================================
-  */
-
-  const calculatedLotSize =
-    calculateLotSize(
-      Number(riskAmount || 0),
-      Number(riskPips || 0)
-    );
-
-  /*
-  ============================================================
-  FINAL LOT SIZE
-  ============================================================
-  
-  Risk mode:
-      Automatically calculated.
-
-  Lot mode:
-      User entered lots.
-  ============================================================
-  */
-
-  const lotSize =
-    lotEditMode === "risk"
-      ? Number(calculatedLotSize || 0)
-      : Number(lots || 0);
-
-  /*
-  ============================================================
-  RISK FROM LOTS
-  ============================================================
-  */
-
-  const riskFromLots = useMemo(() => {
-
-    const calculatedLots =
-      Number(calculatedLotSize || 0);
-
-    const enteredLots =
-      Number(lots || 0);
-
-    if (
-      calculatedLots <= 0 ||
-      enteredLots <= 0
-    ) {
-
-      return Number(risk || 0);
-
-    }
-
-    const currentRisk =
-      Number(risk || 0);
-
-    const calculatedRiskAmount =
-      Number(riskAmount || 0);
-
-    if (
-      calculatedRiskAmount <= 0
-    ) {
-
-      return currentRisk;
-
-    }
-
-    const newRiskAmount =
-      calculatedRiskAmount *
-      (
-        enteredLots /
-        calculatedLots
-      );
-
-    const newRisk =
-      (
-        newRiskAmount /
-        Number(balance)
-      ) * 100;
-
-    return Math.min(
-      10,
-      Math.max(
-        0.25,
-        Number(newRisk)
-      )
-    );
-
   }, [
-    calculatedLotSize,
-    lots,
-    risk,
-    riskAmount,
     balance,
+    risk,
   ]);
 
-  /*
-  ============================================================
-  RISK HANDLER
-  ============================================================
-  */
+  // ==========================================================
+  // R:R CALCULATION
+  // ==========================================================
 
-  const handleRiskChange = (value) => {
-
-    let newRisk = Number(value);
-
-    if (!Number.isFinite(newRisk)) {
-      newRisk = 0;
-    }
-
-    newRisk =
-      Math.min(
-        10,
-        Math.max(
-          0,
-          newRisk
-        )
-      );
-
-    setLotEditMode("risk");
-
-    setRisk(newRisk);
-
-  };
-
-  /*
-  ============================================================
-  LOT HANDLER
-  ============================================================
-  */
-
-  const handleLotsChange = (value) => {
-
-    let newLots = Number(value);
-
-    if (!Number.isFinite(newLots)) {
-      newLots = 0;
-    }
-
-    newLots =
-      Math.max(
-        0,
-        newLots
-      );
-
-    setLots(newLots);
-
-    /*
-      Manual lot mode.
-    */
-
-    setLotEditMode("lots");
-
-    /*
-      Calculate matching risk.
-    */
-
-    const calculatedLots =
-      Number(calculatedLotSize || 0);
-
+  const rr = useMemo(() => {
     if (
-      calculatedLots > 0 &&
-      newLots > 0
+      !effectiveEntry ||
+      !sl ||
+      !tp
     ) {
-
-      const currentRiskAmount =
-        Number(riskAmount || 0);
-
-      const newRiskAmount =
-        currentRiskAmount *
-        (
-          newLots /
-          calculatedLots
-        );
-
-      const newRisk =
-        (
-          newRiskAmount /
-          Number(balance)
-        ) * 100;
-
-      const clampedRisk =
-        Math.min(
-          10,
-          Math.max(
-            0.25,
-            newRisk
-          )
-        );
-
-      setRisk(
-        Number(
-          clampedRisk.toFixed(2)
-        )
-      );
-
+      return 0;
     }
 
-  };
+    return calculateRR(
+      Number(effectiveEntry),
+      Number(sl),
+      Number(tp)
+    );
+  }, [
+    effectiveEntry,
+    sl,
+    tp,
+  ]);
 
-  /*
-  ============================================================
-  REWARD AMOUNT
-  ============================================================
-  */
+  // ==========================================================
+  // AUTO LOT CALCULATION
+  // ==========================================================
 
-  const rewardAmount =
-    Number(riskAmount || 0) *
-    Number(rr || 0);
+  const calculatedLotSize =
+    useMemo(() => {
+      if (
+        Number(riskAmount) <= 0 ||
+        Number(riskPips) <= 0
+      ) {
+        return 0;
+      }
 
-  /*
-  ============================================================
-  ORDER VALIDATION
-  ============================================================
-  */
+      return calculateLotSize(
+        Number(riskAmount),
+        Number(riskPips)
+      );
+    }, [
+      riskAmount,
+      riskPips,
+    ]);
+
+  // ==========================================================
+  // FINAL LOT SIZE
+  // ==========================================================
+
+  const lotSize = useMemo(() => {
+    return Number(
+      calculatedLotSize || 0
+    );
+  }, [
+    calculatedLotSize,
+  ]);
+
+  // ==========================================================
+  // REWARD AMOUNT
+  // ==========================================================
+
+  const rewardAmount = useMemo(() => {
+    return (
+      Number(riskAmount || 0) *
+      Number(rr || 0)
+    );
+  }, [
+    riskAmount,
+    rr,
+  ]);
+
+  // ==========================================================
+  // ORDER VALIDATION
+  // ==========================================================
 
   const validation = useMemo(() => {
-
     const errors = [];
 
     const currentBid =
@@ -491,136 +371,108 @@ export function OrderProvider({ children }) {
     const lotsValue =
       Number(lotSize || 0);
 
-    /*
-    ----------------------------------------------------------
-    MARKET DATA
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // MARKET DATA
+    // ========================================================
 
     if (orderType === "Market") {
-
-      if (side === "buy" && currentAsk <= 0) {
-
+      if (
+        side === "buy" &&
+        currentAsk <= 0
+      ) {
         errors.push(
           "Live Ask price is not available."
         );
-
       }
 
-      if (side === "sell" && currentBid <= 0) {
-
+      if (
+        side === "sell" &&
+        currentBid <= 0
+      ) {
         errors.push(
           "Live Bid price is not available."
         );
-
       }
-
     }
 
-    /*
-    ----------------------------------------------------------
-    ENTRY
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // ENTRY
+    // ========================================================
 
     if (
       !entryPrice ||
       entryPrice <= 0
     ) {
-
       errors.push(
         "Entry price is required."
       );
-
     }
 
-    /*
-    ----------------------------------------------------------
-    STOP LOSS
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // STOP LOSS
+    // ========================================================
 
     if (
       !stopLoss ||
       stopLoss <= 0
     ) {
-
       errors.push(
         "Stop Loss is required."
       );
-
     }
 
-    /*
-    ----------------------------------------------------------
-    TAKE PROFIT
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // TAKE PROFIT
+    // ========================================================
 
     if (
       !takeProfit ||
       takeProfit <= 0
     ) {
-
       errors.push(
         "Take Profit is required."
       );
-
     }
 
-    /*
-    ----------------------------------------------------------
-    RISK
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // GUARDRAILS RISK
+    // ========================================================
 
     if (
       !riskValue ||
-      riskValue < 0.25 ||
-      riskValue > 10
+      riskValue <= 0
     ) {
-
       errors.push(
-        "Risk must be between 0.25% and 10%."
+        "Risk Per Trade is not configured in Guardrails."
       );
-
     }
 
-    /*
-    ----------------------------------------------------------
-    LOT SIZE
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // LOT SIZE
+    // ========================================================
 
     if (
       !Number.isFinite(lotsValue) ||
       lotsValue <= 0
     ) {
-
       errors.push(
-        "Invalid lot size."
+        "Lot size cannot be calculated. Add a valid Stop Loss."
       );
-
     }
 
-    /*
-    ----------------------------------------------------------
-    BUY
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // BUY VALIDATION
+    // ========================================================
 
     if (side === "buy") {
-
       if (
         stopLoss > 0 &&
         entryPrice > 0 &&
         stopLoss >= entryPrice
       ) {
-
         errors.push(
           "For Buy orders, Stop Loss must be below Entry."
         );
-
       }
 
       if (
@@ -628,33 +480,25 @@ export function OrderProvider({ children }) {
         entryPrice > 0 &&
         takeProfit <= entryPrice
       ) {
-
         errors.push(
           "For Buy orders, Take Profit must be above Entry."
         );
-
       }
-
     }
 
-    /*
-    ----------------------------------------------------------
-    SELL
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // SELL VALIDATION
+    // ========================================================
 
     if (side === "sell") {
-
       if (
         stopLoss > 0 &&
         entryPrice > 0 &&
         stopLoss <= entryPrice
       ) {
-
         errors.push(
           "For Sell orders, Stop Loss must be above Entry."
         );
-
       }
 
       if (
@@ -662,116 +506,75 @@ export function OrderProvider({ children }) {
         entryPrice > 0 &&
         takeProfit >= entryPrice
       ) {
-
         errors.push(
           "For Sell orders, Take Profit must be below Entry."
         );
-
       }
-
     }
 
-    /*
-    ----------------------------------------------------------
-    BUY LIMIT
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // BUY LIMIT
+    // ========================================================
 
     if (
       orderType === "Limit" &&
-      side === "buy"
+      side === "buy" &&
+      currentAsk > 0 &&
+      entryPrice >= currentAsk
     ) {
-
-      if (
-        currentAsk > 0 &&
-        entryPrice >= currentAsk
-      ) {
-
-        errors.push(
-          "Buy Limit price must be below current Ask."
-        );
-
-      }
-
+      errors.push(
+        "Buy Limit price must be below current Ask."
+      );
     }
 
-    /*
-    ----------------------------------------------------------
-    SELL LIMIT
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // SELL LIMIT
+    // ========================================================
 
     if (
       orderType === "Limit" &&
-      side === "sell"
+      side === "sell" &&
+      currentBid > 0 &&
+      entryPrice <= currentBid
     ) {
-
-      if (
-        currentBid > 0 &&
-        entryPrice <= currentBid
-      ) {
-
-        errors.push(
-          "Sell Limit price must be above current Bid."
-        );
-
-      }
-
+      errors.push(
+        "Sell Limit price must be above current Bid."
+      );
     }
 
-    /*
-    ----------------------------------------------------------
-    BUY STOP
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // BUY STOP
+    // ========================================================
 
     if (
       orderType === "Stop" &&
-      side === "buy"
+      side === "buy" &&
+      currentAsk > 0 &&
+      entryPrice <= currentAsk
     ) {
-
-      if (
-        currentAsk > 0 &&
-        entryPrice <= currentAsk
-      ) {
-
-        errors.push(
-          "Buy Stop price must be above current Ask."
-        );
-
-      }
-
+      errors.push(
+        "Buy Stop price must be above current Ask."
+      );
     }
 
-    /*
-    ----------------------------------------------------------
-    SELL STOP
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // SELL STOP
+    // ========================================================
 
     if (
       orderType === "Stop" &&
-      side === "sell"
+      side === "sell" &&
+      currentBid > 0 &&
+      entryPrice >= currentBid
     ) {
-
-      if (
-        currentBid > 0 &&
-        entryPrice >= currentBid
-      ) {
-
-        errors.push(
-          "Sell Stop price must be below current Bid."
-        );
-
-      }
-
+      errors.push(
+        "Sell Stop price must be below current Bid."
+      );
     }
 
-    /*
-    ----------------------------------------------------------
-    PIPS
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // STOP LOSS DISTANCE
+    // ========================================================
 
     if (
       !Number.isFinite(
@@ -779,99 +582,70 @@ export function OrderProvider({ children }) {
       ) ||
       Number(riskPips) <= 0
     ) {
-
       errors.push(
         "Stop Loss distance must be greater than zero."
       );
-
     }
 
-    /*
-    ----------------------------------------------------------
-    FINAL
-    ----------------------------------------------------------
-    */
+    // ========================================================
+    // FINAL RESULT
+    // ========================================================
 
     return {
-
       valid:
         errors.length === 0,
-
       errors,
-
     };
-
   }, [
-
     bid,
     ask,
-
     side,
     orderType,
-
     effectiveEntry,
-
     sl,
     tp,
-
     risk,
     lotSize,
-
     riskPips,
-
   ]);
 
-  /*
-  ============================================================
-  PROVIDER
-  ============================================================
-  */
+  // ==========================================================
+  // PROVIDER
+  // ==========================================================
 
   return (
-
     <OrderContext.Provider
       value={{
-
-        /*
-        ========================================================
-        ACCOUNT
-        ========================================================
-        */
+        // ======================================================
+        // ACCOUNT
+        // ======================================================
 
         balance,
 
-        /*
-        ========================================================
-        MARKET
-        ========================================================
-        */
+        // ======================================================
+        // MARKET
+        // ======================================================
 
         bid,
         ask,
 
-        /*
-        ========================================================
-        SIDE
-        ========================================================
-        */
+        // ======================================================
+        // SIDE
+        // ======================================================
 
         side,
         setSide,
 
-        /*
-        ========================================================
-        ORDER TYPE
-        ========================================================
-        */
+        // ======================================================
+        // ORDER TYPE
+        // ======================================================
 
         orderType,
         setOrderType,
 
-        /*
-        ========================================================
-        PRICES
-        ========================================================
-        */
+        // ======================================================
+        // PRICES
+        // ======================================================
 
         entry,
         setEntry,
@@ -884,33 +658,18 @@ export function OrderProvider({ children }) {
         tp,
         setTP,
 
-        /*
-        ========================================================
-        RISK
-        ========================================================
-        */
+        // ======================================================
+        // GUARDRAILS
+        // ======================================================
+
+        guardrails,
+        setGuardrails,
 
         risk,
 
-        setRisk:
-          handleRiskChange,
-
-        /*
-        ========================================================
-        LOTS
-        ========================================================
-        */
-
-        lots,
-
-        setLots:
-          handleLotsChange,
-
-        /*
-        ========================================================
-        CALCULATIONS
-        ========================================================
-        */
+        // ======================================================
+        // CALCULATIONS
+        // ======================================================
 
         riskAmount,
         rewardAmount,
@@ -920,33 +679,17 @@ export function OrderProvider({ children }) {
 
         rr,
 
+        calculatedLotSize,
         lotSize,
 
-        /*
-        ========================================================
-        EXTRA
-        ========================================================
-        */
-
-        riskFromLots,
-
-        calculatedLotSize,
-
-        /*
-        ========================================================
-        VALIDATION
-        ========================================================
-        */
+        // ======================================================
+        // VALIDATION
+        // ======================================================
 
         validation,
-
       }}
     >
-
       {children}
-
     </OrderContext.Provider>
-
   );
-
 }

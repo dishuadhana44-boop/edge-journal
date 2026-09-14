@@ -1,109 +1,124 @@
+import ClosedPositionRow from "../rows/ClosedPositionRow";
+
 import { useTrade } from "../../../../context/TradeContext";
-import PositionRow from "../PositionRow";
 
-export default function ClosedPositionsTable() {
+export default function ClosedPositionsTable({ demo = false }) {
 
-  const { closedTrades } = useTrade();
+  // ==========================================================
+  // GET REAL CLOSED POSITIONS FROM TRADE CONTEXT
+  // ==========================================================
 
-  if (closedTrades.length === 0) {
+  const { closedTrades = [] } = useTrade();
 
-    return (
-
-      <div className="p-16 text-center text-gray-500">
-
-        <h2 className="text-lg font-semibold">
-
-          No Closed Trades
-
-        </h2>
-
-        <p className="mt-2 text-sm">
-
-          Closed trades will appear here.
-
-        </p>
-
-      </div>
-
-    );
-
-  }
+  // Debug
+  console.log("📕 CLOSED POSITIONS TABLE:", closedTrades);
 
   return (
 
-    <div
-  className="
-    h-[340px]
-    overflow-y-auto
-    overflow-x-hidden
-  "
->
+    <div className="h-[340px] overflow-y-auto overflow-x-hidden">
 
-<table className="w-full">
+      <table className="w-full min-w-[1100px] text-sm">
 
-<thead className="sticky top-0 bg-white border-b z-20">
-  <tr className="text-xs uppercase text-gray-500">
+        {/* ==================================================
+            TABLE HEADER
+        ================================================== */}
 
-    <th className="w-[90px] px-6 py-4 text-left">
-      Instrument
-    </th>
+        <thead className="bg-gray-50 border-b border-gray-200">
 
-    <th className="w-[90px] text-center">
-      Side
-    </th>
+          <tr>
 
-    <th className="w-[90px] text-center">
-      Lots
-    </th>
+            <th className="w-[110px] px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Instrument
+            </th>
 
-    <th className="w-[90px] text-right">
-      Entry
-    </th>
+            <th className="w-[80px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Side
+            </th>
 
- 
+            <th className="w-[80px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Lots
+            </th>
 
-    <th className="w-[90px] text-right">
-      TakeProfit
-    </th>
+            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Entry
+            </th>
 
-    <th className="w-[90px] text-right">
-      StopLoss
-    </th>
+            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Exit
+            </th>
 
-    <th className="w-[90px] text-right">
-      P/L
-    </th>
+            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Take Profit
+            </th>
 
-    <th className="w-[90px] text-right">
-      Duration
-    </th>
+            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Stop Loss
+            </th>
 
-    <th className="w-[90px] text-right">
-      Margin
-    </th>
+            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              P/L
+            </th>
 
-    <th className="w-[90px] text-center">
-      Actions
-    </th>
+            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Commission
+            </th>
 
-  </tr>
-</thead>
+            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Duration
+            </th>
 
-      <tbody>
+            <th className="w-[100px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
 
-        {closedTrades.map((trade) => (
+          </tr>
 
-          <PositionRow
-            key={trade.id}
-            trade={trade}
-          />
+        </thead>
 
-        ))}
+        {/* ==================================================
+            TABLE BODY
+        ================================================== */}
 
-      </tbody>
+        <tbody className="bg-white">
 
-    </table>
+          {closedTrades.length > 0 ? (
+
+            closedTrades.map((trade, index) => (
+
+              <ClosedPositionRow
+                key={
+                  trade.positionId ??
+                  trade.brokerPositionId ??
+                  trade.ticket ??
+                  trade.id ??
+                  index
+                }
+                trade={trade}
+                demo={demo}
+              />
+
+            ))
+
+          ) : (
+
+            <tr>
+
+              <td
+                colSpan={11}
+                className="py-12 text-center text-gray-500"
+              >
+                No closed positions
+              </td>
+
+            </tr>
+
+          )}
+
+        </tbody>
+
+      </table>
+
     </div>
-  );
 
+  );
 }

@@ -7,7 +7,7 @@ export default function BuySellToggle() {
   } = useOrder();
 
   return (
-    <div className="px-4 pt-4">
+    <div className="px-4 pt-1">
 
       <div className="
         grid

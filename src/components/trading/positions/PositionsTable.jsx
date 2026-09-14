@@ -1,73 +1,134 @@
 import { useTrade } from "../../../context/TradeContext";
+
+import OpenPositionRow from "./rows/OpenPositionRow";
 import PositionRow from "./PositionRow";
 
 export default function PositionsTable({ activeTab }) {
-
   const {
-
-    openTrades,
-    closedTrades,
-
+    openTrades = [],
+    closedTrades = [],
   } = useTrade();
 
-  const rows =
-    activeTab === "open"
-      ? openTrades
-      : activeTab === "closed"
-      ? closedTrades
-      : [];
+  const isOpenTab = activeTab === "open";
+
+  const rows = isOpenTab
+    ? openTrades
+    : activeTab === "closed"
+    ? closedTrades
+    : [];
+
+  const emptyMessage = isOpenTab
+    ? {
+        title: "No open positions",
+        description: "Your open positions will appear here",
+      }
+    : {
+        title: "No closed positions",
+        description: "Your closed positions will appear here",
+      };
 
   return (
+    <div className="w-full overflow-x-auto">
+      <table className="w-full min-w-[1100px] text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="w-[110px] px-6 py-3 text-left">
+              Instrument
+            </th>
 
-    <table className="w-full text-sm">
+            <th className="w-[80px] py-3 text-center">
+              Side
+            </th>
 
-      <thead className="bg-gray-50">
+            <th className="w-[80px] py-3 text-center">
+              Lots
+            </th>
 
-        <tr>
+            <th className="w-[100px] py-3 text-right">
+              Entry
+            </th>
 
-          <th className="px-4 py-3 text-left">Instrument</th>
+            <th className="w-[100px] py-3 text-right">
+              Current
+            </th>
 
-          <th className="text-left">Direction</th>
+            <th className="w-[110px] py-3 text-right">
+              Take Profit
+            </th>
 
-          <th className="text-left">Size</th>
+            <th className="w-[100px] py-3 text-right">
+              Stop Loss
+            </th>
 
-          <th className="text-left">Entry </th>
+            <th className="w-[110px] py-3 text-right">
+              P/L
+            </th>
 
-          <th className="text-left">Current</th>
+            <th className="w-[110px] py-3 text-right">
+              Margin
+            </th>
 
-          <th className="text-left">SL</th>
+            <th className="w-[110px] py-3 text-right">
+              Duration
+            </th>
 
-          <th className="text-left">TP</th>
+            <th className="w-[100px] py-3 text-center">
+              Actions
+            </th>
+          </tr>
+        </thead>
 
-          <th className="text-left">P/L</th>
-          
+        <tbody>
+          {rows.length > 0 ? (
+            rows.map((trade, index) => {
+              const tradeKey =
+                trade.positionId ||
+                trade.brokerPositionId ||
+                trade.id ||
+                index;
 
-          <th className="text-left">Duration</th>
+              // OPEN POSITIONS
+              if (isOpenTab) {
+                return (
+                  <OpenPositionRow
+                    key={tradeKey}
+                    trade={trade}
+                  />
+                );
+              }
 
-          <th className="text-center">Actions</th>
+              // CLOSED POSITIONS
+              return (
+                <PositionRow
+                  key={tradeKey}
+                  trade={trade}
+                />
+              );
+            })
+          ) : (
+            <tr>
+              <td
+                colSpan={11}
+                className="px-4 py-16 text-center"
+              >
+                <div className="flex flex-col items-center justify-center">
+                  <div className="mb-3 text-3xl">
+                    📊
+                  </div>
 
-        </tr>
+                  <p className="text-base font-semibold text-gray-700">
+                    {emptyMessage.title}
+                  </p>
 
-      </thead>
-
-      <tbody>
-
-        {rows.map((trade)=>(
-
-          <PositionRow
-
-            key={trade.id}
-
-            trade={trade}
-
-          />
-
-        ))}
-
-      </tbody>
-
-    </table>
-
+                  <p className="mt-1 text-sm text-gray-400">
+                    {emptyMessage.description}
+                  </p>
+                </div>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
-
 }

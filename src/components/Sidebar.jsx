@@ -1,6 +1,9 @@
 import logo from "../assets/logo.png";
-import { useState } from "react";
+
+import { useEffect, useState } from "react";
+
 import { useNavigate } from "react-router-dom";
+
 import {
   LayoutDashboard,
   BookText,
@@ -17,321 +20,534 @@ import {
   Sun,
   Moon,
   Settings,
-  User
-  } from "lucide-react";
+  User,
+} from "lucide-react";
 
-  function Sidebar({ collapsed, setCollapsed }) {
+function Sidebar({ collapsed, setCollapsed }) {
   const navigate = useNavigate();
-  
-  const [darkMode, setDarkMode] = useState(false);
-  return(
-  
+
+  /* ==========================================================
+     THEME STATE
+  ========================================================== */
+
+  const [darkMode, setDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem("edgeflo-theme");
+    return savedTheme === "dark";
+  });
+
+  /* ==========================================================
+     APPLY THEME
+  ========================================================== */
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("edgeflo-theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("edgeflo-theme", "light");
+    }
+  }, [darkMode]);
+
+  /* ==========================================================
+     TOGGLE THEME
+  ========================================================== */
+
+  const toggleTheme = () => {
+    setDarkMode((prev) => !prev);
+  };
+
+  return (
     <div
-    className={`
-    ${collapsed ? "w-13" : "w-32"}
-    bg-white
-    min-h-screen
-    fixed
-    left-0
-    top-0
-    bottom-3
-    rounded-2xl
-    shadow-[0_8px_30px_rgba(0,0,0,0.08)]
-    p-2
-    text-black
-    flex
-    flex-col
-    transition-all
-    duration-300
-    `}
+      className={`
+        ${collapsed ? "w-13" : "w-32"}
+        bg-white
+        dark:bg-[#111111]
+        min-h-screen
+        fixed
+        left-0
+        top-0
+        bottom-3
+        rounded-2xl
+        shadow-[0_8px_30px_rgba(0,0,0,0.08)]
+        p-2
+        text-black
+        dark:text-white
+        flex
+        flex-col
+        transition-all
+        duration-300
+      `}
     >
-  
-  
-  {/* logo area */}
-  
-  <div
-  className={`flex items-center transition-all duration-300 ${
-    collapsed
-      ? "justify-center mt-3 mb-6 ml-0"
-      : "-space-x-1 mb-0 -ml-7 -mt-6"
-  }`}
->
-  
-<div className={`${collapsed ? "w-10 h-10" : ""} flex items-center justify-center`}>
-  <img
-    src={logo}
-    className={`object-contain transition-all duration-300 ${
-      collapsed ? "w-10 h-10 scale-225" : "w-23 h-23"
-    }`}
-  />
-</div>
-{!collapsed && (
-  
-  <div className="-ml-2">
-  
-  <h1 className="text-50px font-bold">
-  EDGE
-  </h1>
-  
-  
-  <h2 className="
-  text-100px
-  font-bold
-  text-purple-600
-  mt-0
-  finder-glow
-  ">
-  FINDER
-  </h2>
-  
-  
-  </div>
-  
-)}
-  
-  </div>
-  
-  
-  
-  <div className="flex flex-col h-full justify-between">
+      {/* ======================================================
+          LOGO AREA
+      ====================================================== */}
 
+      <div
+        className={`
+          flex
+          items-center
+          transition-all
+          duration-300
+          ${
+            collapsed
+              ? "justify-center mt-3 mb-6 ml-0"
+              : "-space-x-1 mb-0 -ml-7 -mt-6"
+          }
+        `}
+      >
+        <div
+          className={`
+            ${collapsed ? "w-10 h-10" : ""}
+            flex
+            items-center
+            justify-center
+          `}
+        >
+          <img
+            src={logo}
+            alt="EdgeFinder Logo"
+            className={`
+              object-contain
+              transition-all
+              duration-300
+              ${collapsed ? "w-10 h-10 scale-225" : "w-23 h-23"}
+            `}
+          />
+        </div>
 
-{/* TOP FEATURES */}
+        {!collapsed && (
+          <div className="-ml-2">
+            <h1 className="text-50px font-bold">
+              EDGE
+            </h1>
 
-<div className="space-y-5">
+            <h2
+              className="
+                text-100px
+                font-bold
+                text-purple-600
+                mt-0
+                finder-glow
+              "
+            >
+              FINDER
+            </h2>
+          </div>
+        )}
+      </div>
 
+      {/* ======================================================
+          SIDEBAR CONTENT
+      ====================================================== */}
 
-<div
-  onClick={() => navigate("/")}
-  className={`
-    flex
-    items-center
-    text-sm
-    font-medium
-    cursor-pointer
-    ${collapsed ? "justify-center" : "gap-3"}
-  `}
->
-  <LayoutDashboard size={18} />
-  {!collapsed && "Dashboard"}
-</div>
+      <div className="flex flex-col h-full justify-between">
 
-<div
-  onClick={() => navigate("/tradelog")}
-  className={`
-    flex
-    items-center
-    text-sm
-    font-medium
-    cursor-pointer
-    ${collapsed ? "justify-center" : "gap-3"}
-  `}
->
-  <BookText size={18} />
-  {!collapsed && "Trade Log"}
-</div>
+        {/* ======================================================
+            TOP FEATURES
+        ====================================================== */}
 
-<div
-  onClick={() => navigate("/trading")}className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`} >
-<TrendingUp size={18}/>
-{!collapsed && "Trading"}
-</div>
+        <div className="space-y-5">
 
-<div
-  onClick={() => navigate("/Backtesting")} className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<History size={18}/>
-{!collapsed && "Backtesting"}
-</div>
+          {/* DASHBOARD */}
 
+          <div
+            onClick={() => navigate("/dashboard")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <LayoutDashboard size={18} />
+            {!collapsed && "Dashboard"}
+          </div>
 
-<div
-  onClick={() => navigate("/edge")} className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<Sparkles size={18}/>
-{!collapsed && "Edge"}
-</div>
+          {/* TRADE LOG */}
 
+          <div
+            onClick={() => navigate("/tradelog")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <BookText size={18} />
+            {!collapsed && "Trade Log"}
+          </div>
 
-<div onClick={() => navigate("/journal")}
-className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<BookOpen size={18}/>
-{!collapsed && "Journal"}
-</div>
+          {/* TRADING */}
 
+          <div
+            onClick={() => navigate("/trading")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <TrendingUp size={18} />
+            {!collapsed && "Trading"}
+          </div>
 
-<div onClick={() => navigate("/reports")}
-className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<ChartBar size={18}/>
-{!collapsed && "Reports"}
-</div>
+          {/* BACKTESTING */}
 
+          <div
+            onClick={() => navigate("/Backtesting")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <History size={18} />
+            {!collapsed && "Backtesting"}
+          </div>
 
-<div onClick={() => navigate("/notebook")}
- className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<Notebook size={18}/>
-{!collapsed && "Notebook"}
-</div>
+          {/* EDGE */}
 
-<div onClick={() => navigate("/EdgeOS")}
- className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<Rocket size={18}/>
-{!collapsed && "EdgeOS"}
-</div>
+          <div
+            onClick={() => navigate("/edge")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <Sparkles size={18} />
+            {!collapsed && "Edge"}
+          </div>
 
+          {/* JOURNAL */}
 
+          <div
+            onClick={() => navigate("/journal")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <BookOpen size={18} />
+            {!collapsed && "Journal"}
+          </div>
 
-<div onClick={() => navigate("/news")}
-className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<Newspaper size={18}/>
-{!collapsed && "News"}
-</div>
+          {/* REPORTS */}
 
+          <div
+            onClick={() => navigate("/reports")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <ChartBar size={18} />
+            {!collapsed && "Reports"}
+          </div>
 
-<div onClick={() => navigate("/ai")}
-className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<Brain size={18}/>
-{!collapsed && "AI Insights"}
-</div>
+          {/* NOTEBOOK */}
 
+          <div
+            onClick={() => navigate("/notebook")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <Notebook size={18} />
+            {!collapsed && "Notebook"}
+          </div>
 
-</div>
+          {/* EDGE OS */}
 
+          <div
+            onClick={() => navigate("/EdgeOS")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <Rocket size={18} />
+            {!collapsed && "EdgeOS"}
+          </div>
 
+          {/* NEWS */}
 
-{/* BOTTOM FEATURES */}
+          <div
+            onClick={() => navigate("/news")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <Newspaper size={18} />
+            {!collapsed && "News"}
+          </div>
 
-<div className="space-y-5">
+          {/* AI INSIGHTS */}
 
+          <div
+            onClick={() => navigate("/ai")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <Brain size={18} />
+            {!collapsed && "AI Insights"}
+          </div>
 
-<div
-  onClick={() => setCollapsed(!collapsed)}
-  className={`
-    flex
-    items-center
-    text-sm
-    font-medium
-    cursor-pointer
-    ${collapsed ? "justify-center" : "gap-3"}
-    `}
->
-<PanelLeft size={18}/>
-{!collapsed && "Collapse"}
-</div>
+        </div>
 
+        {/* ======================================================
+            BOTTOM FEATURES
+        ====================================================== */}
 
-<div className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<Sun size={18}/>
-{!collapsed && "Theme"}
-</div>
+        <div className="space-y-5">
 
+          {/* COLLAPSE */}
 
-<div onClick={() => navigate("/settings")}
-className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<Settings size={18}/>
-{!collapsed && "Settings"}
-</div>
+          <div
+            onClick={() => setCollapsed(!collapsed)}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <PanelLeft size={18} />
+            {!collapsed && "Collapse"}
+          </div>
 
+          {/* THEME BUTTON */}
 
-<div onClick={() => navigate("/profile")} 
-className={`
-flex
-items-center
-text-sm
-font-medium
-cursor-pointer
-${collapsed ? "justify-center" : "gap-3"}
-`}>
-<User size={18}/>
-{!collapsed && "Profile"}
-</div>
+          <div
+            onClick={toggleTheme}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            {darkMode ? (
+              <Sun size={18} />
+            ) : (
+              <Moon size={18} />
+            )}
 
+            {!collapsed && (
+              <span>
+                {darkMode
+                  ? "Light Mode"
+                  : "Dark Mode"}
+              </span>
+            )}
+          </div>
 
-</div>
+          {/* SETTINGS */}
 
+          <div
+            onClick={() => navigate("/settings")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <Settings size={18} />
+            {!collapsed && "Settings"}
+          </div>
 
-</div>
+          {/* PROFILE */}
 
-</div>
+          <div
+            onClick={() => navigate("/profile")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <User size={18} />
+            {!collapsed && "Profile"}
+          </div>
 
-  )
-  
-  }
+        </div>
 
+      </div>
+    </div>
+  );
+}
 
 export default Sidebar;

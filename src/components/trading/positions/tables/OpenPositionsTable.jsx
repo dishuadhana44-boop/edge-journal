@@ -1,251 +1,99 @@
-import { useMarket } from "../../../../context/MarketContext";
-
 import OpenPositionRow from "../rows/OpenPositionRow";
-import EmptyPositions from "../EmptyPositions";
+import { useTrade } from "../../../../context/TradeContext";
 
-export default function OpenPositionsTable() {
+export default function OpenPositionsTable({ demo = false }) {
   // ==========================================================
-  // REAL cTRADER DATA
-  // ==========================================================
-
-  const {
-    positions,
-    bid,
-    ask,
-  } = useMarket();
-
-  // ==========================================================
-  // DEBUG
+  // GET REAL POSITIONS FROM TRADE CONTEXT
   // ==========================================================
 
-  console.log(
-    "📊 OPEN POSITIONS FROM cTRADER:",
-    positions
-  );
+  const { openTrades = [] } = useTrade();
 
-  // ==========================================================
-  // CONVERT cTRADER POSITION TO UI TRADE FORMAT
-  // ==========================================================
-
-  const openTrades = positions.map((position) => {
-    const side = String(
-      position.side || ""
-    ).toLowerCase();
-
-    // ========================================================
-    // CURRENT PRICE
-    //
-    // BUY closes at BID
-    // SELL closes at ASK
-    // ========================================================
-
-    const currentPrice =
-      side === "buy"
-        ? bid
-        : ask;
-
-    // ========================================================
-    // cTRADER VOLUME → LOTS
-    //
-    // Example:
-    // 156400000 protocol volume
-    // = 15.64 lots
-    // ========================================================
-
-    const protocolVolume = Number(
-      position.protocolVolume || 0
-    );
-
-    const lots =
-      protocolVolume > 0
-        ? protocolVolume / 10000000
-        : 0;
-
-    // ========================================================
-    // UI TRADE OBJECT
-    // ========================================================
-
-    return {
-      // ID
-
-      id: String(position.positionId),
-      positionId: String(position.positionId),
-
-      // INSTRUMENT
-
-      symbol:
-        position.symbol || "UNKNOWN",
-
-      instrument:
-        position.symbol || "UNKNOWN",
-
-      // SIDE
-
-      side:
-        side === "buy"
-          ? "BUY"
-          : "SELL",
-
-      // LOTS
-
-      lots: Number(
-        lots.toFixed(2)
-      ),
-
-      // PRICES
-
-      entry:
-        Number(position.entryPrice || 0),
-
-      entryPrice:
-        Number(position.entryPrice || 0),
-
-      current:
-        Number(currentPrice || 0),
-
-      currentPrice:
-        Number(currentPrice || 0),
-
-      // TAKE PROFIT
-
-      takeProfit:
-        position.takeProfit ||
-        position.tp ||
-        null,
-
-      // STOP LOSS
-
-      stopLoss:
-        position.stopLoss ||
-        position.sl ||
-        null,
-
-      // MARGIN
-
-      margin:
-        Number(
-          position.usedMargin || 0
-        ),
-
-      // COMMISSION
-
-      commission:
-        Number(
-          position.commission || 0
-        ),
-
-      // SWAP
-
-      swap:
-        Number(
-          position.swap || 0
-        ),
-
-      // TIME
-
-      openTimestamp:
-        position.openTimestamp || null,
-
-      // ORIGINAL DATA
-
-      rawPosition: position,
-    };
-  });
-
-  // ==========================================================
-  // DEBUG
-  // ==========================================================
-
-  console.log(
-    "📋 TABLE OPEN TRADES:",
-    openTrades
-  );
-
-  // ==========================================================
-  // UI
-  // ==========================================================
+  // Debug
+  console.log("📊 OPEN POSITIONS TABLE:", openTrades);
 
   return (
-    <div
-      className="
-        h-[340px]
-        overflow-y-auto
-        overflow-x-auto
-      "
-    >
-      <table className="w-full">
-        {/* ================================================== */}
-        {/* HEADER */}
-        {/* ================================================== */}
+    <div className="h-[340px] overflow-y-auto overflow-x-hidden">
+      <table className="w-full min-w-[1100px] text-sm">
+        {/* ==================================================
+            TABLE HEADER
+        ================================================== */}
 
-        <thead className="sticky top-0 bg-white z-20">
-          <tr className="text-xs uppercase text-gray-500">
-
-            <th className="w-[90px] px-6 py-4 text-left">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="w-[110px] px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Instrument
             </th>
 
-            <th className="w-[90px] text-center">
+            <th className="w-[80px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Side
             </th>
 
-            <th className="w-[90px] text-center">
+            <th className="w-[80px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Lots
             </th>
 
-            <th className="w-[90px] text-right">
+            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Entry
             </th>
 
-            <th className="w-[90px] text-right">
+            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Current
             </th>
 
-            <th className="w-[90px] text-right">
+            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Take Profit
             </th>
 
-            <th className="w-[90px] text-right">
+            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Stop Loss
             </th>
 
-            <th className="w-[90px] text-right">
+            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
               P/L
             </th>
 
-            <th className="w-[90px] text-right">
+            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Margin
             </th>
 
-            <th className="w-[90px] text-right">
+            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Duration
             </th>
 
-            <th className="w-[90px] text-center">
+            <th className="w-[100px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Actions
             </th>
-
           </tr>
         </thead>
 
-        {/* ================================================== */}
-        {/* BODY */}
-        {/* ================================================== */}
+        {/* ==================================================
+            TABLE BODY
+        ================================================== */}
 
-        <tbody>
-          {openTrades.length === 0 ? (
-            <tr>
-              <td colSpan={11}>
-                <EmptyPositions />
-              </td>
-            </tr>
-          ) : (
-            openTrades.map((trade) => (
+        <tbody className="bg-white">
+          {openTrades.length > 0 ? (
+            openTrades.map((trade, index) => (
               <OpenPositionRow
-                key={trade.id}
+                key={
+                  trade.positionId ??
+                  trade.brokerPositionId ??
+                  trade.ticket ??
+                  trade.id ??
+                  index
+                }
                 trade={trade}
+                demo={demo}
               />
             ))
+          ) : (
+            <tr>
+              <td
+                colSpan={11}
+                className="py-12 text-center text-gray-500"
+              >
+                No open positions
+              </td>
+            </tr>
           )}
         </tbody>
       </table>

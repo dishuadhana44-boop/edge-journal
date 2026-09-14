@@ -17,10 +17,6 @@ const PROTO_DIR = path.join(
   "openapi-proto-messages"
 );
 
-// cTrader volume values are represented in 0.01 units.
-// The broker-provided lotSize, minVolume, maxVolume and
-// stepVolume are already in cTrader protocol volume format.
-
 // ============================================================
 // SERVICE STATE
 // ============================================================
@@ -69,20 +65,20 @@ let selectedSymbolDigits = 5;
 // SYMBOL STORAGE
 // ============================================================
 
-// Key:
-// normalized symbol name
-//
-// Example:
-// EURUSD
-// XAUUSD
-// GBPUSD
-
 const symbolsMap = new Map();
 
-// Key:
-// symbolId as string
-
 const symbolsById = new Map();
+
+// ============================================================
+// POSITION STORAGE
+// ============================================================
+
+// IMPORTANT:
+//
+// This Map stores the REAL open positions
+// received from cTrader.
+
+const positionsMap = new Map();
 
 // ============================================================
 // SUBSCRIBED SYMBOLS
@@ -99,8 +95,6 @@ const latestPrices = new Map();
 // ============================================================
 // SYMBOL REQUEST WAITERS
 // ============================================================
-
-// Used when requesting full symbol data.
 
 const symbolRequestWaiters = new Map();
 
@@ -131,6 +125,8 @@ let sendCTraderMessage = null;
 
 let ProtoMessage = null;
 
+// AUTH
+
 let ApplicationAuthReq = null;
 
 let GetAccountsReq = null;
@@ -139,8 +135,12 @@ let GetAccountsRes = null;
 let AccountAuthReq = null;
 let AccountAuthRes = null;
 
+// TRADER
+
 let TraderReq = null;
 let TraderRes = null;
+
+// SYMBOLS
 
 let SymbolsListReq = null;
 let SymbolsListRes = null;
@@ -148,19 +148,29 @@ let SymbolsListRes = null;
 let SymbolByIdReq = null;
 let SymbolByIdRes = null;
 
-let SubscribeSpotsReq = null;
+// PRICES
 
+let SubscribeSpotsReq = null;
 let SpotEvent = null;
+
+// ORDERS
 
 let NewOrderReq = null;
 
 let ClosePositionReq = null;
 
+let AmendPositionSLTPReq = null;
+
+// EXECUTION
+
 let ExecutionEvent = null;
 
 let OrderErrorEvent = null;
 
-let AmendPositionSLTPReq = null;
+// RECONCILIATION
+
+let ReconcileReq = null;
+let ReconcileRes = null;
 
 // ============================================================
 // PAYLOAD TYPES
@@ -387,9 +397,6 @@ function snapVolumeToStep(volume, step) {
     );
   }
 
-  // Round to nearest valid broker step.
-  // This avoids floating-point problems.
-
   const snapped =
     Math.round(volume / step) * step;
 
@@ -421,17 +428,6 @@ function lotsToVolume(
     );
   }
 
-  // IMPORTANT:
-  //
-  // cTrader ProtoOASymbol.lotSize
-  // is already represented in protocol volume units.
-  //
-  // Therefore:
-  //
-  // protocolVolume = lots × lotSize
-  //
-  // NO extra ×100 is required here.
-
   const lotSize = Number(
     symbolData.lotSize
   );
@@ -440,11 +436,6 @@ function lotsToVolume(
     !Number.isFinite(lotSize) ||
     lotSize <= 0
   ) {
-    console.error(
-      "❌ Missing broker lotSize:",
-      symbolData
-    );
-
     throw new Error(
       `Lot size is unavailable for ${symbolData.symbolName}.`
     );
@@ -454,11 +445,6 @@ function lotsToVolume(
     getSymbolVolumeStep(symbolData);
 
   if (!volumeStep) {
-    console.error(
-      "❌ Missing broker volume step:",
-      symbolData
-    );
-
     throw new Error(
       `Invalid volume step for ${symbolData.symbolName}`
     );
@@ -514,29 +500,40 @@ function lotsToVolume(
 
   console.log({
     symbol: symbolData.symbolName,
-
     lots: numericLots,
-
     brokerLotSize: lotSize,
-
     rawProtocolVolume,
-
     volumeStep,
-
     validVolume,
-
-    minVolume:
-      Number.isFinite(minVolume)
-        ? minVolume
-        : null,
-
-    maxVolume:
-      Number.isFinite(maxVolume)
-        ? maxVolume
-        : null,
   });
 
   return Math.round(validVolume);
+}
+
+// ============================================================
+// PROTOCOL VOLUME → LOTS
+// ============================================================
+
+function volumeToLots(
+  volume,
+  symbolData
+) {
+  const numericVolume =
+    toNumberSafe(volume);
+
+  const lotSize = Number(
+    symbolData?.lotSize
+  );
+
+  if (
+    numericVolume === null ||
+    !Number.isFinite(lotSize) ||
+    lotSize <= 0
+  ) {
+    return null;
+  }
+
+  return numericVolume / lotSize;
 }
 
 // ============================================================
@@ -601,6 +598,240 @@ function storeSymbol(symbolData) {
 }
 
 // ============================================================
+// POSITION HELPERS
+// ============================================================
+
+function getPositionSymbolId(position) {
+  return (
+    position?.tradeData?.symbolId ??
+    position?.symbolId ??
+    null
+  );
+}
+
+function getPositionTradeSide(position) {
+  const side =
+    position?.tradeData?.tradeSide ??
+    position?.tradeSide ??
+    null;
+
+  if (
+    side === TRADE_SIDE.BUY ||
+    side === 1
+  ) {
+    return "BUY";
+  }
+
+  if (
+    side === TRADE_SIDE.SELL ||
+    side === 2
+  ) {
+    return "SELL";
+  }
+
+  return side !== null
+    ? String(side)
+    : null;
+}
+
+function normalizePosition(position) {
+  if (!position) return null;
+
+  const positionId =
+    toStringSafe(
+      position.positionId
+    );
+
+  if (!positionId) {
+    return null;
+  }
+
+  const symbolId =
+    getPositionSymbolId(position);
+
+  const symbolData =
+    getSymbolById(symbolId);
+
+  const symbolName =
+    symbolData?.symbolName ||
+    `SYMBOL_${symbolId}`;
+
+  const volume =
+    toNumberSafe(
+      position.volume
+    );
+
+  const lots =
+    volumeToLots(
+      volume,
+      symbolData
+    );
+
+  return {
+    positionId,
+
+    symbolId:
+      toStringSafe(symbolId),
+
+    symbol:
+      symbolName,
+
+    side:
+      getPositionTradeSide(position),
+
+    volume,
+
+    lots,
+
+    entryPrice:
+      toNumberSafe(
+        position.price
+      ) ??
+      toNumberSafe(
+        position.entryPrice
+      ),
+
+    stopLoss:
+      toNumberSafe(
+        position.stopLoss
+      ),
+
+    takeProfit:
+      toNumberSafe(
+        position.takeProfit
+      ),
+
+    commission:
+      toNumberSafe(
+        position.commission
+      ),
+
+    swap:
+      toNumberSafe(
+        position.swap
+      ),
+
+    usedMargin:
+      toNumberSafe(
+        position.usedMargin
+      ),
+
+    openTimestamp:
+      toNumberSafe(
+        position.tradeData?.openTimestamp ??
+        position.openTimestamp
+      ),
+
+    raw: position,
+  };
+}
+
+function updatePosition(position) {
+  const normalized =
+    normalizePosition(position);
+
+  if (!normalized) {
+    return null;
+  }
+
+  positionsMap.set(
+    normalized.positionId,
+    normalized
+  );
+
+  return normalized;
+}
+
+function removePosition(positionId) {
+  if (!positionId) return;
+
+  positionsMap.delete(
+    String(positionId)
+  );
+}
+
+// ============================================================
+// EMIT POSITION UPDATE
+// ============================================================
+
+function emitPositionsUpdate(reason = "update") {
+  const positions =
+    getOpenPositions();
+
+  console.log("");
+  console.log("====================================");
+  console.log("📊 POSITIONS UPDATE");
+  console.log("====================================");
+
+  console.log({
+    reason,
+    positionsCount: positions.length,
+  });
+
+  if (
+    typeof onExecutionUpdate ===
+    "function"
+  ) {
+    onExecutionUpdate({
+      type: "positions_update",
+
+      reason,
+
+      positions,
+
+      timestamp:
+        Date.now(),
+    });
+  }
+}
+
+// ============================================================
+// RECONCILE ACCOUNT
+// ============================================================
+
+function requestReconciliation() {
+  try {
+    if (
+      !authenticated ||
+      !selectedTradingAccountId
+    ) {
+      return;
+    }
+
+    ensureMessageSender();
+
+    const request =
+      ReconcileReq.create({
+        ctidTraderAccountId:
+          selectedTradingAccountId,
+      });
+
+    const payload =
+      ReconcileReq
+        .encode(request)
+        .finish();
+
+    const clientMsgId =
+      `edgeflo-reconcile-${Date.now()}`;
+
+    sendCTraderMessage(
+      PAYLOAD.RECONCILE_REQ,
+      payload,
+      clientMsgId
+    );
+
+    console.log(
+      "🔄 CTRADER RECONCILIATION REQUESTED"
+    );
+  } catch (error) {
+    console.error(
+      "❌ Reconciliation request failed:",
+      error.message
+    );
+  }
+}
+
+// ============================================================
 // FULL SYMBOL DATA REQUEST
 // ============================================================
 
@@ -624,7 +855,6 @@ function requestFullSymbolData(symbolData) {
           symbolData.lotSize
         ) {
           resolve(symbolData);
-
           return;
         }
 
@@ -632,9 +862,6 @@ function requestFullSymbolData(symbolData) {
 
         const symbolIdString =
           String(symbolData.symbolId);
-
-        // If request is already running,
-        // reuse the same Promise.
 
         if (
           symbolRequestWaiters.has(
@@ -646,70 +873,70 @@ function requestFullSymbolData(symbolData) {
               symbolIdString
             );
 
-          existing
-            .then(resolve)
-            .catch(reject);
+          const originalResolve =
+            existing.resolve;
+
+          const originalReject =
+            existing.reject;
+
+          existing.resolve = (data) => {
+            originalResolve(data);
+            resolve(data);
+          };
+
+          existing.reject = (error) => {
+            originalReject(error);
+            reject(error);
+          };
 
           return;
         }
 
-        const requestPromise =
-          new Promise(
-            (
-              requestResolve,
-              requestReject
-            ) => {
-              const timeout =
-                setTimeout(() => {
-                  symbolRequestWaiters.delete(
-                    symbolIdString
-                  );
+        const timeout =
+          setTimeout(() => {
+            symbolRequestWaiters.delete(
+              symbolIdString
+            );
 
-                  requestReject(
-                    new Error(
-                      `Timed out loading symbol data for ${symbolData.symbolName}.`
-                    )
-                  );
-                }, 10000);
+            reject(
+              new Error(
+                `Timed out loading symbol data for ${symbolData.symbolName}.`
+              )
+            );
+          }, 10000);
 
-              const request =
-                SymbolByIdReq.create({
-                  ctidTraderAccountId:
-                    selectedTradingAccountId,
+        const request =
+          SymbolByIdReq.create({
+            ctidTraderAccountId:
+              selectedTradingAccountId,
 
-                  symbolId: [
-                    symbolData.symbolId,
-                  ],
-                });
+            symbolId: [
+              symbolData.symbolId,
+            ],
+          });
 
-              const payload =
-                SymbolByIdReq
-                  .encode(request)
-                  .finish();
+        const payload =
+          SymbolByIdReq
+            .encode(request)
+            .finish();
 
-              symbolRequestWaiters.set(
-                symbolIdString,
-                {
-                  resolve: requestResolve,
-                  reject: requestReject,
-                  timeout,
-                }
-              );
+        symbolRequestWaiters.set(
+          symbolIdString,
+          {
+            resolve,
+            reject,
+            timeout,
+          }
+        );
 
-              const clientMsgId =
-                `edgeflo-symbol-${symbolIdString}-${Date.now()}`;
+        const clientMsgId =
+          `edgeflo-symbol-${symbolIdString}-${Date.now()}`;
 
-              sendCTraderMessage(
-                PAYLOAD.SYMBOL_BY_ID_REQ,
-                payload,
-                clientMsgId
-              );
-            }
-          );
-
-        requestPromise
-          .then(resolve)
-          .catch(reject);
+        sendCTraderMessage(
+          PAYLOAD.SYMBOL_BY_ID_REQ,
+          payload,
+          clientMsgId
+        );
       } catch (error) {
         reject(error);
       }
@@ -733,11 +960,6 @@ function processFullSymbolData(fullSymbol) {
     symbolsById.get(
       symbolIdString
     );
-
-  // Full ProtoOASymbol does not necessarily
-  // contain symbolName.
-  //
-  // We preserve the name from LightSymbol.
 
   const symbolName =
     existing?.symbolName ||
@@ -792,9 +1014,8 @@ function processFullSymbolData(fullSymbol) {
         : null,
 
     tradingMode:
-      fullSymbol.tradingMode !== undefined
-        ? fullSymbol.tradingMode
-        : null,
+      fullSymbol.tradingMode ??
+      null,
 
     measurementUnits:
       fullSymbol.measurementUnits ||
@@ -805,25 +1026,18 @@ function processFullSymbolData(fullSymbol) {
 
   storeSymbol(fullData);
 
-  console.log("");
-  console.log("====================================");
   console.log(
     `✅ FULL SYMBOL DATA: ${symbolName}`
   );
-  console.log("====================================");
-
-  console.log(fullData);
 
   return fullData;
 }
 
 // ============================================================
-// SET SELECTED SYMBOL
+// ACTIVATE SYMBOL
 // ============================================================
 
-async function activateSymbol(
-  symbolName
-) {
+async function activateSymbol(symbolName) {
   const normalized =
     normalizeSymbolName(symbolName);
 
@@ -836,27 +1050,11 @@ async function activateSymbol(
     );
   }
 
-  // Load full trading metadata if needed.
-
   if (
     !symbolData.fullDataLoaded ||
     !symbolData.volumeStep ||
     !symbolData.lotSize
   ) {
-    console.log("");
-
-    console.log(
-      "===================================="
-    );
-
-    console.log(
-      `📡 LOADING FULL SYMBOL DATA: ${symbolData.symbolName}`
-    );
-
-    console.log(
-      "===================================="
-    );
-
     symbolData =
       await requestFullSymbolData(
         symbolData
@@ -866,15 +1064,6 @@ async function activateSymbol(
   if (!symbolData) {
     throw new Error(
       `Unable to load full data for ${symbolName}.`
-    );
-  }
-
-  if (
-    !symbolData.volumeStep ||
-    !symbolData.lotSize
-  ) {
-    throw new Error(
-      `Trading volume configuration is incomplete for ${symbolData.symbolName}.`
     );
   }
 
@@ -900,42 +1089,16 @@ async function activateSymbol(
     symbolData.digits ?? 5;
 
   console.log("");
-
-  console.log(
-    "===================================="
-  );
-
-  console.log(
-    "🔄 SYMBOL ACTIVATED"
-  );
-
-  console.log(
-    "===================================="
-  );
+  console.log("====================================");
+  console.log("🔄 SYMBOL ACTIVATED");
+  console.log("====================================");
 
   console.log({
-    symbol:
-      selectedSymbolName,
-
+    symbol: selectedSymbolName,
     symbolId:
-      toStringSafe(
-        selectedSymbolId
-      ),
-
+      toStringSafe(selectedSymbolId),
     digits:
       selectedSymbolDigits,
-
-    minVolume:
-      selectedSymbolVolumeMin,
-
-    maxVolume:
-      selectedSymbolVolumeMax,
-
-    volumeStep:
-      selectedSymbolVolumeStep,
-
-    lotSize:
-      selectedSymbolLotSize,
   });
 
   await subscribeToSymbol(
@@ -972,6 +1135,8 @@ function resetServiceState() {
   subscribedSymbols.clear();
 
   latestPrices.clear();
+
+  positionsMap.clear();
 
   ws = null;
 
@@ -1216,6 +1381,10 @@ async function loadProtobuf() {
       "ProtoOAAmendPositionSLTPReq"
     );
 
+  // ==========================================================
+  // EXECUTION
+  // ==========================================================
+
   ExecutionEvent =
     root.lookupType(
       "ProtoOAExecutionEvent"
@@ -1224,6 +1393,20 @@ async function loadProtobuf() {
   OrderErrorEvent =
     root.lookupType(
       "ProtoOAOrderErrorEvent"
+    );
+
+  // ==========================================================
+  // RECONCILIATION
+  // ==========================================================
+
+  ReconcileReq =
+    root.lookupType(
+      "ProtoOAReconcileReq"
+    );
+
+  ReconcileRes =
+    root.lookupType(
+      "ProtoOAReconcileRes"
     );
 
   // ==========================================================
@@ -1236,7 +1419,6 @@ async function loadProtobuf() {
     ).values;
 
   PAYLOAD = {
-
     APP_AUTH_REQ:
       PayloadType
         .PROTO_OA_APPLICATION_AUTH_REQ,
@@ -1316,6 +1498,14 @@ async function loadProtobuf() {
     ORDER_ERROR_EVENT:
       PayloadType
         .PROTO_OA_ORDER_ERROR_EVENT,
+
+    RECONCILE_REQ:
+      PayloadType
+        .PROTO_OA_RECONCILE_REQ,
+
+    RECONCILE_RES:
+      PayloadType
+        .PROTO_OA_RECONCILE_RES,
   };
 
   ORDER_TYPE =
@@ -1372,10 +1562,6 @@ async function subscribeToSymbol(
       symbolIdString
     )
   ) {
-    console.log(
-      `📡 Already subscribed: ${symbolData.symbolName}`
-    );
-
     return;
   }
 
@@ -1491,8 +1677,6 @@ export async function startCTraderService(
     );
   }
 
-  // Already ready
-
   if (
     running &&
     connected &&
@@ -1501,8 +1685,6 @@ export async function startCTraderService(
   ) {
     return getCTraderServiceStatus();
   }
-
-  // Startup already running
 
   if (startupPromise) {
     return startupPromise;
@@ -1630,11 +1812,6 @@ export async function startCTraderService(
                     "edgeflo-app-auth"
                   );
                 } catch (error) {
-                  console.error(
-                    "❌ Application auth error:",
-                    error.message
-                  );
-
                   rejectStartup(error);
                 }
               }
@@ -1658,18 +1835,14 @@ export async function startCTraderService(
                       outer.payloadType
                     );
 
-                  // ==============================================
+                  // ============================================
                   // APPLICATION AUTH
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
                     PAYLOAD.APP_AUTH_RES
                   ) {
-                    console.log(
-                      "✅ Application authenticated"
-                    );
-
                     const request =
                       GetAccountsReq.create({
                         accessToken,
@@ -1689,9 +1862,9 @@ export async function startCTraderService(
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
                   // GET ACCOUNTS
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -1734,10 +1907,6 @@ export async function startCTraderService(
                       }
                     );
 
-                    console.log(
-                      `✅ Found ${accounts.length} cTrader account(s)`
-                    );
-
                     let account =
                       accounts[0];
 
@@ -1757,22 +1926,11 @@ export async function startCTraderService(
 
                       if (found) {
                         account = found;
-                      } else {
-                        console.warn(
-                          "⚠️ Preferred account not found. Using first account."
-                        );
                       }
                     }
 
                     selectedTradingAccountId =
                       account.ctidTraderAccountId;
-
-                    console.log(
-                      "🏦 Selected account:",
-                      toStringSafe(
-                        selectedTradingAccountId
-                      )
-                    );
 
                     const request =
                       AccountAuthReq.create({
@@ -1796,9 +1954,9 @@ export async function startCTraderService(
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
                   // ACCOUNT AUTH
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -1813,10 +1971,6 @@ export async function startCTraderService(
                       response.ctidTraderAccountId;
 
                     authenticated = true;
-
-                    console.log(
-                      "✅ cTrader account authenticated"
-                    );
 
                     const request =
                       TraderReq.create({
@@ -1838,9 +1992,9 @@ export async function startCTraderService(
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
                   // TRADER
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -1850,10 +2004,6 @@ export async function startCTraderService(
                       TraderRes.decode(
                         outer.payload
                       );
-
-                    // IMPORTANT:
-                    // ProtoOATraderRes contains
-                    // response.trader
 
                     const trader =
                       response.trader ||
@@ -1886,9 +2036,9 @@ export async function startCTraderService(
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
                   // SYMBOL LIST
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -1922,9 +2072,6 @@ export async function startCTraderService(
                           return;
                         }
 
-                        // LightSymbol does NOT contain
-                        // full trading volume settings.
-
                         const lightSymbol = {
                           symbolId:
                             symbol.symbolId,
@@ -1957,10 +2104,6 @@ export async function startCTraderService(
                       }
                     );
 
-                    console.log(
-                      `✅ Stored ${symbolsMap.size} light symbols`
-                    );
-
                     const eurusd =
                       symbolsMap.get(
                         "EURUSD"
@@ -1972,40 +2115,25 @@ export async function startCTraderService(
                       );
                     }
 
-                    // Load FULL EURUSD data first.
-
-                    console.log("");
-
-                    console.log(
-                      "===================================="
-                    );
-
-                    console.log(
-                      "📡 REQUESTING FULL EURUSD DATA"
-                    );
-
-                    console.log(
-                      "===================================="
-                    );
-
                     await activateSymbol(
                       "EURUSD"
                     );
 
+                    // IMPORTANT:
+                    //
+                    // Service is ready now.
+
                     serviceReady = true;
 
-                    console.log("");
+                    // IMPORTANT FIX:
+                    //
+                    // Load existing open positions
+                    // from cTrader.
 
-                    console.log(
-                      "===================================="
-                    );
+                    requestReconciliation();
 
                     console.log(
                       "🚀 cTRADER SERVICE FULLY READY"
-                    );
-
-                    console.log(
-                      "===================================="
                     );
 
                     resolveStartup();
@@ -2013,9 +2141,9 @@ export async function startCTraderService(
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
                   // FULL SYMBOL DATA
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -2073,9 +2201,9 @@ export async function startCTraderService(
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
                   // SUBSCRIBE RESPONSE
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -2088,9 +2216,9 @@ export async function startCTraderService(
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
                   // LIVE PRICE
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -2109,11 +2237,6 @@ export async function startCTraderService(
                     if (!symbolData) {
                       return;
                     }
-
-                    // SpotEvent prices are normally
-                    // represented with symbol precision.
-                    //
-                    // Use symbol digits when available.
 
                     const digits =
                       Number.isFinite(
@@ -2232,9 +2355,53 @@ export async function startCTraderService(
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
+                  // RECONCILE RESPONSE
+                  // ============================================
+
+                  if (
+                    payloadType ===
+                    PAYLOAD.RECONCILE_RES
+                  ) {
+                    const response =
+                      ReconcileRes.decode(
+                        outer.payload
+                      );
+
+                    const positions =
+                      response.position || [];
+
+                    // Clear old positions first.
+
+                    positionsMap.clear();
+
+                    positions.forEach(
+                      (position) => {
+                        updatePosition(
+                          position
+                        );
+                      }
+                    );
+
+                    console.log("");
+                    console.log("====================================");
+                    console.log("🔄 CTRADER POSITIONS RECONCILED");
+                    console.log("====================================");
+
+                    console.log(
+                      getOpenPositions()
+                    );
+
+                    emitPositionsUpdate(
+                      "reconcile"
+                    );
+
+                    return;
+                  }
+
+                  // ============================================
                   // EXECUTION EVENT
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -2246,45 +2413,67 @@ export async function startCTraderService(
                       );
 
                     console.log("");
+                    console.log("====================================");
+                    console.log("📈 EXECUTION EVENT");
+                    console.log("====================================");
 
-                    console.log(
-                      "===================================="
-                    );
+                    console.log(execution);
 
-                    console.log(
-                      "📈 EXECUTION EVENT"
-                    );
+                    // IMPORTANT:
+                    //
+                    // Execution event can contain
+                    // updated position data.
 
-                    console.log(
-                      "===================================="
-                    );
+                    if (
+                      execution.position
+                    ) {
+                      const position =
+                        updatePosition(
+                          execution.position
+                        );
 
-                    console.log(
-                      execution
-                    );
+                      console.log(
+                        "📌 POSITION UPDATED:",
+                        position
+                      );
+                    }
+
+                    // Send execution information
+                    // to frontend.
 
                     if (
                       typeof onExecutionUpdate ===
                       "function"
                     ) {
                       onExecutionUpdate({
-                        type:
-                          "execution",
+                        type: "execution",
 
                         data:
                           execution,
+
+                        positions:
+                          getOpenPositions(),
 
                         timestamp:
                           Date.now(),
                       });
                     }
 
+                    // IMPORTANT:
+                    //
+                    // Request official fresh state
+                    // from cTrader after execution.
+
+                    setTimeout(() => {
+                      requestReconciliation();
+                    }, 500);
+
                     return;
                   }
 
-                  // ==============================================
+                  // ============================================
                   // ORDER ERROR
-                  // ==============================================
+                  // ============================================
 
                   if (
                     payloadType ===
@@ -2296,18 +2485,11 @@ export async function startCTraderService(
                       );
 
                     console.error("");
-
-                    console.error(
-                      "===================================="
-                    );
-
+                    console.error("====================================");
                     console.error(
                       "❌ cTrader Order Error"
                     );
-
-                    console.error(
-                      "===================================="
-                    );
+                    console.error("====================================");
 
                     console.error(
                       errorEvent
@@ -2318,8 +2500,7 @@ export async function startCTraderService(
                       "function"
                     ) {
                       onExecutionUpdate({
-                        type:
-                          "order_error",
+                        type: "order_error",
 
                         message:
                           errorEvent.description ||
@@ -2337,6 +2518,7 @@ export async function startCTraderService(
 
                     return;
                   }
+
                 } catch (error) {
                   console.error(
                     "❌ cTrader message error:",
@@ -2407,6 +2589,7 @@ export async function startCTraderService(
                 startupPromise = null;
               }
             );
+
           } catch (error) {
             console.error(
               "❌ cTrader startup failed:",
@@ -2476,11 +2659,13 @@ export async function placeMarketOrder({
   ) {
     tradeSide =
       TRADE_SIDE.BUY;
+
   } else if (
     normalizedSide === "SELL"
   ) {
     tradeSide =
       TRADE_SIDE.SELL;
+
   } else {
     throw new Error(
       "Order side must be BUY or SELL."
@@ -2497,9 +2682,6 @@ export async function placeMarketOrder({
       "Selected symbol data unavailable."
     );
   }
-
-  // Extra safety:
-  // Always ensure full metadata exists.
 
   if (
     !symbolData.fullDataLoaded ||
@@ -2545,16 +2727,12 @@ export async function placeMarketOrder({
     clientOrderId,
   };
 
-  // Stop Loss
-
   if (
     normalizedStopLoss !== null
   ) {
     requestData.stopLoss =
       normalizedStopLoss;
   }
-
-  // Take Profit
 
   if (
     normalizedTakeProfit !== null
@@ -2596,18 +2774,9 @@ export async function placeMarketOrder({
   );
 
   console.log("");
-
-  console.log(
-    "===================================="
-  );
-
-  console.log(
-    "📤 MARKET ORDER SENT"
-  );
-
-  console.log(
-    "===================================="
-  );
+  console.log("====================================");
+  console.log("📤 MARKET ORDER SENT");
+  console.log("====================================");
 
   console.log({
     account:
@@ -2626,24 +2795,22 @@ export async function placeMarketOrder({
 
     volume,
 
-    lotSize:
-      symbolData.lotSize,
-
-    volumeStep:
-      symbolData.volumeStep,
-
-    minVolume:
-      symbolData.minVolume,
-
-    maxVolume:
-      symbolData.maxVolume,
-
     stopLoss:
       normalizedStopLoss,
 
     takeProfit:
       normalizedTakeProfit,
   });
+
+  // EXTRA SAFETY:
+  //
+  // Execution event should come automatically.
+  // This reconciliation ensures
+  // position is also loaded.
+
+  setTimeout(() => {
+    requestReconciliation();
+  }, 1000);
 
   return {
     success: true,
@@ -2680,6 +2847,7 @@ export async function placeMarketOrder({
 
 export async function closePosition({
   positionId,
+  symbolId,
   lots,
 }) {
   if (!authenticated) {
@@ -2700,16 +2868,20 @@ export async function closePosition({
     );
   }
 
+  if (!symbolId) {
+    throw new Error(
+      "Symbol ID is required."
+    );
+  }
+
   ensureMessageSender();
 
   const symbolData =
-    getSymbolById(
-      selectedSymbolId
-    );
+    getSymbolById(symbolId);
 
   if (!symbolData) {
     throw new Error(
-      "Selected symbol data unavailable."
+      "Position symbol data unavailable."
     );
   }
 
@@ -2747,16 +2919,28 @@ export async function closePosition({
     "📤 CLOSE POSITION SENT:",
     {
       positionId,
+      symbolId,
+      symbol:
+        symbolData.symbolName,
       lots,
       volume,
     }
   );
+
+  // Force fresh sync.
+
+  setTimeout(() => {
+    requestReconciliation();
+  }, 1000);
 
   return {
     success: true,
 
     positionId:
       String(positionId),
+
+    symbolId:
+      String(symbolId),
 
     volume,
 
@@ -2848,18 +3032,9 @@ export async function amendPositionSLTP({
     clientMsgId
   );
 
-  console.log(
-    "✏️ POSITION SL/TP AMEND SENT:",
-    {
-      positionId,
-
-      stopLoss:
-        normalizedSL,
-
-      takeProfit:
-        normalizedTP,
-    }
-  );
+  setTimeout(() => {
+    requestReconciliation();
+  }, 700);
 
   return {
     success: true,
@@ -2874,6 +3049,30 @@ export async function amendPositionSLTP({
       normalizedTP,
 
     clientMsgId,
+  };
+}
+
+// ============================================================
+// GET OPEN POSITIONS
+// ============================================================
+
+export function getOpenPositions() {
+  return Array.from(
+    positionsMap.values()
+  );
+}
+
+// ============================================================
+// MANUAL REFRESH POSITIONS
+// ============================================================
+
+export function refreshPositions() {
+  requestReconciliation();
+
+  return {
+    success: true,
+    message:
+      "Position reconciliation requested.",
   };
 }
 
@@ -3000,6 +3199,12 @@ export function getCTraderServiceStatus() {
       Array.from(
         subscribedSymbols
       ),
+
+    openPositions:
+      getOpenPositions(),
+
+    positionsCount:
+      positionsMap.size,
 
     volumeSettings: {
       min:

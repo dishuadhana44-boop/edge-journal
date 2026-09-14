@@ -67,7 +67,6 @@ function loadSavedAuth() {
     }
 
     const savedData = fs.readFileSync(AUTH_FILE, "utf8");
-
     const parsed = JSON.parse(savedData);
 
     let accounts = [];
@@ -341,8 +340,7 @@ async function startService() {
     );
   }
 
-  const currentStatus =
-    getCTraderServiceStatus();
+  const currentStatus = getCTraderServiceStatus();
 
   // Service already ready
   if (
@@ -367,10 +365,8 @@ async function startService() {
     hasAccessToken: Boolean(
       ctraderAuth.accessToken
     ),
-
     activeAccountId:
       ctraderAuth.activeAccountId,
-
     accountName: activeAccount.name,
   });
 
@@ -421,8 +417,7 @@ async function ensureServiceRunning() {
 
   await startService();
 
-  const newStatus =
-    getCTraderServiceStatus();
+  const newStatus = getCTraderServiceStatus();
 
   if (
     !newStatus.authenticated ||
@@ -482,7 +477,6 @@ router.get("/connect", (req, res) => {
     console.log("====================================");
 
     return res.redirect(authUrl);
-
   } catch (error) {
     console.error(
       "❌ cTrader Connect Error:",
@@ -523,8 +517,8 @@ router.get("/callback", async (req, res) => {
 
       const message = encodeURIComponent(
         description ||
-        error ||
-        "oauth_denied"
+          error ||
+          "oauth_denied"
       );
 
       return res.redirect(
@@ -586,24 +580,19 @@ router.get("/callback", async (req, res) => {
     let tokenData = {};
 
     try {
-      tokenData =
-        await tokenResponse.json();
+      tokenData = await tokenResponse.json();
     } catch {
       tokenData = {};
     }
 
     console.log("Token response:", {
       status: tokenResponse.status,
-
       hasAccessToken:
         Boolean(tokenData.accessToken),
-
       hasRefreshToken:
         Boolean(tokenData.refreshToken),
-
       errorCode:
         tokenData.errorCode || null,
-
       description:
         tokenData.description || null,
     });
@@ -615,8 +604,8 @@ router.get("/callback", async (req, res) => {
     ) {
       const message = encodeURIComponent(
         tokenData.description ||
-        tokenData.errorCode ||
-        "token_exchange_failed"
+          tokenData.errorCode ||
+          "token_exchange_failed"
       );
 
       return res.redirect(
@@ -670,7 +659,6 @@ router.get("/callback", async (req, res) => {
         console.log(
           "✅ cTrader service started successfully"
         );
-
       } catch (serviceError) {
         console.error(
           "⚠️ OAuth connected, but service failed to start:",
@@ -686,7 +674,6 @@ router.get("/callback", async (req, res) => {
     return res.redirect(
       "http://localhost:5173/settings?ctrader=connected"
     );
-
   } catch (error) {
     console.error(
       "❌ cTrader Callback Error:",
@@ -695,7 +682,7 @@ router.get("/callback", async (req, res) => {
 
     const message = encodeURIComponent(
       error.message ||
-      "oauth_callback_failed"
+        "oauth_callback_failed"
     );
 
     return res.redirect(
@@ -846,7 +833,8 @@ router.post("/account", async (req, res) => {
             .toString(36)
             .slice(2, 8)}`,
 
-        accountId: newAccountId,
+        accountId:
+          newAccountId,
 
         name:
           accountName ||
@@ -866,9 +854,7 @@ router.post("/account", async (req, res) => {
         "➕ New trading account added:",
         savedAccount
       );
-
     } else {
-      // Optional name update
       if (
         accountName &&
         String(accountName).trim()
@@ -905,7 +891,6 @@ router.post("/account", async (req, res) => {
         );
 
         await stopCTraderService();
-
       } catch {
         console.log(
           "⚠️ Previous service was not running."
@@ -920,7 +905,6 @@ router.post("/account", async (req, res) => {
     try {
       service =
         await startService();
-
     } catch (error) {
       console.error(
         "⚠️ Account saved but service failed to start:",
@@ -934,7 +918,8 @@ router.post("/account", async (req, res) => {
       message:
         "Trading account saved successfully",
 
-      account: savedAccount,
+      account:
+        savedAccount,
 
       accounts:
         ctraderAuth.accounts,
@@ -944,7 +929,6 @@ router.post("/account", async (req, res) => {
 
       service,
     });
-
   } catch (error) {
     console.error(
       "❌ Save cTrader account error:",
@@ -1007,11 +991,9 @@ router.post(
       console.log(
         "===================================="
       );
-
       console.log(
         "🔄 SWITCHING cTRADER ACCOUNT"
       );
-
       console.log(
         "===================================="
       );
@@ -1034,7 +1016,6 @@ router.post(
           console.log(
             "🛑 Previous cTrader service stopped."
           );
-
         } catch {
           console.log(
             "⚠️ Previous service was not running."
@@ -1059,7 +1040,6 @@ router.post(
 
         service,
       });
-
     } catch (error) {
       console.error(
         "❌ Account switch error:",
@@ -1115,7 +1095,6 @@ router.delete(
       if (isActiveAccount) {
         try {
           await stopCTraderService();
-
         } catch {
           console.log(
             "⚠️ Service was already stopped."
@@ -1144,7 +1123,6 @@ router.delete(
       ) {
         try {
           await startService();
-
         } catch (error) {
           console.error(
             "⚠️ Next account service failed to start:",
@@ -1170,7 +1148,6 @@ router.delete(
         activeAccountId:
           ctraderAuth.activeAccountId,
       });
-
     } catch (error) {
       console.error(
         "❌ Delete account error:",
@@ -1207,7 +1184,6 @@ router.post(
 
         service,
       });
-
     } catch (error) {
       console.error(
         "❌ Start service error:",
@@ -1260,7 +1236,8 @@ router.post("/order", async (req, res) => {
     if (!symbol) {
       return res.status(400).json({
         success: false,
-        message: "Symbol is required",
+        message:
+          "Symbol is required",
       });
     }
 
@@ -1303,7 +1280,6 @@ router.post("/order", async (req, res) => {
       activeAccountId:
         ctraderAuth.activeAccountId,
     });
-
   } catch (error) {
     console.error(
       "❌ PLACE cTRADER ORDER ERROR:",
@@ -1369,7 +1345,6 @@ router.post(
         });
 
       return res.json(result);
-
     } catch (error) {
       console.error(
         "❌ Close position error:",
@@ -1432,7 +1407,6 @@ router.post(
         });
 
       return res.json(result);
-
     } catch (error) {
       console.error(
         "❌ Amend position SL/TP error:",
@@ -1479,7 +1453,6 @@ router.post(
     try {
       try {
         await stopCTraderService();
-
       } catch {
         console.log(
           "⚠️ Service was already stopped."
@@ -1509,7 +1482,6 @@ router.post(
         message:
           "cTrader disconnected successfully",
       });
-
     } catch (error) {
       console.error(
         "❌ Disconnect error:",

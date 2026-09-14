@@ -1,48 +1,290 @@
 import React, { useEffect, useState } from "react";
+import {
+  CheckCircle2,
+  CircleAlert,
+  Plus,
+  ShieldCheck,
+} from "lucide-react";
+
+import BrokerCard from "../../brokers/BrokerCard";
+import AddBrokerModal from "../../brokers/AddBrokerModal";
+import BrokerDetailsModal from "../../brokers/BrokerDetailsModal";
+
+import {
+  getBrokerById,
+} from "../../brokers/brokerRegistry";
+
+/* ==========================================================
+   API URL
+========================================================== */
+
+const API_URL = "http://127.0.0.1:4000";
+
+/* ==========================================================
+   COMPONENT
+========================================================== */
 
 export default function BrokerIntegrationPage() {
-  const [connected, setConnected] = useState(false);
+  /* ==========================================================
+     STATE
+  ========================================================== */
+
   const [loading, setLoading] = useState(false);
-  const [accountId, setAccountId] = useState("");
 
-  // ==========================================
-  // CHECK CONNECTION
-  // ==========================================
+  const [message, setMessage] = useState(null);
 
-  const checkConnection = async () => {
+  const [showAddBroker, setShowAddBroker] =
+    useState(false);
+
+  const [showBrokerDetails, setShowBrokerDetails] =
+    useState(false);
+
+  const [selectedBroker, setSelectedBroker] =
+    useState(null);
+
+  const [connectedBrokers, setConnectedBrokers] =
+    useState([]);
+
+  /* ==========================================================
+     BROKER DATA
+  ========================================================== */
+
+  const ctraderBroker = getBrokerById("ctrader");
+
+  const mt5Broker = getBrokerById("mt5");
+
+  /* ==========================================================
+     SHOW MESSAGE
+  ========================================================== */
+
+  const showMessage = (type, text) => {
+    setMessage({
+      type,
+      text,
+    });
+
+    setTimeout(() => {
+      setMessage(null);
+    }, 4000);
+  };
+
+  /* ==========================================================
+     CHECK CTRADER CONNECTION
+  ========================================================== */
+
+  const checkCTraderConnection = async () => {
     try {
       const res = await fetch(
-        "http://127.0.0.1:4000/api/ctrader/status"
+        `${API_URL}/api/ctrader/status`
       );
+
+      if (!res.ok) {
+        return {
+          connected: false,
+        };
+      }
 
       const data = await res.json();
 
-      setConnected(Boolean(data.connected));
+      if (data.connected) {
+        return {
+          connected: true,
 
-      if (data.accountId) {
-        setAccountId(data.accountId);
+          accountId:
+            data.accountId ||
+            data.account?.accountId ||
+            null,
+
+          lastSync:
+            data.lastSync ||
+            null,
+
+          account:
+            data.account ||
+            null,
+        };
       }
+
+      return {
+        connected: false,
+      };
     } catch (error) {
-      console.error("Connection status error:", error);
+      console.error(
+        "cTrader connection status error:",
+        error
+      );
+
+      return {
+        connected: false,
+      };
     }
   };
 
-  // ==========================================
-  // PAGE LOAD
-  // ==========================================
+  /* ==========================================================
+     CHECK MT5 CONNECTION
+  ========================================================== */
+
+  const checkMT5Connection = async () => {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/mt5/status`
+      );
+
+      if (!res.ok) {
+        return {
+          connected: false,
+        };
+      }
+
+      const data = await res.json();
+
+      console.log(
+        "MT5 status:",
+        data
+      );
+
+      if (data.connected === true) {
+        const account = data.account || {};
+
+        return {
+          connected: true,
+
+          accountId:
+            data.accountId ||
+            account.login ||
+            null,
+
+          lastSync:
+            data.lastSync ||
+            new Date().toISOString(),
+
+          account,
+        };
+      }
+
+      return {
+        connected: false,
+      };
+    } catch (error) {
+      console.log(
+        "MT5 is not connected yet.",
+        error
+      );
+
+      return {
+        connected: false,
+      };
+    }
+  };
+
+  /* ==========================================================
+     LOAD CONNECTED BROKERS
+  ========================================================== */
+
+  const loadConnectedBrokers = async () => {
+    try {
+      setLoading(true);
+
+      const brokers = [];
+
+      /* ======================================================
+         CTRADER
+      ====================================================== */
+
+      const ctraderStatus =
+        await checkCTraderConnection();
+
+      if (
+        ctraderStatus.connected &&
+        ctraderBroker
+      ) {
+        brokers.push({
+          ...ctraderBroker,
+
+          accountId:
+            ctraderStatus.accountId,
+
+          lastSync:
+            ctraderStatus.lastSync,
+
+          account:
+            ctraderStatus.account,
+
+          connected: true,
+        });
+      }
+
+      /* ======================================================
+         METATRADER 5
+      ====================================================== */
+
+      const mt5Status =
+        await checkMT5Connection();
+
+      if (
+        mt5Status.connected &&
+        mt5Broker
+      ) {
+        brokers.push({
+          ...mt5Broker,
+
+          accountId:
+            mt5Status.accountId,
+
+          lastSync:
+            mt5Status.lastSync,
+
+          account:
+            mt5Status.account,
+
+          connected: true,
+        });
+      }
+
+      setConnectedBrokers(brokers);
+
+      return brokers;
+    } catch (error) {
+      console.error(
+        "Failed to load brokers:",
+        error
+      );
+
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ==========================================================
+     PAGE LOAD
+  ========================================================== */
 
   useEffect(() => {
-    checkConnection();
+    loadConnectedBrokers();
 
     const params = new URLSearchParams(
       window.location.search
     );
 
-    const status = params.get("ctrader");
-    const message = params.get("message");
+    const ctraderStatus =
+      params.get("ctrader");
 
-    if (status === "connected") {
-      alert("cTrader account connected successfully!");
+    const mt5Status =
+      params.get("mt5");
+
+    const messageParam =
+      params.get("message");
+
+    /* ========================================================
+       CTRADER RESULT
+    ======================================================== */
+
+    if (ctraderStatus === "connected") {
+      showMessage(
+        "success",
+        "cTrader account connected successfully!"
+      );
 
       window.history.replaceState(
         {},
@@ -50,14 +292,51 @@ export default function BrokerIntegrationPage() {
         "/settings"
       );
 
-      checkConnection();
+      setTimeout(() => {
+        loadConnectedBrokers();
+      }, 500);
     }
 
-    if (status === "error") {
-      alert(
-        `cTrader connection failed.\n\n${
-          message || "Unknown error"
-        }`
+    if (ctraderStatus === "error") {
+      showMessage(
+        "error",
+        messageParam ||
+          "cTrader connection failed."
+      );
+
+      window.history.replaceState(
+        {},
+        document.title,
+        "/settings"
+      );
+    }
+
+    /* ========================================================
+       MT5 RESULT
+    ======================================================== */
+
+    if (mt5Status === "connected") {
+      showMessage(
+        "success",
+        "MetaTrader 5 connected successfully!"
+      );
+
+      window.history.replaceState(
+        {},
+        document.title,
+        "/settings"
+      );
+
+      setTimeout(() => {
+        loadConnectedBrokers();
+      }, 500);
+    }
+
+    if (mt5Status === "error") {
+      showMessage(
+        "error",
+        messageParam ||
+          "MetaTrader 5 connection failed."
       );
 
       window.history.replaceState(
@@ -68,204 +347,347 @@ export default function BrokerIntegrationPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const ws = new WebSocket("ws://localhost:4000/ws");
-  
-    ws.onopen = () => {
-      console.log("🟢 EdgeFlo WebSocket connected");
-    };
-  
-    ws.onmessage = (event) => {
-      console.log("📩 EdgeFlo WebSocket:", JSON.parse(event.data));
-    };
-  
-    ws.onerror = (error) => {
-      console.error("❌ WebSocket error:", error);
-    };
-  
-    ws.onclose = () => {
-      console.log("🔴 EdgeFlo WebSocket disconnected");
-    };
-  
-    return () => {
-      ws.close();
-    };
-  }, []);
+  /* ==========================================================
+     OPEN BROKER DETAILS
+  ========================================================== */
 
-  // ==========================================
-  // CONNECT
-  // ==========================================
+  const handleSelectBroker = (broker) => {
+    setSelectedBroker(broker);
 
-  const handleConnectBroker = () => {
-    window.location.href =
-      "http://127.0.0.1:4000/api/ctrader/connect";
+    setShowAddBroker(false);
+
+    setShowBrokerDetails(true);
   };
 
-  // ==========================================
-  // SAVE ACCOUNT
-  // ==========================================
+  /* ==========================================================
+     CONNECT BROKER
+  ========================================================== */
 
-  const handleSaveAccount = async () => {
-    if (!accountId.trim()) {
-      alert("Please enter your cTrader Account ID.");
+  const handleConnectBroker = async (broker) => {
+    if (!broker) return;
+
+    /* ========================================================
+       CTRADER
+    ======================================================== */
+
+    if (broker.id === "ctrader") {
+      window.location.href =
+        `${API_URL}/api/ctrader/connect`;
+
       return;
     }
 
-    try {
-      const res = await fetch(
-        "http://127.0.0.1:4000/api/ctrader/account",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            accountId: accountId.trim(),
-          }),
+    /* ========================================================
+       METATRADER 5
+    ======================================================== */
+
+    if (broker.id === "mt5") {
+      try {
+        setLoading(true);
+
+        showMessage(
+          "info",
+          "Connecting to MetaTrader 5..."
+        );
+
+        const res = await fetch(
+          `${API_URL}/api/mt5/connect`,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+          }
+        );
+
+        const data = await res.json();
+
+        console.log(
+          "MT5 connection response:",
+          data
+        );
+
+        if (
+          data.success === true &&
+          data.connected === true
+        ) {
+          showMessage(
+            "success",
+            "MetaTrader 5 connected successfully!"
+          );
+
+          setShowBrokerDetails(false);
+
+          setSelectedBroker(null);
+
+          await loadConnectedBrokers();
+
+          return;
         }
-      );
 
-      const data = await res.json();
+        showMessage(
+          "error",
+          data.message ||
+            data.error ||
+            "Unable to connect to MetaTrader 5."
+        );
+      } catch (error) {
+        console.error(
+          "MT5 connection error:",
+          error
+        );
 
-      if (!data.success) {
-        alert(data.message || "Failed to save account");
-        return;
+        showMessage(
+          "error",
+          "Unable to connect to MetaTrader 5 Bridge. Make sure the MT5 Bridge is running on port 5001."
+        );
+      } finally {
+        setLoading(false);
       }
 
-      alert("cTrader Account ID saved successfully!");
-    } catch (error) {
-      console.error("Account save error:", error);
-
-      alert("Failed to save account.");
+      return;
     }
+
+    /* ========================================================
+       OTHER BROKERS
+    ======================================================== */
+
+    showMessage(
+      "info",
+      `${broker.name} integration is coming soon.`
+    );
+
+    setShowBrokerDetails(false);
+
+    setSelectedBroker(null);
   };
 
-  // ==========================================
-  // DISCONNECT
-  // ==========================================
+  /* ==========================================================
+     CLOSE DETAILS
+  ========================================================== */
 
-  const handleDisconnect = async () => {
-    try {
-      await fetch(
-        "http://127.0.0.1:4000/api/ctrader/disconnect",
-        {
-          method: "POST",
-        }
-      );
+  const handleCloseDetails = () => {
+    setShowBrokerDetails(false);
 
-      setConnected(false);
-      setAccountId("");
-
-      alert("cTrader disconnected.");
-    } catch (error) {
-      console.error("Disconnect error:", error);
-    }
+    setSelectedBroker(null);
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl max-w-xl">
+  /* ==========================================================
+     MESSAGE ICON
+  ========================================================== */
 
-        {/* HEADER */}
+  const renderMessageIcon = () => {
+    if (message?.type === "success") {
+      return <CheckCircle2 size={19} />;
+    }
 
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white">
-              cTrader Broker Integration
-            </h3>
+    return <CircleAlert size={19} />;
+  };
 
-            <p className="text-xs text-slate-400">
-              Connect your cTrader account to automatically sync trades.
-            </p>
-          </div>
+  /* ==========================================================
+     EMPTY STATE
+  ========================================================== */
 
-          <span
-            className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-              connected
-                ? "bg-emerald-500/10 text-emerald-400"
-                : "bg-slate-800 text-slate-400"
-            }`}
-          >
-            {connected ? "Connected" : "Not Connected"}
-          </span>
+  const renderEmptyState = () => {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm">
+          <Plus
+            size={24}
+            className="text-violet-600"
+          />
         </div>
 
-        {!connected ? (
-          <div className="space-y-4">
+        <h3 className="mt-5 text-base font-semibold text-slate-900">
+          Connect your first broker
+        </h3>
 
-            <button
-              onClick={handleConnectBroker}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-lg text-sm transition"
-            >
-              Connect cTrader
-            </button>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+          Connect your trading broker to automatically
+          synchronize your trades and account activity
+          with EdgeFlo.
+        </p>
 
-            <p className="text-[11px] text-slate-500 text-center">
-              You will be redirected to cTrader to authorize EdgeFlo.
-            </p>
+        <button
+          onClick={() =>
+            setShowAddBroker(true)
+          }
+          className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+        >
+          <Plus size={17} />
 
-          </div>
-        ) : (
-          <div className="space-y-4 mt-4 pt-4 border-t border-slate-800">
+          Add Broker
+        </button>
+      </div>
+    );
+  };
 
-            {/* ACCOUNT ID */}
+  /* ==========================================================
+     PAGE
+  ========================================================== */
 
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">
-                cTrader Account ID
-              </label>
+  return (
+    <div className="w-full space-y-6">
 
-              <input
-                type="text"
-                value={accountId}
-                onChange={(e) =>
-                  setAccountId(e.target.value)
-                }
-                placeholder="Enter Account ID e.g. 5881795"
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-blue-500"
-              />
-            </div>
+      {/* ======================================================
+          PAGE HEADER
+      ====================================================== */}
 
-            <button
-              onClick={handleSaveAccount}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 px-4 rounded-lg text-sm transition"
-            >
-              Save Account
-            </button>
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
 
-            {/* SYNC */}
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900">
+            Broker Integrations
+          </h2>
 
-            <button
-              disabled={!accountId || loading}
-              onClick={() => {
-                setLoading(true);
+          <p className="mt-1 text-sm text-slate-500">
+            Connect and manage your trading broker accounts.
+          </p>
+        </div>
 
-                setTimeout(() => {
-                  setLoading(false);
-                  alert(
-                    "Account connected. Trade sync API will be added next."
-                  );
-                }, 1000);
-              }}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white font-medium py-2.5 px-4 rounded-lg text-sm transition"
-            >
-              {loading
-                ? "Syncing..."
-                : "Sync Trades Data"}
-            </button>
+        {/* ADD BROKER */}
 
-            {/* DISCONNECT */}
+        <button
+          onClick={() =>
+            setShowAddBroker(true)
+          }
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+        >
+          <Plus size={17} />
 
-            <button
-              onClick={handleDisconnect}
-              className="w-full text-xs text-red-400 hover:underline pt-2"
-            >
-              Disconnect Account
-            </button>
+          Add Broker
+        </button>
 
+      </div>
+
+      {/* ======================================================
+          SECURITY INFO
+      ====================================================== */}
+
+      <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+
+        <ShieldCheck
+          size={21}
+          className="mt-0.5 shrink-0 text-emerald-600"
+        />
+
+        <div>
+          <h3 className="text-sm font-semibold text-emerald-900">
+            Secure Broker Connection
+          </h3>
+
+          <p className="mt-1 text-sm text-emerald-700">
+            Broker integrations use secure connection methods
+            whenever supported.
+          </p>
+        </div>
+
+      </div>
+
+      {/* ======================================================
+          MESSAGE
+      ====================================================== */}
+
+      {message && (
+        <div
+          className={`flex items-center gap-3 rounded-xl border p-4 text-sm ${
+            message.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : message.type === "error"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-blue-200 bg-blue-50 text-blue-700"
+          }`}
+        >
+          {renderMessageIcon()}
+
+          <span>
+            {message.text}
+          </span>
+        </div>
+      )}
+
+      {/* ======================================================
+          CONNECTED BROKERS
+      ====================================================== */}
+
+      <div>
+
+        <div className="mb-4">
+          <h3 className="text-base font-semibold text-slate-900">
+            Connected Brokers
+          </h3>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Select a broker to view and manage its
+            connection.
+          </p>
+        </div>
+
+        {/* LOADING */}
+
+        {loading && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+            Loading broker connections...
           </div>
         )}
+
+        {/* NO BROKERS */}
+
+        {!loading &&
+          connectedBrokers.length === 0 &&
+          renderEmptyState()}
+
+        {/* CONNECTED BROKER CARDS */}
+
+        {!loading &&
+          connectedBrokers.length > 0 && (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+
+              {connectedBrokers.map(
+                (broker) => (
+                  <BrokerCard
+                    key={broker.id}
+                    broker={broker}
+                    connected={true}
+                    onClick={
+                      handleSelectBroker
+                    }
+                  />
+                )
+              )}
+
+            </div>
+          )}
+
       </div>
+
+      {/* ======================================================
+          ADD BROKER MODAL
+      ====================================================== */}
+
+      <AddBrokerModal
+        isOpen={showAddBroker}
+        onClose={() =>
+          setShowAddBroker(false)
+        }
+        onSelectBroker={
+          handleSelectBroker
+        }
+      />
+
+      {/* ======================================================
+          BROKER DETAILS MODAL
+      ====================================================== */}
+
+      <BrokerDetailsModal
+        broker={selectedBroker}
+        isOpen={showBrokerDetails}
+        onClose={handleCloseDetails}
+        onConnect={handleConnectBroker}
+      />
+
     </div>
   );
 }

@@ -113,7 +113,7 @@ export default function OrderHeader({ setOrderOpen }) {
 
   return (
     <div
-      className="relative flex items-center justify-between border-b border-gray-200 px-4 py-3"
+      className="relative flex items-center justify-between border-b border-gray-200 px-4 py-2"
       ref={dropdownRef}
     >
       {/* SYMBOL SELECTOR */}
