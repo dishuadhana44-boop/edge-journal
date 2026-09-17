@@ -31,11 +31,17 @@ import { DashboardFilterProvider } from "./context/DashboardFilterContext";
 
 function isAuthenticated() {
   try {
-    const auth = JSON.parse(
-      localStorage.getItem("edgefloAuth")
+    const currentUser = localStorage.getItem(
+      "edgeflo_current_user"
     );
 
-    return auth?.isLoggedIn === true;
+    if (!currentUser) {
+      return false;
+    }
+
+    const user = JSON.parse(currentUser);
+
+    return Boolean(user?.id && user?.email);
   } catch {
     return false;
   }
