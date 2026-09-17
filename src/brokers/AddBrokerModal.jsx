@@ -5,7 +5,7 @@ import {
   X,
 } from "lucide-react";
 
-import { brokerRegistry } from "./BrokerRegistry";
+import { brokerRegistry } from "./brokerRegistry";
 
 export default function AddBrokerModal({
   isOpen,
