@@ -14,6 +14,32 @@ import { useMarket } from "./MarketContext";
 const TradeContext = createContext(null);
 
 // ============================================================
+// LOCAL STORAGE HELPERS
+// ============================================================
+
+const STORAGE_KEYS = {
+  OPEN_TRADES: "edgeflo_open_trades",
+  PENDING_ORDERS: "edgeflo_pending_orders",
+  CLOSED_TRADES: "edgeflo_closed_trades",
+  ACCOUNT: "edgeflo_account",
+};
+
+function loadFromStorage(key, fallback) {
+  try {
+    const savedData = localStorage.getItem(key);
+
+    if (!savedData) {
+      return fallback;
+    }
+
+    return JSON.parse(savedData);
+  } catch (error) {
+    console.error(`Failed to load ${key}:`, error);
+    return fallback;
+  }
+}
+
+// ============================================================
 // HELPERS
 // ============================================================
 
@@ -47,6 +73,7 @@ function normalizeSide(side) {
   if (
     value === "buy" ||
     value === "long" ||
+    value === "0" ||
     value === "1"
   ) {
     return "buy";
@@ -142,6 +169,93 @@ function getBrokerNumber(...values) {
 }
 
 // ============================================================
+// UNIVERSAL TIMESTAMP HELPER
+// ============================================================
+
+function timestampToMs(value) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  // Date object
+  if (value instanceof Date) {
+    const ms = value.getTime();
+
+    return Number.isFinite(ms) && ms > 0
+      ? ms
+      : null;
+  }
+
+  // Numeric timestamp
+  const numeric = Number(value);
+
+  if (
+    Number.isFinite(numeric) &&
+    numeric > 0
+  ) {
+    /*
+      MT5:
+      time     -> seconds
+      time_msc -> milliseconds
+
+      Example:
+      1757890000      -> seconds
+      1757890000000   -> milliseconds
+    */
+
+    if (numeric < 100000000000) {
+      return numeric * 1000;
+    }
+
+    return numeric;
+  }
+
+  // String / ISO / broker date
+  const parsed = new Date(value);
+
+  if (
+    !Number.isNaN(
+      parsed.getTime()
+    )
+  ) {
+    return parsed.getTime();
+  }
+
+  return null;
+}
+
+// ============================================================
+// FORMAT TIME FOR JOURNAL DETAILS
+// ============================================================
+
+function formatTradeTime(value) {
+  const timestamp =
+    timestampToMs(value);
+
+  if (
+    timestamp === null
+  ) {
+    return null;
+  }
+
+  return new Date(
+    timestamp
+  ).toLocaleTimeString(
+    "en-IN",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }
+  );
+}
+
+// ============================================================
 // NORMALIZE OPEN TIMESTAMP
 // ============================================================
 
@@ -153,81 +267,110 @@ function normalizeOpenedAt(position) {
     return null;
   }
 
-  // ----------------------------------------------------------
-  // Prefer millisecond timestamps
-  // ----------------------------------------------------------
+  const timestampCandidates = [
+    // --------------------------------------------------------
+    // MT5 millisecond timestamps
+    // --------------------------------------------------------
+    position.time_msc,
+    position.timeMsc,
+    position.openTimeMsc,
+    position.openedAtMsc,
 
-  const rawTimeMsc =
-    position.time_msc ??
-    position.timeMsc ??
-    position.openTimeMsc ??
-    position.openedAtMsc ??
-    null;
+    // --------------------------------------------------------
+    // MT5 seconds timestamp
+    // --------------------------------------------------------
+    position.time,
 
-  if (
-    rawTimeMsc !== null &&
-    rawTimeMsc !== undefined &&
-    rawTimeMsc !== ""
+    // --------------------------------------------------------
+    // Other possible date fields
+    // --------------------------------------------------------
+    position.openedAt,
+    position.openTime,
+    position.createdAt,
+    position.executionTimestamp,
+    position.timestamp,
+
+    // --------------------------------------------------------
+    // Nested fields
+    // --------------------------------------------------------
+    position.tradeData?.openedAt,
+    position.tradeData?.openTime,
+
+    position.data?.openedAt,
+    position.data?.openTime,
+  ];
+
+  for (
+    const candidate of timestampCandidates
   ) {
-    const timeMsc = Number(rawTimeMsc);
+    const timestamp =
+      timestampToMs(candidate);
 
     if (
-      Number.isFinite(timeMsc) &&
-      timeMsc > 0
+      timestamp !== null &&
+      timestamp > 0
     ) {
-      const date = new Date(timeMsc);
-
-      if (!Number.isNaN(date.getTime())) {
-        return date.toISOString();
-      }
+      return new Date(
+        timestamp
+      ).toISOString();
     }
-  }
-
-  // ----------------------------------------------------------
-  // Fallback timestamp
-  // ----------------------------------------------------------
-
-  const rawTime =
-    position.time ??
-    position.openTime ??
-    position.openedAt ??
-    position.createdAt ??
-    position.timestamp ??
-    null;
-
-  if (
-    rawTime === null ||
-    rawTime === undefined ||
-    rawTime === ""
-  ) {
-    return null;
-  }
-
-  const numericTime = Number(rawTime);
-
-  if (
-    Number.isFinite(numericTime) &&
-    numericTime > 0
-  ) {
-    const milliseconds =
-      numericTime < 100000000000
-        ? numericTime * 1000
-        : numericTime;
-
-    const date = new Date(milliseconds);
-
-    if (!Number.isNaN(date.getTime())) {
-      return date.toISOString();
-    }
-  }
-
-  const parsed = new Date(rawTime);
-
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString();
   }
 
   return null;
+}
+
+// ============================================================
+// NORMALIZE OPEN TIMESTAMP TO MILLISECONDS
+// ============================================================
+
+function normalizeOpenedAtMsc(position) {
+  if (
+    !position ||
+    typeof position !== "object"
+  ) {
+    return 0;
+  }
+
+  const timestampCandidates = [
+    // MT5 milliseconds
+    position.time_msc,
+    position.timeMsc,
+    position.openTimeMsc,
+    position.openedAtMsc,
+
+    // MT5 seconds
+    position.time,
+
+    // Other fields
+    position.openedAt,
+    position.openTime,
+    position.createdAt,
+    position.executionTimestamp,
+    position.timestamp,
+
+    // Nested
+    position.tradeData?.openedAt,
+    position.tradeData?.openTime,
+
+    position.data?.openedAt,
+    position.data?.openTime,
+  ];
+
+  for (
+    const candidate of timestampCandidates
+  ) {
+    const timestamp =
+      timestampToMs(candidate);
+
+    if (
+      timestamp !== null &&
+      timestamp > 0
+    ) {
+      return timestamp;
+    }
+  }
+
+  return 0;
 }
 
 // ============================================================
@@ -236,9 +379,15 @@ function normalizeOpenedAt(position) {
 
 function getPositionKey(position) {
   return [
-    String(position.accountId || ""),
-    normalizeSymbol(position.symbol),
-    normalizeSide(position.side),
+    String(
+      position.accountId || ""
+    ),
+    normalizeSymbol(
+      position.symbol
+    ),
+    normalizeSide(
+      position.side
+    ),
   ].join("|");
 }
 
@@ -246,7 +395,9 @@ function getPositionKey(position) {
 // NORMALIZE cTRADER POSITION
 // ============================================================
 
-function normalizeBrokerPosition(position) {
+function normalizeBrokerPosition(
+  position
+) {
   if (
     !position ||
     typeof position !== "object"
@@ -264,66 +415,74 @@ function normalizeBrokerPosition(position) {
   if (
     positionId === undefined ||
     positionId === null ||
-    String(positionId).trim() === ""
+    String(
+      positionId
+    ).trim() === ""
   ) {
     return null;
   }
 
-  const symbol = normalizeSymbol(
-    position.symbol ??
-      position.symbolName ??
-      position.instrument ??
-      "EURUSD"
-  );
+  const symbol =
+    normalizeSymbol(
+      position.symbol ??
+        position.symbolName ??
+        position.instrument ??
+        "EURUSD"
+    );
 
-  const side = normalizeSide(
-    position.side ??
-      position.tradeSide ??
-      position.direction ??
-      position.tradeDirection
-  );
+  const side =
+    normalizeSide(
+      position.side ??
+        position.tradeSide ??
+        position.direction ??
+        position.tradeDirection
+    );
 
-  const grossProfit = getBrokerNumber(
-    position.grossProfit,
-    position.grossPnL,
-    position.grossPnl,
-    position.unrealizedGrossProfit,
-    position.tradeData?.grossProfit,
-    position.tradeData?.grossPnL,
-    position.data?.grossProfit
-  );
+  const grossProfit =
+    getBrokerNumber(
+      position.grossProfit,
+      position.grossPnL,
+      position.grossPnl,
+      position.unrealizedGrossProfit,
+      position.tradeData?.grossProfit,
+      position.tradeData?.grossPnL,
+      position.data?.grossProfit
+    );
 
-  const commission = getBrokerNumber(
-    position.commission,
-    position.commissions,
-    position.tradeData?.commission,
-    position.tradeData?.commissions,
-    position.data?.commission
-  );
+  const commission =
+    getBrokerNumber(
+      position.commission,
+      position.commissions,
+      position.tradeData?.commission,
+      position.tradeData?.commissions,
+      position.data?.commission
+    );
 
-  const swap = getBrokerNumber(
-    position.swap,
-    position.swapCharge,
-    position.swapCommission,
-    position.tradeData?.swap,
-    position.tradeData?.swapCharge,
-    position.data?.swap
-  );
+  const swap =
+    getBrokerNumber(
+      position.swap,
+      position.swapCharge,
+      position.swapCommission,
+      position.tradeData?.swap,
+      position.tradeData?.swapCharge,
+      position.data?.swap
+    );
 
-  const netProfit = getBrokerNumber(
-    position.netProfit,
-    position.netPnL,
-    position.netPnl,
-    position.unrealizedNetProfit,
-    position.unrealizedPnL,
-    position.pnl,
-    position.tradeData?.netProfit,
-    position.tradeData?.netPnL,
-    position.tradeData?.pnl,
-    position.data?.netProfit,
-    position.data?.pnl,
-    grossProfit
-  );
+  const netProfit =
+    getBrokerNumber(
+      position.netProfit,
+      position.netPnL,
+      position.netPnl,
+      position.unrealizedNetProfit,
+      position.unrealizedPnL,
+      position.pnl,
+      position.tradeData?.netProfit,
+      position.tradeData?.netPnL,
+      position.tradeData?.pnl,
+      position.data?.netProfit,
+      position.data?.pnl,
+      grossProfit
+    );
 
   const openedAt =
     position.openedAt ??
@@ -334,19 +493,23 @@ function normalizeBrokerPosition(position) {
     null;
 
   return {
-    id: String(positionId),
-
-    brokerPositionId: String(
-      position.positionId ??
-        position.brokerPositionId ??
-        positionId
+    id: String(
+      positionId
     ),
 
-    status: normalizeStatus(
-      position.status ??
-        position.positionStatus ??
-        "OPEN"
-    ),
+    brokerPositionId:
+      String(
+        position.positionId ??
+          position.brokerPositionId ??
+          positionId
+      ),
+
+    status:
+      normalizeStatus(
+        position.status ??
+          position.positionStatus ??
+          "OPEN"
+      ),
 
     openedAt,
 
@@ -360,58 +523,64 @@ function normalizeBrokerPosition(position) {
 
     side,
 
-    entry: getBrokerNumber(
-      position.entry,
-      position.entryPrice,
-      position.openPrice,
-      position.tradeData?.entry,
-      position.tradeData?.entryPrice,
-      position.price
-    ),
+    entry:
+      getBrokerNumber(
+        position.entry,
+        position.entryPrice,
+        position.openPrice,
+        position.tradeData?.entry,
+        position.tradeData?.entryPrice,
+        position.price
+      ),
 
-    currentPrice: getBrokerNumber(
-      position.currentPrice,
-      position.markPrice,
-      position.tradeData?.currentPrice,
-      position.tradeData?.markPrice,
-      position.price,
-      position.entryPrice,
-      position.entry
-    ),
+    currentPrice:
+      getBrokerNumber(
+        position.currentPrice,
+        position.markPrice,
+        position.tradeData?.currentPrice,
+        position.tradeData?.markPrice,
+        position.price,
+        position.entryPrice,
+        position.entry
+      ),
 
-    stopLoss: getBrokerNumber(
-      position.stopLoss,
-      position.stopLossPrice,
-      position.sl,
-      position.tradeData?.stopLoss,
-      position.tradeData?.stopLossPrice
-    ),
+    stopLoss:
+      getBrokerNumber(
+        position.stopLoss,
+        position.stopLossPrice,
+        position.sl,
+        position.tradeData?.stopLoss,
+        position.tradeData?.stopLossPrice
+      ),
 
-    takeProfit: getBrokerNumber(
-      position.takeProfit,
-      position.takeProfitPrice,
-      position.tp,
-      position.tradeData?.takeProfit,
-      position.tradeData?.takeProfitPrice
-    ),
+    takeProfit:
+      getBrokerNumber(
+        position.takeProfit,
+        position.takeProfitPrice,
+        position.tp,
+        position.tradeData?.takeProfit,
+        position.tradeData?.takeProfitPrice
+      ),
 
-    quantity: getBrokerNumber(
-      position.lots,
-      position.quantity,
-      position.volumeLots,
-      position.volume,
-      position.tradeVolume,
-      position.tradeData?.quantity,
-      position.tradeData?.lots
-    ),
+    quantity:
+      getBrokerNumber(
+        position.lots,
+        position.quantity,
+        position.volumeLots,
+        position.volume,
+        position.tradeVolume,
+        position.tradeData?.quantity,
+        position.tradeData?.lots
+      ),
 
-    margin: getBrokerNumber(
-      position.margin,
-      position.usedMargin,
-      position.marginUsed,
-      position.tradeData?.margin,
-      position.data?.margin
-    ),
+    margin:
+      getBrokerNumber(
+        position.margin,
+        position.usedMargin,
+        position.marginUsed,
+        position.tradeData?.margin,
+        position.data?.margin
+      ),
 
     grossProfit,
     grossPnL: grossProfit,
@@ -424,10 +593,11 @@ function normalizeBrokerPosition(position) {
     netPnL: netProfit,
     pnl: netProfit,
 
-    risk: getBrokerNumber(
-      position.risk,
-      position.tradeData?.risk
-    ),
+    risk:
+      getBrokerNumber(
+        position.risk,
+        position.tradeData?.risk
+      ),
 
     orderType:
       position.orderType ??
@@ -444,7 +614,8 @@ function normalizeBrokerPosition(position) {
       position.tradeData?.accountId ??
       null,
 
-    rawBrokerPosition: position,
+    rawBrokerPosition:
+      position,
   };
 }
 
@@ -480,66 +651,73 @@ function normalizeMT5Position(
     return null;
   }
 
-  const symbol = normalizeSymbol(
-    position.symbol ??
-      position.symbolName ??
-      "EURUSD"
-  );
+  const symbol =
+    normalizeSymbol(
+      position.symbol ??
+        position.symbolName ??
+        "EURUSD"
+    );
 
-  const side = normalizeMT5Side(
-    position.type
-  );
+  const side =
+    normalizeMT5Side(
+      position.type
+    );
 
-  const quantity = getBrokerNumber(
-    position.volume,
-    position.volumeLots,
-    position.lots,
-    position.quantity
-  );
+  const quantity =
+    getBrokerNumber(
+      position.volume,
+      position.volumeLots,
+      position.lots,
+      position.quantity
+    );
 
-  const entry = getBrokerNumber(
-    position.price_open,
-    position.priceOpen,
-    position.openPrice,
-    position.entry,
-    position.entryPrice
-  );
+  const entry =
+    getBrokerNumber(
+      position.price_open,
+      position.priceOpen,
+      position.openPrice,
+      position.entry,
+      position.entryPrice
+    );
 
-  const currentPrice = getBrokerNumber(
-    position.price_current,
-    position.priceCurrent,
-    position.currentPrice,
-    position.markPrice,
-    entry
-  );
+  const currentPrice =
+    getBrokerNumber(
+      position.price_current,
+      position.priceCurrent,
+      position.currentPrice,
+      position.markPrice,
+      entry
+    );
 
-  const pnl = getBrokerNumber(
-    position.profit,
-    position.pnl,
-    position.netProfit
-  );
+  const pnl =
+    getBrokerNumber(
+      position.profit,
+      position.pnl,
+      position.netProfit
+    );
 
-  const swap = getBrokerNumber(
-    position.swap
-  );
+  const swap =
+    getBrokerNumber(
+      position.swap
+    );
 
-  const commission = getBrokerNumber(
-    position.commission
-  );
+  const commission =
+    getBrokerNumber(
+      position.commission
+    );
 
   // ==========================================================
-  // MT5 OPEN TIME
+  // ACTUAL MT5 OPEN TIME
   // ==========================================================
 
   const openedAt =
-    normalizeOpenedAt(position);
+    normalizeOpenedAt(
+      position
+    );
 
   const openedAtMsc =
-    getBrokerNumber(
-      position.time_msc,
-      position.timeMsc,
-      position.openTimeMsc,
-      position.openedAtMsc
+    normalizeOpenedAtMsc(
+      position
     );
 
   // ==========================================================
@@ -553,52 +731,99 @@ function normalizeMT5Position(
       brokerTimeMsc
     );
 
+  // ==========================================================
+  // DEBUG OPEN TIME
+  // ==========================================================
+
   console.log(
     "🕒 MT5 POSITION TIME:",
     {
       ticket,
-      time: position.time,
-      time_msc: position.time_msc,
-      broker_time_msc:
-        position.broker_time_msc,
-      receivedBrokerTimeMsc:
-        brokerTimeMsc,
-      openedAt,
-      openedAtMsc,
-      browserNow: Date.now(),
+
+      rawTime:
+        position.time,
+
+      rawTimeMsc:
+        position.time_msc,
+
+      rawTimeMscCamel:
+        position.timeMsc,
+
+      rawOpenTimeMsc:
+        position.openTimeMsc,
+
+      rawOpenedAtMsc:
+        position.openedAtMsc,
+
+      rawOpenedAt:
+        position.openedAt,
+
+      rawOpenTime:
+        position.openTime,
+
+      normalizedOpenedAt:
+        openedAt,
+
+      normalizedOpenedAtMsc:
+        openedAtMsc,
+
+      normalizedLocalTime:
+        openedAt
+          ? formatTradeTime(
+              openedAt
+            )
+          : null,
+
+      browserNow:
+        Date.now(),
+
       browserISO:
         new Date().toISOString(),
     }
   );
 
-  const margin = getBrokerNumber(
-    position.margin,
-    position.usedMargin,
-    position.marginUsed,
-    position.tradeData?.margin
-  );
+  const margin =
+    getBrokerNumber(
+      position.margin,
+      position.usedMargin,
+      position.marginUsed,
+      position.tradeData?.margin
+    );
 
   // ==========================================================
   // NORMALIZED MT5 POSITION
   // ==========================================================
 
   const normalizedPosition = {
-    id: `mt5-${String(ticket)}`,
+    id:
+      `mt5-${String(ticket)}`,
 
     brokerPositionId:
       String(ticket),
 
     status: "OPEN",
 
+    // --------------------------------------------------------
+    // ACTUAL OPEN TIMESTAMP
+    // --------------------------------------------------------
+
     openedAt,
 
     openedAtMsc,
+
+    // --------------------------------------------------------
+    // BROKER CLOCK
+    // --------------------------------------------------------
 
     brokerTimeMsc:
       positionBrokerTimeMsc,
 
     broker_time_msc:
       positionBrokerTimeMsc,
+
+    // --------------------------------------------------------
+    // PRESERVE TIMESTAMP VARIANTS
+    // --------------------------------------------------------
 
     time_msc:
       openedAtMsc,
@@ -609,7 +834,30 @@ function normalizeMT5Position(
     openTimeMsc:
       openedAtMsc,
 
+    time:
+      position.time ?? null,
+
+    // --------------------------------------------------------
+    // OTHER OPEN TIME REPRESENTATIONS
+    // --------------------------------------------------------
+
+    openTime:
+      position.openTime ??
+      null,
+
+    openedAtRaw:
+      position.openedAt ??
+      null,
+
+    // --------------------------------------------------------
+    // CLOSED TIME
+    // --------------------------------------------------------
+
     closedAt: null,
+
+    // --------------------------------------------------------
+    // TRADE DATA
+    // --------------------------------------------------------
 
     symbol,
 
@@ -660,6 +908,10 @@ function normalizeMT5Position(
       position.login ??
       null,
 
+    // --------------------------------------------------------
+    // NEVER LOSE RAW MT5 DATA
+    // --------------------------------------------------------
+
     rawBrokerPosition:
       position,
   };
@@ -679,154 +931,750 @@ function normalizeMT5Position(
 function mergeBrokerPositions(
   positions = []
 ) {
-  const groups = new Map();
+  const groups =
+    new Map();
 
-  positions.forEach((position) => {
-    const key =
-      getPositionKey(position);
+  positions.forEach(
+    (position) => {
+      const key =
+        getPositionKey(
+          position
+        );
 
-    if (!groups.has(key)) {
-      groups.set(key, {
-        ...position,
+      if (
+        !groups.has(key)
+      ) {
+        groups.set(
+          key,
+          {
+            ...position,
 
-        mergedPositionIds: [
-          String(position.id),
-        ],
+            mergedPositionIds: [
+              String(
+                position.id
+              ),
+            ],
 
-        quantity:
-          normalizeNumber(
-            position.quantity
-          ),
+            quantity:
+              normalizeNumber(
+                position.quantity
+              ),
 
-        pnl:
-          normalizeNumber(
-            position.pnl
-          ),
+            pnl:
+              normalizeNumber(
+                position.pnl
+              ),
 
-        grossProfit:
-          normalizeNumber(
-            position.grossProfit
-          ),
+            grossProfit:
+              normalizeNumber(
+                position.grossProfit
+              ),
 
-        netProfit:
-          normalizeNumber(
-            position.netProfit
-          ),
+            netProfit:
+              normalizeNumber(
+                position.netProfit
+              ),
 
-        commission:
-          normalizeNumber(
-            position.commission
-          ),
+            commission:
+              normalizeNumber(
+                position.commission
+              ),
 
-        swap:
-          normalizeNumber(
-            position.swap
-          ),
+            swap:
+              normalizeNumber(
+                position.swap
+              ),
 
-        margin:
-          normalizeNumber(
-            position.margin
-          ),
+            margin:
+              normalizeNumber(
+                position.margin
+              ),
 
-        weightedEntryTotal:
-          normalizeNumber(
-            position.entry
-          ) *
-          normalizeNumber(
-            position.quantity
-          ),
-      });
+            weightedEntryTotal:
+              normalizeNumber(
+                position.entry
+              ) *
+              normalizeNumber(
+                position.quantity
+              ),
+          }
+        );
 
-      return;
-    }
+        return;
+      }
 
-    const existing =
-      groups.get(key);
+      const existing =
+        groups.get(key);
 
-    const newQuantity =
-      normalizeNumber(
-        position.quantity
+      const newQuantity =
+        normalizeNumber(
+          position.quantity
+        );
+
+      existing.mergedPositionIds.push(
+        String(
+          position.id
+        )
       );
 
-    existing.mergedPositionIds.push(
-      String(position.id)
-    );
+      existing.quantity +=
+        newQuantity;
 
-    existing.quantity +=
-      newQuantity;
+      existing.pnl +=
+        normalizeNumber(
+          position.pnl
+        );
 
-    existing.pnl +=
-      normalizeNumber(
-        position.pnl
-      );
+      existing.grossProfit +=
+        normalizeNumber(
+          position.grossProfit
+        );
 
-    existing.grossProfit +=
-      normalizeNumber(
-        position.grossProfit
-      );
+      existing.netProfit +=
+        normalizeNumber(
+          position.netProfit
+        );
 
-    existing.netProfit +=
-      normalizeNumber(
-        position.netProfit
-      );
+      existing.commission +=
+        normalizeNumber(
+          position.commission
+        );
 
-    existing.commission +=
-      normalizeNumber(
-        position.commission
-      );
+      existing.swap +=
+        normalizeNumber(
+          position.swap
+        );
 
-    existing.swap +=
-      normalizeNumber(
-        position.swap
-      );
+      existing.margin +=
+        normalizeNumber(
+          position.margin
+        );
 
-    existing.margin +=
-      normalizeNumber(
-        position.margin
-      );
+      existing.weightedEntryTotal +=
+        normalizeNumber(
+          position.entry
+        ) *
+        newQuantity;
 
-    existing.weightedEntryTotal +=
-      normalizeNumber(
-        position.entry
-      ) *
-      newQuantity;
-
-    if (
-      normalizeNumber(
-        position.currentPrice
-      ) > 0
-    ) {
-      existing.currentPrice =
+      if (
         normalizeNumber(
           position.currentPrice
-        );
-    }
+        ) > 0
+      ) {
+        existing.currentPrice =
+          normalizeNumber(
+            position.currentPrice
+          );
+      }
 
-    existing.status =
-      position.status;
-  });
+      existing.status =
+        position.status;
+    }
+  );
 
   return Array.from(
     groups.values()
-  ).map((position) => {
-    const quantity =
-      normalizeNumber(
-        position.quantity
+  ).map(
+    (position) => {
+      const quantity =
+        normalizeNumber(
+          position.quantity
+        );
+
+      return {
+        ...position,
+
+        entry:
+          quantity > 0
+            ? position.weightedEntryTotal /
+              quantity
+            : position.entry,
+
+        weightedEntryTotal:
+          undefined,
+      };
+    }
+  );
+}
+
+// ============================================================
+// JOURNAL CLOSED TRADE BUILDER
+// ============================================================
+
+function buildClosedTradeData(
+  trade,
+  closedTime = new Date()
+) {
+  const safeTrade =
+    trade || {};
+
+  // ==========================================================
+  // CLOSE TIME
+  // ==========================================================
+
+  const closedTimeMs =
+    timestampToMs(
+      closedTime
+    );
+
+  const resolvedClosedTime =
+    closedTimeMs !== null
+      ? new Date(
+          closedTimeMs
+        )
+      : new Date();
+
+  // ==========================================================
+  // FIND ACTUAL OPEN TIME
+  // ==========================================================
+
+  const timestampCandidates = [
+    // --------------------------------------------------------
+    // NORMALIZED MT5 VALUES
+    // --------------------------------------------------------
+
+    safeTrade.openedAtMsc,
+
+    safeTrade.time_msc,
+
+    safeTrade.timeMsc,
+
+    safeTrade.openTimeMsc,
+
+    // --------------------------------------------------------
+    // RAW MT5 SECONDS
+    // --------------------------------------------------------
+
+    safeTrade.time,
+
+    // --------------------------------------------------------
+    // DATE FIELDS
+    // --------------------------------------------------------
+
+    safeTrade.openedAt,
+
+    safeTrade.openTime,
+
+    safeTrade.createdAt,
+
+    safeTrade.executionTimestamp,
+
+    safeTrade.timestamp,
+
+    // --------------------------------------------------------
+    // RAW MT5 POSITION
+    // --------------------------------------------------------
+
+    safeTrade.rawBrokerPosition?.time_msc,
+
+    safeTrade.rawBrokerPosition?.timeMsc,
+
+    safeTrade.rawBrokerPosition?.openTimeMsc,
+
+    safeTrade.rawBrokerPosition?.openedAtMsc,
+
+    safeTrade.rawBrokerPosition?.time,
+
+    safeTrade.rawBrokerPosition?.openedAt,
+
+    safeTrade.rawBrokerPosition?.openTime,
+
+    safeTrade.rawBrokerPosition?.createdAt,
+
+    // --------------------------------------------------------
+    // NESTED TRADE DATA
+    // --------------------------------------------------------
+
+    safeTrade.tradeData?.openedAt,
+
+    safeTrade.tradeData?.openTime,
+
+    safeTrade.data?.openedAt,
+
+    safeTrade.data?.openTime,
+  ];
+
+  let openedTimeMs = null;
+
+  for (
+    const candidate of timestampCandidates
+  ) {
+    const timestamp =
+      timestampToMs(
+        candidate
       );
 
-    return {
-      ...position,
+    if (
+      timestamp !== null &&
+      timestamp > 0
+    ) {
+      openedTimeMs =
+        timestamp;
 
-      entry:
-        quantity > 0
-          ? position.weightedEntryTotal /
-            quantity
-          : position.entry,
+      break;
+    }
+  }
 
-      weightedEntryTotal:
-        undefined,
-    };
-  });
+  const openedTime =
+    openedTimeMs !== null
+      ? new Date(
+          openedTimeMs
+        )
+      : null;
+
+  // ==========================================================
+  // DEBUG OPEN/CLOSE TIME
+  // ==========================================================
+
+  console.log(
+    "⏱️ MT5 JOURNAL TIME RESOLUTION:",
+    {
+      id:
+        safeTrade.id,
+
+      ticket:
+        safeTrade.brokerPositionId,
+
+      symbol:
+        safeTrade.symbol ??
+        safeTrade.pair,
+
+      rawOpenedAt:
+        safeTrade.openedAt,
+
+      rawOpenedAtMsc:
+        safeTrade.openedAtMsc,
+
+      rawTime:
+        safeTrade.time,
+
+      rawTimeMsc:
+        safeTrade.time_msc,
+
+      rawTimeMscCamel:
+        safeTrade.timeMsc,
+
+      rawOpenTimeMsc:
+        safeTrade.openTimeMsc,
+
+      rawOpenTime:
+        safeTrade.openTime,
+
+      rawBrokerTime:
+        safeTrade.rawBrokerPosition
+          ?.time,
+
+      rawBrokerTimeMsc:
+        safeTrade.rawBrokerPosition
+          ?.time_msc,
+
+      resolvedOpenedTime:
+        openedTime
+          ? openedTime.toISOString()
+          : null,
+
+      resolvedOpenedTimeMs:
+        openedTimeMs,
+
+      resolvedOpenedLocalTime:
+        openedTime
+          ? formatTradeTime(
+              openedTime
+            )
+          : null,
+
+      resolvedClosedTime:
+        resolvedClosedTime.toISOString(),
+
+      resolvedClosedTimeMs:
+        resolvedClosedTime.getTime(),
+
+      resolvedClosedLocalTime:
+        formatTradeTime(
+          resolvedClosedTime
+        ),
+    }
+  );
+
+  // ==========================================================
+  // DURATION
+  // ==========================================================
+
+  let durationSeconds = 0;
+
+  if (
+    openedTimeMs !== null &&
+    Number.isFinite(
+      openedTimeMs
+    ) &&
+    Number.isFinite(
+      resolvedClosedTime.getTime()
+    )
+  ) {
+    const durationMilliseconds =
+      resolvedClosedTime.getTime() -
+      openedTimeMs;
+
+    if (
+      durationMilliseconds >= 0
+    ) {
+      durationSeconds =
+        Math.floor(
+          durationMilliseconds /
+            1000
+        );
+    }
+  }
+
+  // ==========================================================
+  // DURATION TEXT
+  // ==========================================================
+
+  let durationText =
+    "0s";
+
+  if (
+    durationSeconds > 0
+  ) {
+    const hours =
+      Math.floor(
+        durationSeconds /
+          3600
+      );
+
+    const minutes =
+      Math.floor(
+        (
+          durationSeconds %
+          3600
+        ) /
+        60
+      );
+
+    const seconds =
+      durationSeconds %
+      60;
+
+    if (
+      hours > 0
+    ) {
+      durationText =
+        minutes > 0
+          ? `${hours}h ${minutes}m`
+          : `${hours}h`;
+    } else if (
+      minutes > 0
+    ) {
+      durationText =
+        seconds > 0
+          ? `${minutes}m ${seconds}s`
+          : `${minutes}m`;
+    } else {
+      durationText =
+        `${seconds}s`;
+    }
+  }
+
+  console.log(
+    "⏱️ FINAL MT5 JOURNAL DURATION:",
+    {
+      id:
+        safeTrade.id,
+
+      openedTime:
+        openedTime
+          ? openedTime.toISOString()
+          : null,
+
+      closedTime:
+        resolvedClosedTime.toISOString(),
+
+      durationSeconds,
+
+      duration:
+        durationText,
+    }
+  );
+
+  // ==========================================================
+  // SIDE
+  // ==========================================================
+
+  const tradeSide =
+    normalizeSide(
+      safeTrade.side
+    ) === "buy"
+      ? "Buy"
+      : "Sell";
+
+  // ==========================================================
+  // PRICES
+  // ==========================================================
+
+  const entryPrice =
+    normalizeNumber(
+      safeTrade.entry ??
+        safeTrade.entryPrice
+    );
+
+  const exitPrice =
+    normalizeNumber(
+      safeTrade.exitPrice ??
+        safeTrade.closePrice ??
+        safeTrade.currentPrice ??
+        safeTrade.entry ??
+        safeTrade.entryPrice
+    );
+
+  const stopLoss =
+    normalizeNumber(
+      safeTrade.stopLoss ??
+        safeTrade.sl
+    );
+
+  const takeProfit =
+    normalizeNumber(
+      safeTrade.takeProfit ??
+        safeTrade.tp
+    );
+
+  // ==========================================================
+  // P&L
+  // ==========================================================
+
+  const finalPnL =
+    normalizeNumber(
+      safeTrade.netProfit ??
+        safeTrade.netPnL ??
+        safeTrade.pnl ??
+        safeTrade.profit
+    );
+
+  // ==========================================================
+  // SESSION
+  // USE OPENING TIME — NOT CLOSE TIME
+  // ==========================================================
+
+  let session =
+    "Asia";
+
+  if (
+    openedTime
+  ) {
+    const openedHour =
+      openedTime.getUTCHours();
+
+    if (
+      openedHour >= 0 &&
+      openedHour < 8
+    ) {
+      session =
+        "Asia";
+    } else if (
+      openedHour >= 8 &&
+      openedHour < 13
+    ) {
+      session =
+        "London";
+    } else {
+      session =
+        "New York";
+    }
+  }
+
+  // ==========================================================
+  // RISK / REWARD
+  // ==========================================================
+
+  let riskReward =
+    null;
+
+  if (
+    entryPrice > 0 &&
+    exitPrice > 0 &&
+    stopLoss > 0
+  ) {
+    const riskDistance =
+      tradeSide === "Buy"
+        ? entryPrice -
+          stopLoss
+        : stopLoss -
+          entryPrice;
+
+    const rewardDistance =
+      tradeSide === "Buy"
+        ? exitPrice -
+          entryPrice
+        : entryPrice -
+          exitPrice;
+
+    if (
+      riskDistance > 0 &&
+      Number.isFinite(
+        rewardDistance
+      )
+    ) {
+      riskReward =
+        Number(
+          (
+            rewardDistance /
+            riskDistance
+          ).toFixed(2)
+        );
+    }
+  }
+
+  // ==========================================================
+  // EXACT ENTRY / EXIT TIME
+  // ==========================================================
+
+  const formattedEntryTime =
+    openedTime
+      ? formatTradeTime(
+          openedTime
+        )
+      : safeTrade.entryTime ??
+        null;
+
+  const formattedExitTime =
+    formatTradeTime(
+      resolvedClosedTime
+    ) ??
+    safeTrade.exitTime ??
+    null;
+
+  // ==========================================================
+  // FINAL JOURNAL DATA
+  // ==========================================================
+
+  return {
+    ...safeTrade,
+
+    status:
+      "CLOSED",
+
+    // --------------------------------------------------------
+    // EXACT OPEN TIMESTAMP
+    // --------------------------------------------------------
+
+    openedAt:
+      openedTime
+        ? openedTime.toISOString()
+        : safeTrade.openedAt ??
+          null,
+
+    openedAtMsc:
+      openedTimeMs ??
+      safeTrade.openedAtMsc ??
+      0,
+
+    // --------------------------------------------------------
+    // EXACT CLOSE TIMESTAMP
+    // --------------------------------------------------------
+
+    closedAt:
+      resolvedClosedTime.toISOString(),
+
+    // --------------------------------------------------------
+    // JOURNAL DISPLAY TIMES
+    // --------------------------------------------------------
+
+    entryTime:
+      formattedEntryTime,
+
+    exitTime:
+      formattedExitTime,
+
+    // --------------------------------------------------------
+    // DURATION
+    // --------------------------------------------------------
+
+    durationSeconds,
+
+    duration:
+      durationText,
+
+    // --------------------------------------------------------
+    // DATE
+    // --------------------------------------------------------
+
+    date:
+      resolvedClosedTime
+        .toISOString()
+        .split("T")[0],
+
+    day:
+      resolvedClosedTime.toLocaleDateString(
+        "en-US",
+        {
+          weekday:
+            "long",
+        }
+      ),
+
+    // --------------------------------------------------------
+    // TRADE IDENTIFICATION
+    // --------------------------------------------------------
+
+    pair:
+      normalizeSymbol(
+        safeTrade.symbol ??
+          safeTrade.pair
+      ),
+
+    direction:
+      tradeSide,
+
+    session,
+
+    // --------------------------------------------------------
+    // PRICES
+    // --------------------------------------------------------
+
+    entryPrice,
+
+    exitPrice,
+
+    stopLoss,
+
+    takeProfit,
+
+    // --------------------------------------------------------
+    // RISK / REWARD
+    // --------------------------------------------------------
+
+    riskReward,
+
+    rr:
+      riskReward,
+
+    realizedR:
+      riskReward,
+
+    // --------------------------------------------------------
+    // P&L
+    // --------------------------------------------------------
+
+    pnl:
+      finalPnL,
+
+    netProfit:
+      finalPnL,
+
+    netPnL:
+      finalPnL,
+
+    // --------------------------------------------------------
+    // RESULT
+    // --------------------------------------------------------
+
+    result:
+      finalPnL > 0
+        ? "Win"
+        : finalPnL < 0
+        ? "Loss"
+        : "Break Even",
+  };
 }
 
 // ============================================================
@@ -842,23 +1690,39 @@ export function TradeProvider({
     symbol: activeSymbol,
   } = useMarket();
 
-  const { addTrade } =
-    useJournal();
+  const {
+    addTrade,
+  } = useJournal();
 
   const [
     openTrades,
     setOpenTrades,
-  ] = useState([]);
+  ] = useState(() =>
+    loadFromStorage(
+      STORAGE_KEYS.OPEN_TRADES,
+      []
+    )
+  );
 
   const [
     pendingOrders,
     setPendingOrders,
-  ] = useState([]);
+  ] = useState(() =>
+    loadFromStorage(
+      STORAGE_KEYS.PENDING_ORDERS,
+      []
+    )
+  );
 
   const [
     closedTrades,
     setClosedTrades,
-  ] = useState([]);
+  ] = useState(() =>
+    loadFromStorage(
+      STORAGE_KEYS.CLOSED_TRADES,
+      []
+    )
+  );
 
   const [
     tradeNotification,
@@ -893,7 +1757,9 @@ export function TradeProvider({
 
   const updateBrokerClock =
     useCallback(
-      (newBrokerTimeMsc) => {
+      (
+        newBrokerTimeMsc
+      ) => {
         const brokerTime =
           Number(
             newBrokerTimeMsc
@@ -911,13 +1777,14 @@ export function TradeProvider({
         const clientTime =
           Date.now();
 
-        brokerClockRef.current = {
-          brokerTimeMsc:
-            brokerTime,
+        brokerClockRef.current =
+          {
+            brokerTimeMsc:
+              brokerTime,
 
-          clientTimeMsc:
-            clientTime,
-        };
+            clientTimeMsc:
+              clientTime,
+          };
 
         setBrokerTimeMsc(
           brokerTime
@@ -931,59 +1798,71 @@ export function TradeProvider({
   // ==========================================================
 
   const getCurrentBrokerTimeMsc =
-    useCallback(() => {
-      const {
-        brokerTimeMsc:
-          sampledBrokerTime,
-        clientTimeMsc,
-      } =
-        brokerClockRef.current;
+    useCallback(
+      () => {
+        const {
+          brokerTimeMsc:
+            sampledBrokerTime,
+          clientTimeMsc,
+        } =
+          brokerClockRef.current;
 
-      if (
-        !Number.isFinite(
-          sampledBrokerTime
-        ) ||
-        !Number.isFinite(
-          clientTimeMsc
-        )
-      ) {
-        return null;
-      }
+        if (
+          !Number.isFinite(
+            sampledBrokerTime
+          ) ||
+          !Number.isFinite(
+            clientTimeMsc
+          )
+        ) {
+          return null;
+        }
 
-      const elapsed =
-        Date.now() -
-        clientTimeMsc;
+        const elapsed =
+          Date.now() -
+          clientTimeMsc;
 
-      return (
-        sampledBrokerTime +
-        Math.max(
-          0,
-          elapsed
-        )
-      );
-    }, []);
+        return (
+          sampledBrokerTime +
+          Math.max(
+            0,
+            elapsed
+          )
+        );
+      },
+      []
+    );
 
   // ==========================================================
   // TRADE NOTIFICATION
   // ==========================================================
 
   const showTradeNotification =
-    useCallback((trade) => {
+  useCallback(
+    (trade, type = "entry") => {
       if (!trade) {
         return;
       }
 
       setTradeNotification({
-        id: trade.id,
+        id: `${type}-${trade.id}-${Date.now()}`,
+        type,
         trade,
         createdAt: Date.now(),
       });
-    }, []);
+    },
+    []
+  );
 
   const hideTradeNotification =
-    useCallback(() => {
-      setTradeNotification(null);
-    }, []);
+    useCallback(
+      () => {
+        setTradeNotification(
+          null
+        );
+      },
+      []
+    );
 
   // ==========================================================
   // ACCOUNT
@@ -992,11 +1871,79 @@ export function TradeProvider({
   const [
     account,
     setAccount,
-  ] = useState({
-    balance: 100158.75,
-    currency: "USD",
-    leverage: 100,
-  });
+  ] = useState(() =>
+    loadFromStorage(
+      STORAGE_KEYS.ACCOUNT,
+      {
+        balance: 0,
+        equity: 0,
+        marginUsed: 0,
+        freeMargin: 0,
+        currency: "USD",
+        leverage: 100,
+      }
+    )
+  );
+  
+// ============================================================
+// PERSIST TRADES AND ACCOUNT DATA
+// ============================================================
+
+useEffect(() => {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.OPEN_TRADES,
+      JSON.stringify(openTrades)
+    );
+  } catch (error) {
+    console.error(
+      "Failed to save open trades:",
+      error
+    );
+  }
+}, [openTrades]);
+
+useEffect(() => {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.PENDING_ORDERS,
+      JSON.stringify(pendingOrders)
+    );
+  } catch (error) {
+    console.error(
+      "Failed to save pending orders:",
+      error
+    );
+  }
+}, [pendingOrders]);
+
+useEffect(() => {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.CLOSED_TRADES,
+      JSON.stringify(closedTrades)
+    );
+  } catch (error) {
+    console.error(
+      "Failed to save closed trades:",
+      error
+    );
+  }
+}, [closedTrades]);
+
+useEffect(() => {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.ACCOUNT,
+      JSON.stringify(account)
+    );
+  } catch (error) {
+    console.error(
+      "Failed to save account:",
+      error
+    );
+  }
+}, [account]);
 
   const balance =
     normalizeNumber(
@@ -1015,482 +1962,805 @@ export function TradeProvider({
     );
 
   // ==========================================================
+  // MT5 ACCOUNT SYNC
+  // ==========================================================
+
+  const syncMT5Account =
+    useCallback(
+      async () => {
+        try {
+          const response =
+            await fetch(
+              "http://localhost:4000/api/mt5/account",
+              {
+                method: "GET",
+                cache: "no-store",
+              }
+            );
+
+          if (
+            !response.ok
+          ) {
+            throw new Error(
+              `MT5 account request failed: ${response.status}`
+            );
+          }
+
+          const data =
+            await response.json();
+
+          console.log(
+            "💰 MT5 ACCOUNT RESPONSE:",
+            data
+          );
+
+          if (
+            !data ||
+            data.success !== true
+          ) {
+            console.warn(
+              "⚠️ MT5 account response was not successful:",
+              data
+            );
+
+            return null;
+          }
+
+          const brokerAccount =
+            data.account ??
+            data.data?.account ??
+            data.data ??
+            data;
+
+          const brokerBalance =
+            getBrokerNumber(
+              brokerAccount.balance,
+              data.balance
+            );
+
+          const brokerEquity =
+            getBrokerNumber(
+              brokerAccount.equity,
+              data.equity
+            );
+
+          const brokerMargin =
+            getBrokerNumber(
+              brokerAccount.margin,
+              brokerAccount.marginUsed,
+              data.margin,
+              data.marginUsed
+            );
+
+          const brokerFreeMargin =
+            getBrokerNumber(
+              brokerAccount.freeMargin,
+              brokerAccount.free_margin,
+              data.freeMargin,
+              data.free_margin
+            );
+
+          const brokerLeverage =
+            getBrokerNumber(
+              brokerAccount.leverage,
+              data.leverage
+            ) || 100;
+
+          const brokerCurrency =
+            brokerAccount.currency ||
+            data.currency ||
+            "USD";
+
+          setAccount(
+            (prev) => ({
+              ...prev,
+
+              balance:
+                brokerBalance > 0
+                  ? brokerBalance
+                  : prev.balance,
+
+              equity:
+                brokerEquity > 0
+                  ? brokerEquity
+                  : prev.equity,
+
+              marginUsed:
+                brokerMargin >= 0
+                  ? brokerMargin
+                  : prev.marginUsed,
+
+              freeMargin:
+                brokerFreeMargin >= 0
+                  ? brokerFreeMargin
+                  : prev.freeMargin,
+
+              leverage:
+                brokerLeverage,
+
+              currency:
+                brokerCurrency,
+            })
+          );
+
+          console.log(
+            "✅ REAL MT5 ACCOUNT SYNC:",
+            {
+              balance:
+                brokerBalance,
+
+              equity:
+                brokerEquity,
+
+              marginUsed:
+                brokerMargin,
+
+              freeMargin:
+                brokerFreeMargin,
+
+              leverage:
+                brokerLeverage,
+
+              currency:
+                brokerCurrency,
+            }
+          );
+
+          return brokerAccount;
+        } catch (
+          error
+        ) {
+          console.error(
+            "❌ MT5 ACCOUNT SYNC ERROR:",
+            error
+          );
+
+          return null;
+        }
+      },
+      []
+    );
+
+  // ==========================================================
+  // MT5 ACCOUNT POLLING
+  // ==========================================================
+
+  useEffect(
+    () => {
+      let cancelled =
+        false;
+
+      const initialAccountSync =
+        async () => {
+          if (
+            !cancelled
+          ) {
+            await syncMT5Account();
+          }
+        };
+
+      initialAccountSync();
+
+      const interval =
+        setInterval(
+          () => {
+            if (
+              !cancelled
+            ) {
+              syncMT5Account();
+            }
+          },
+          3000
+        );
+
+      return () => {
+        cancelled = true;
+        clearInterval(
+          interval
+        );
+      };
+    },
+    [
+      syncMT5Account,
+    ]
+  );
+
+  // ==========================================================
   // MT5 SYNC
   // ==========================================================
 
   const syncMT5Positions =
-    useCallback(async () => {
-      try {
-        const response =
-          await fetch(
-            "http://localhost:4000/api/mt5/positions",
-            {
-              method: "GET",
-              cache: "no-store",
+    useCallback(
+      async () => {
+        try {
+          const response =
+            await fetch(
+              "http://localhost:4000/api/mt5/positions",
+              {
+                method: "GET",
+                cache: "no-store",
+              }
+            );
+
+          if (
+            !response.ok
+          ) {
+            throw new Error(
+              `MT5 positions request failed: ${response.status}`
+            );
+          }
+
+          const data =
+            await response.json();
+
+          if (
+            !data ||
+            data.success !== true
+          ) {
+            console.warn(
+              "⚠️ MT5 positions response was not successful:",
+              data
+            );
+
+            return [];
+          }
+
+          // ======================================================
+          // BROKER CLOCK SAMPLE
+          // ======================================================
+
+          const responseBrokerTimeMsc =
+            getBrokerNumber(
+              data.broker_time_msc,
+              data.brokerTimeMsc
+            );
+
+          if (
+            responseBrokerTimeMsc > 0
+          ) {
+            updateBrokerClock(
+              responseBrokerTimeMsc
+            );
+          }
+
+          // ======================================================
+          // MT5 POSITIONS
+          // ======================================================
+
+          const mt5Positions =
+            Array.isArray(
+              data.positions
+            )
+              ? data.positions
+              : [];
+
+          const normalizedMT5Positions =
+            mt5Positions
+              .map(
+                (
+                  position
+                ) =>
+                  normalizeMT5Position(
+                    position,
+                    responseBrokerTimeMsc
+                  )
+              )
+              .filter(
+                Boolean
+              );
+
+          // ======================================================
+          // DETECT CLOSED MT5 POSITIONS
+          // ======================================================
+
+          const currentMT5PositionsMap =
+            new Map();
+
+          normalizedMT5Positions.forEach(
+            (position) => {
+              currentMT5PositionsMap.set(
+                String(
+                  position.brokerPositionId
+                ),
+                position
+              );
             }
           );
 
-        if (!response.ok) {
-          throw new Error(
-            `MT5 positions request failed: ${response.status}`
+          const previousMT5Positions =
+            previousMT5PositionsRef.current;
+
+          previousMT5Positions.forEach(
+            (
+              previousPosition,
+              positionId
+            ) => {
+              if (
+                currentMT5PositionsMap.has(
+                  positionId
+                )
+              ) {
+                return;
+              }
+
+              // --------------------------------------------------
+              // POSITION DISAPPEARED FROM MT5
+              // --------------------------------------------------
+
+              const closedTime =
+                new Date();
+
+              console.log(
+                "🔴 MT5 POSITION DISAPPEARED — BUILDING JOURNAL TRADE:",
+                {
+                  positionId,
+
+                  openedAt:
+                    previousPosition.openedAt,
+
+                  openedAtMsc:
+                    previousPosition.openedAtMsc,
+
+                  time:
+                    previousPosition.time,
+
+                  time_msc:
+                    previousPosition.time_msc,
+
+                  timeMsc:
+                    previousPosition.timeMsc,
+
+                  openTimeMsc:
+                    previousPosition.openTimeMsc,
+
+                  rawTime:
+                    previousPosition
+                      .rawBrokerPosition
+                      ?.time,
+
+                  rawTimeMsc:
+                    previousPosition
+                      .rawBrokerPosition
+                      ?.time_msc,
+
+                  closeTime:
+                    closedTime.toISOString(),
+                }
+              );
+
+              const journalData =
+                buildClosedTradeData(
+                  previousPosition,
+                  closedTime
+                );
+
+              const closedTrade = {
+                ...previousPosition,
+
+                ...journalData,
+
+                // Preserve MT5 identifiers
+                id:
+                  previousPosition.id,
+
+                brokerPositionId:
+                  previousPosition.brokerPositionId,
+
+                broker:
+                  "MT5",
+
+                rawBrokerPosition:
+                  previousPosition.rawBrokerPosition,
+              };
+
+              console.log(
+                "📕 MT5 POSITION CLOSED:",
+                closedTrade
+              );
+              showTradeNotification(closedTrade, "exit");
+
+              console.log("🔔 EXIT POPUP TRIGGERED:", {
+                id: closedTrade.id,
+                type: "exit",
+                pnl: closedTrade.pnl,
+              });
+
+              // --------------------------------------------------
+              // SAVE TO CLOSED TRADE STATE
+              // --------------------------------------------------
+
+              setClosedTrades(
+                (prev) => {
+                  const alreadyExists =
+                    prev.some(
+                      (trade) =>
+                        String(
+                          trade.brokerPositionId
+                        ) ===
+                        String(
+                          positionId
+                        )
+                    );
+
+                  if (
+                    alreadyExists
+                  ) {
+                    return prev;
+                  }
+
+                  return [
+                    ...prev,
+                    closedTrade,
+                  ];
+                }
+              );
+
+              // --------------------------------------------------
+              // SAVE TO JOURNAL
+              // --------------------------------------------------
+
+              addTrade?.(
+                closedTrade
+              );
+
+              console.log(
+                "📔 MT5 TRADE ADDED TO JOURNAL:",
+                {
+                  id:
+                    closedTrade.id,
+
+                  pair:
+                    closedTrade.pair,
+
+                  direction:
+                    closedTrade.direction,
+
+                  session:
+                    closedTrade.session,
+
+                  result:
+                    closedTrade.result,
+
+                  pnl:
+                    closedTrade.pnl,
+
+                  riskReward:
+                    closedTrade.riskReward,
+
+                  day:
+                    closedTrade.day,
+
+                  durationSeconds:
+                    closedTrade.durationSeconds,
+
+                  duration:
+                    closedTrade.duration,
+
+                  entryTime:
+                    closedTrade.entryTime,
+
+                  exitTime:
+                    closedTrade.exitTime,
+
+                  openedAt:
+                    closedTrade.openedAt,
+
+                  closedAt:
+                    closedTrade.closedAt,
+                }
+              );
+            }
           );
-        }
 
-        const data =
-          await response.json();
+          // ======================================================
+          // SAVE CURRENT MT5 POSITIONS
+          // ======================================================
 
-        if (
-          !data ||
-          data.success !== true
+          previousMT5PositionsRef.current =
+            currentMT5PositionsMap;
+
+          // ======================================================
+          // DEBUG
+          // ======================================================
+
+          console.log(
+            "🔄 MT5 POSITIONS SYNC:",
+            {
+              brokerTimeMsc:
+                responseBrokerTimeMsc,
+
+              currentBrokerTimeMsc:
+                getCurrentBrokerTimeMsc(),
+
+              positions:
+                normalizedMT5Positions,
+            }
+          );
+
+          // ======================================================
+          // UPDATE OPEN TRADES
+          // ======================================================
+
+          setOpenTrades(
+            (prevTrades) => {
+              const nonMT5Trades =
+                prevTrades.filter(
+                  (trade) =>
+                    String(
+                      trade.broker || ""
+                    ).toLowerCase() !==
+                    "mt5"
+                );
+
+              const finalTrades = [
+                ...nonMT5Trades,
+                ...normalizedMT5Positions,
+              ];
+
+              console.log(
+                "🔥 FINAL POSITIONS AFTER MT5 SYNC:",
+                finalTrades
+              );
+
+              return finalTrades;
+            }
+          );
+
+          return normalizedMT5Positions;
+        } catch (
+          error
         ) {
-          console.warn(
-            "⚠️ MT5 positions response was not successful:",
-            data
+          console.error(
+            "❌ MT5 POSITION SYNC ERROR:",
+            error
           );
 
           return [];
         }
-
-        // ======================================================
-        // BROKER CLOCK SAMPLE
-        // ======================================================
-
-        const responseBrokerTimeMsc =
-          getBrokerNumber(
-            data.broker_time_msc,
-            data.brokerTimeMsc
-          );
-
-        if (
-          responseBrokerTimeMsc > 0
-        ) {
-          updateBrokerClock(
-            responseBrokerTimeMsc
-          );
-        }
-
-        // ======================================================
-        // MT5 POSITIONS
-        // ======================================================
-
-        const mt5Positions =
-          Array.isArray(
-            data.positions
-          )
-            ? data.positions
-            : [];
-
-        const normalizedMT5Positions =
-          mt5Positions
-            .map(
-              (position) =>
-                normalizeMT5Position(
-                  position,
-                  responseBrokerTimeMsc
-                )
-            )
-            .filter(Boolean);
-
-        // ======================================================
-        // DETECT CLOSED MT5 POSITIONS
-        // ======================================================
-
-        const currentMT5PositionsMap =
-          new Map();
-
-        normalizedMT5Positions.forEach(
-          (position) => {
-            currentMT5PositionsMap.set(
-              String(
-                position.brokerPositionId
-              ),
-              position
-            );
-          }
-        );
-
-        const previousMT5Positions =
-          previousMT5PositionsRef.current;
-
-        previousMT5Positions.forEach(
-          (
-            previousPosition,
-            positionId
-          ) => {
-            if (
-              currentMT5PositionsMap.has(
-                positionId
-              )
-            ) {
-              return;
-            }
-
-            const closedTime =
-              new Date();
-
-            const openedTime =
-              previousPosition.openedAt
-                ? new Date(
-                    previousPosition.openedAt
-                  )
-                : closedTime;
-
-            const durationSeconds =
-              Math.max(
-                0,
-                Math.floor(
-                  (
-                    closedTime -
-                    openedTime
-                  ) / 1000
-                )
-              );
-
-            const finalPnL =
-              normalizeNumber(
-                previousPosition.pnl ??
-                  previousPosition.netProfit
-              );
-
-            const closedTrade = {
-              ...previousPosition,
-
-              status: "CLOSED",
-
-              closedAt:
-                closedTime.toISOString(),
-
-              durationSeconds,
-
-              date:
-                closedTime
-                  .toISOString()
-                  .split("T")[0],
-
-              pair:
-                previousPosition.symbol,
-
-              direction:
-                previousPosition.side ===
-                "buy"
-                  ? "Long"
-                  : "Short",
-
-              entryPrice:
-                normalizeNumber(
-                  previousPosition.entry
-                ),
-
-              exitPrice:
-                normalizeNumber(
-                  previousPosition.currentPrice ??
-                    previousPosition.entry
-                ),
-
-              pnl: finalPnL,
-
-              netProfit: finalPnL,
-
-              netPnL: finalPnL,
-
-              result:
-                finalPnL > 0
-                  ? "Win"
-                  : finalPnL < 0
-                  ? "Loss"
-                  : "Breakeven",
-            };
-
-            console.log(
-              "📕 MT5 POSITION CLOSED:",
-              closedTrade
-            );
-
-            setClosedTrades(
-              (prev) => {
-                const alreadyExists =
-                  prev.some(
-                    (trade) =>
-                      String(
-                        trade.brokerPositionId
-                      ) ===
-                      String(
-                        positionId
-                      )
-                  );
-
-                if (
-                  alreadyExists
-                ) {
-                  return prev;
-                }
-
-                return [
-                  ...prev,
-                  closedTrade,
-                ];
-              }
-            );
-
-            addTrade?.(
-              closedTrade
-            );
-          }
-        );
-
-        // ======================================================
-        // SAVE CURRENT MT5 POSITIONS
-        // ======================================================
-
-        previousMT5PositionsRef.current =
-          currentMT5PositionsMap;
-
-        // ======================================================
-        // DEBUG
-        // ======================================================
-
-        console.log(
-          "🔄 MT5 POSITIONS SYNC:",
-          {
-            brokerTimeMsc:
-              responseBrokerTimeMsc,
-
-            currentBrokerTimeMsc:
-              getCurrentBrokerTimeMsc(),
-
-            positions:
-              normalizedMT5Positions,
-          }
-        );
-
-        // ======================================================
-        // UPDATE OPEN TRADES
-        // ======================================================
-
-        setOpenTrades(
-          (prevTrades) => {
-            const nonMT5Trades =
-              prevTrades.filter(
-                (trade) =>
-                  String(
-                    trade.broker || ""
-                  ).toLowerCase() !==
-                  "mt5"
-              );
-
-            const finalTrades = [
-              ...nonMT5Trades,
-              ...normalizedMT5Positions,
-            ];
-
-            console.log(
-              "🔥 FINAL POSITIONS AFTER MT5 SYNC:",
-              finalTrades
-            );
-
-            return finalTrades;
-          }
-        );
-
-        return normalizedMT5Positions;
-      } catch (error) {
-        console.error(
-          "❌ MT5 POSITION SYNC ERROR:",
-          error
-        );
-
-        return [];
-      }
-    }, [
-      getCurrentBrokerTimeMsc,
-      updateBrokerClock,
-      addTrade,
-    ]);
+      },
+      [
+        getCurrentBrokerTimeMsc,
+        updateBrokerClock,
+        addTrade,
+        showTradeNotification,
+      ]
+    );
 
   // ==========================================================
   // MT5 POLLING
   // ==========================================================
 
-  useEffect(() => {
-    let cancelled = false;
+  useEffect(
+    () => {
+      let cancelled =
+        false;
 
-    const initialSync =
-      async () => {
-        if (!cancelled) {
-          await syncMT5Positions();
-        }
+      const initialSync =
+        async () => {
+          if (
+            !cancelled
+          ) {
+            await syncMT5Positions();
+          }
+        };
+
+      initialSync();
+
+      const interval =
+        setInterval(
+          () => {
+            if (
+              !cancelled
+            ) {
+              syncMT5Positions();
+            }
+          },
+          2000
+        );
+
+      return () => {
+        cancelled = true;
+        clearInterval(
+          interval
+        );
       };
-
-    initialSync();
-
-    const interval =
-      setInterval(() => {
-        if (!cancelled) {
-          syncMT5Positions();
-        }
-      }, 2000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [
-    syncMT5Positions,
-  ]);
+    },
+    [
+      syncMT5Positions,
+    ]
+  );
 
   // ==========================================================
   // FLOATING P&L
   // ==========================================================
 
   const floatingPnL =
-    useMemo(() => {
-      return openTrades.reduce(
-        (sum, trade) => {
-          const broker =
-            String(
-              trade.broker || ""
-            ).toLowerCase();
+    useMemo(
+      () => {
+        return openTrades.reduce(
+          (
+            sum,
+            trade
+          ) => {
+            const broker =
+              String(
+                trade.broker || ""
+              ).toLowerCase();
 
-          if (
-            broker === "ctrader"
-          ) {
+            if (
+              broker ===
+              "ctrader"
+            ) {
+              return (
+                sum +
+                normalizeNumber(
+                  trade.grossProfit ??
+                    trade.grossPnL
+                )
+              );
+            }
+
+            if (
+              broker ===
+              "mt5"
+            ) {
+              return (
+                sum +
+                normalizeNumber(
+                  trade.pnl ??
+                    trade.netProfit
+                )
+              );
+            }
+
             return (
               sum +
               normalizeNumber(
-                trade.grossProfit ??
-                  trade.grossPnL
+                trade.pnl
               )
             );
-          }
-
-          if (
-            broker === "mt5"
-          ) {
-            return (
-              sum +
-              normalizeNumber(
-                trade.pnl ??
-                  trade.netProfit
-              )
-            );
-          }
-
-          return (
-            sum +
-            normalizeNumber(
-              trade.pnl
-            )
-          );
-        },
-        0
-      );
-    }, [
-      openTrades,
-    ]);
+          },
+          0
+        );
+      },
+      [
+        openTrades,
+      ]
+    );
 
   // ==========================================================
   // TOTAL NET P&L
   // ==========================================================
 
   const totalNetPnL =
-    useMemo(() => {
-      return openTrades.reduce(
-        (sum, trade) =>
-          sum +
-          normalizeNumber(
-            trade.netProfit ??
-              trade.netPnL ??
-              trade.pnl
-          ),
-        0
-      );
-    }, [
-      openTrades,
-    ]);
+    useMemo(
+      () => {
+        return openTrades.reduce(
+          (
+            sum,
+            trade
+          ) =>
+            sum +
+            normalizeNumber(
+              trade.netProfit ??
+                trade.netPnL ??
+                trade.pnl
+            ),
+          0
+        );
+      },
+      [
+        openTrades,
+      ]
+    );
 
   // ==========================================================
   // COMMISSION
   // ==========================================================
 
   const totalCommission =
-    useMemo(() => {
-      return openTrades.reduce(
-        (sum, trade) =>
-          sum +
-          normalizeNumber(
-            trade.commission
-          ),
-        0
-      );
-    }, [
-      openTrades,
-    ]);
+    useMemo(
+      () => {
+        return openTrades.reduce(
+          (
+            sum,
+            trade
+          ) =>
+            sum +
+            normalizeNumber(
+              trade.commission
+            ),
+          0
+        );
+      },
+      [
+        openTrades,
+      ]
+    );
 
   // ==========================================================
   // SWAP
   // ==========================================================
 
   const totalSwap =
-    useMemo(() => {
-      return openTrades.reduce(
-        (sum, trade) =>
-          sum +
-          normalizeNumber(
-            trade.swap
-          ),
-        0
-      );
-    }, [
-      openTrades,
-    ]);
+    useMemo(
+      () => {
+        return openTrades.reduce(
+          (
+            sum,
+            trade
+          ) =>
+            sum +
+            normalizeNumber(
+              trade.swap
+            ),
+          0
+        );
+      },
+      [
+        openTrades,
+      ]
+    );
 
   // ==========================================================
   // EQUITY
   // ==========================================================
 
   const equity =
-    useMemo(() => {
-      return (
-        balance +
-        totalNetPnL
-      );
-    }, [
-      balance,
-      totalNetPnL,
-    ]);
+    useMemo(
+      () => {
+        return (
+          balance +
+          totalNetPnL
+        );
+      },
+      [
+        balance,
+        totalNetPnL,
+      ]
+    );
 
   // ==========================================================
   // MARGIN USED
   // ==========================================================
 
   const marginUsed =
-    useMemo(() => {
-      return openTrades.reduce(
-        (sum, trade) =>
-          sum +
-          normalizeNumber(
-            trade.margin
-          ),
-        0
-      );
-    }, [
-      openTrades,
-    ]);
+    useMemo(
+      () => {
+        return openTrades.reduce(
+          (
+            sum,
+            trade
+          ) =>
+            sum +
+            normalizeNumber(
+              trade.margin
+            ),
+          0
+        );
+      },
+      [
+        openTrades,
+      ]
+    );
 
   // ==========================================================
   // FREE MARGIN
   // ==========================================================
 
   const freeMargin =
-    useMemo(() => {
-      return (
-        equity -
-        marginUsed
-      );
-    }, [
-      equity,
-      marginUsed,
-    ]);
+    useMemo(
+      () => {
+        return (
+          equity -
+          marginUsed
+        );
+      },
+      [
+        equity,
+        marginUsed,
+      ]
+    );
 
   // ==========================================================
   // STATISTICS
@@ -1503,48 +2773,57 @@ export function TradeProvider({
     closedTrades.length;
 
   const winningTrades =
-    useMemo(() => {
-      return closedTrades.filter(
-        (trade) =>
-          normalizeNumber(
-            trade.netProfit ??
-              trade.pnl
-          ) > 0
-      ).length;
-    }, [
-      closedTrades,
-    ]);
+    useMemo(
+      () => {
+        return closedTrades.filter(
+          (trade) =>
+            normalizeNumber(
+              trade.netProfit ??
+                trade.pnl
+            ) > 0
+        ).length;
+      },
+      [
+        closedTrades,
+      ]
+    );
 
   const losingTrades =
-    useMemo(() => {
-      return closedTrades.filter(
-        (trade) =>
-          normalizeNumber(
-            trade.netProfit ??
-              trade.pnl
-          ) < 0
-      ).length;
-    }, [
-      closedTrades,
-    ]);
+    useMemo(
+      () => {
+        return closedTrades.filter(
+          (trade) =>
+            normalizeNumber(
+              trade.netProfit ??
+                trade.pnl
+            ) < 0
+        ).length;
+      },
+      [
+        closedTrades,
+      ]
+    );
 
   const winRate =
-    useMemo(() => {
-      if (
-        closedCount === 0
-      ) {
-        return 0;
-      }
+    useMemo(
+      () => {
+        if (
+          closedCount === 0
+        ) {
+          return 0;
+        }
 
-      return (
-        (winningTrades /
-          closedCount) *
-        100
-      );
-    }, [
-      winningTrades,
-      closedCount,
-    ]);
+        return (
+          (winningTrades /
+            closedCount) *
+          100
+        );
+      },
+      [
+        winningTrades,
+        closedCount,
+      ]
+    );
 
   // ==========================================================
   // ADD BROKER POSITION
@@ -1606,7 +2885,8 @@ export function TradeProvider({
           return normalizedPosition;
         }
 
-        let isNew = false;
+        let isNew =
+          false;
 
         setOpenTrades(
           (prev) => {
@@ -1621,7 +2901,9 @@ export function TradeProvider({
                   )
               );
 
-            if (exists) {
+            if (
+              exists
+            ) {
               return prev.map(
                 (trade) =>
                   String(
@@ -1638,7 +2920,8 @@ export function TradeProvider({
               );
             }
 
-            isNew = true;
+            isNew =
+              true;
 
             return [
               ...prev,
@@ -1647,13 +2930,18 @@ export function TradeProvider({
           }
         );
 
-        setTimeout(() => {
-          if (isNew) {
-            showTradeNotification(
-              normalizedPosition
-            );
-          }
-        }, 0);
+        setTimeout(
+          () => {
+            if (
+              isNew
+            ) {
+              showTradeNotification(
+                normalizedPosition
+              );
+            }
+          },
+          0
+        );
 
         return normalizedPosition;
       },
@@ -1738,7 +3026,9 @@ export function TradeProvider({
 
   const syncBrokerPositions =
     useCallback(
-      (positions = []) => {
+      (
+        positions = []
+      ) => {
         if (
           !Array.isArray(
             positions
@@ -1752,7 +3042,9 @@ export function TradeProvider({
             .map(
               normalizeBrokerPosition
             )
-            .filter(Boolean);
+            .filter(
+              Boolean
+            );
 
         const brokerOpenPositions =
           normalizedPositions.filter(
@@ -1779,8 +3071,6 @@ export function TradeProvider({
           }
         );
 
-        // Also capture broker-reported closed positions.
-
         const brokerClosedPositions =
           normalizedPositions.filter(
             (position) =>
@@ -1799,7 +3089,9 @@ export function TradeProvider({
               ];
 
               brokerClosedPositions.forEach(
-                (closedPosition) => {
+                (
+                  closedPosition
+                ) => {
                   const exists =
                     merged.some(
                       (trade) =>
@@ -1811,7 +3103,9 @@ export function TradeProvider({
                         )
                     );
 
-                  if (!exists) {
+                  if (
+                    !exists
+                  ) {
                     merged.push(
                       closedPosition
                     );
@@ -1829,217 +3123,240 @@ export function TradeProvider({
       []
     );
 
-  // ============================================================
-// ADD PENDING ORDER
-// ============================================================
+  // ==========================================================
+  // ADD PENDING ORDER
+  // ==========================================================
 
-const addPendingOrder =
-useCallback(
-  (order) => {
-    if (!order || typeof order !== "object") {
-      console.error(
-        "❌ Cannot add pending order: invalid order",
-        order
-      );
-      return null;
-    }
-
-    // --------------------------------------------------------
-    // BROKER RESPONSE CAN BE NESTED
-    // --------------------------------------------------------
-
-    const brokerOrder =
-      order.pendingOrder ??
-      order.order ??
-      order.data?.pendingOrder ??
-      order.data?.order ??
-      order.result?.pendingOrder ??
-      order.result?.order ??
-      order;
-
-    // --------------------------------------------------------
-    // RESOLVE REAL MT5 ORDER TICKET
-    // --------------------------------------------------------
-
-    const resolvedTicket =
-      order.ticket ??
-      order.orderId ??
-      order.brokerOrderId ??
-      order.order_id ??
-      order.orderTicket ??
-      order.broker_order_id ??
-      brokerOrder.ticket ??
-      brokerOrder.orderId ??
-      brokerOrder.brokerOrderId ??
-      brokerOrder.order_id ??
-      brokerOrder.orderTicket ??
-      brokerOrder.broker_order_id ??
-      null;
-
-    // --------------------------------------------------------
-    // KEEP UI ID SEPARATE FROM BROKER TICKET
-    // --------------------------------------------------------
-
-    const uiId =
-      order.id ??
-      `pending-${Date.now()}`;
-
-    const newOrder = {
-      id: uiId,
-
-      // REAL MT5 TICKET
-      orderId: resolvedTicket,
-      brokerOrderId: resolvedTicket,
-      ticket: resolvedTicket,
-
-      status: "PENDING",
-
-      createdAt:
-        order.createdAt ??
-        brokerOrder.createdAt ??
-        new Date().toISOString(),
-
-      symbol: normalizeSymbol(
-        order.symbol ??
-        brokerOrder.symbol ??
-        currentSymbol
-      ),
-
-      side: normalizeSide(
-        order.side ??
-        brokerOrder.side
-      ),
-
-      orderType:
-        order.orderType ??
-        order.type ??
-        brokerOrder.orderType ??
-        brokerOrder.type ??
-        "Limit",
-
-      entry: normalizeNumber(
-        order.entry ??
-        order.price ??
-        brokerOrder.entry ??
-        brokerOrder.price ??
-        brokerOrder.price_open
-      ),
-
-      currentPrice: normalizeNumber(
-        order.currentPrice ??
-        brokerOrder.currentPrice ??
-        brokerOrder.price_current
-      ),
-
-      stopLoss: normalizeNumber(
-        order.stopLoss ??
-        order.sl ??
-        brokerOrder.stopLoss ??
-        brokerOrder.sl
-      ),
-
-      takeProfit: normalizeNumber(
-        order.takeProfit ??
-        order.tp ??
-        brokerOrder.takeProfit ??
-        brokerOrder.tp
-      ),
-
-      quantity: normalizeNumber(
-        order.quantity ??
-        order.lots ??
-        order.volume ??
-        brokerOrder.quantity ??
-        brokerOrder.lots ??
-        brokerOrder.volume
-      ),
-
-      margin: normalizeNumber(
-        order.margin ??
-        brokerOrder.margin ??
-        brokerOrder.usedMargin
-      ),
-
-      risk: normalizeNumber(
-        order.risk ??
-        brokerOrder.risk
-      ),
-
-      broker:
-        order.broker ??
-        "MT5",
-
-      rawBrokerOrder:
-        brokerOrder,
-    };
-
-    console.log(
-      "✅ MT5 PENDING ORDER STORED:",
-      {
-        uiId: newOrder.id,
-        ticket: newOrder.ticket,
-        orderId: newOrder.orderId,
-        brokerOrderId: newOrder.brokerOrderId,
-        symbol: newOrder.symbol,
-        orderType: newOrder.orderType,
-        entry: newOrder.entry,
-      }
-    );
-
-    // --------------------------------------------------------
-    // SAVE ORDER
-    // --------------------------------------------------------
-
-    setPendingOrders(
-      (prev) => {
-        const identifier =
-          String(
-            newOrder.orderId ??
-            newOrder.ticket ??
-            newOrder.id
+  const addPendingOrder =
+    useCallback(
+      (order) => {
+        if (
+          !order ||
+          typeof order !==
+            "object"
+        ) {
+          console.error(
+            "❌ Cannot add pending order: invalid order",
+            order
           );
 
-        const exists =
-          prev.some(
-            (existing) =>
-              String(
-                existing.orderId ??
-                existing.ticket ??
-                existing.id
-              ) === identifier
-          );
-
-        if (exists) {
-          return prev.map(
-            (existing) =>
-              String(
-                existing.orderId ??
-                existing.ticket ??
-                existing.id
-              ) === identifier
-                ? {
-                    ...existing,
-                    ...newOrder,
-                  }
-                : existing
-          );
+          return null;
         }
 
-        return [
-          ...prev,
-          newOrder,
-        ];
-      }
+        const brokerOrder =
+          order.pendingOrder ??
+          order.order ??
+          order.data
+            ?.pendingOrder ??
+          order.data?.order ??
+          order.result
+            ?.pendingOrder ??
+          order.result?.order ??
+          order;
+
+        const resolvedTicket =
+          order.ticket ??
+          order.orderId ??
+          order.brokerOrderId ??
+          order.order_id ??
+          order.orderTicket ??
+          order.broker_order_id ??
+          brokerOrder.ticket ??
+          brokerOrder.orderId ??
+          brokerOrder.brokerOrderId ??
+          brokerOrder.order_id ??
+          brokerOrder.orderTicket ??
+          brokerOrder.broker_order_id ??
+          null;
+
+        const uiId =
+          order.id ??
+          `pending-${Date.now()}`;
+
+        const newOrder = {
+          id: uiId,
+
+          orderId:
+            resolvedTicket,
+
+          brokerOrderId:
+            resolvedTicket,
+
+          ticket:
+            resolvedTicket,
+
+          status: "PENDING",
+
+          createdAt:
+            order.createdAt ??
+            brokerOrder.createdAt ??
+            new Date().toISOString(),
+
+          symbol:
+            normalizeSymbol(
+              order.symbol ??
+                brokerOrder.symbol ??
+                currentSymbol
+            ),
+
+          side:
+            normalizeSide(
+              order.side ??
+                brokerOrder.side
+            ),
+
+          orderType:
+            order.orderType ??
+            order.type ??
+            brokerOrder.orderType ??
+            brokerOrder.type ??
+            "Limit",
+
+          entry:
+            normalizeNumber(
+              order.entry ??
+                order.price ??
+                brokerOrder.entry ??
+                brokerOrder.price ??
+                brokerOrder.price_open
+            ),
+
+          currentPrice:
+            normalizeNumber(
+              order.currentPrice ??
+                brokerOrder.currentPrice ??
+                brokerOrder.price_current
+            ),
+
+          stopLoss:
+            normalizeNumber(
+              order.stopLoss ??
+                order.sl ??
+                brokerOrder.stopLoss ??
+                brokerOrder.sl
+            ),
+
+          takeProfit:
+            normalizeNumber(
+              order.takeProfit ??
+                order.tp ??
+                brokerOrder.takeProfit ??
+                brokerOrder.tp
+            ),
+
+          quantity:
+            normalizeNumber(
+              order.quantity ??
+                order.lots ??
+                order.volume ??
+                brokerOrder.quantity ??
+                brokerOrder.lots ??
+                brokerOrder.volume
+            ),
+
+          margin:
+            normalizeNumber(
+              order.margin ??
+                brokerOrder.margin ??
+                brokerOrder.usedMargin
+            ),
+
+          risk:
+            normalizeNumber(
+              order.risk ??
+                brokerOrder.risk
+            ),
+
+          broker:
+            order.broker ??
+            "MT5",
+
+          rawBrokerOrder:
+            brokerOrder,
+        };
+
+        console.log(
+          "✅ MT5 PENDING ORDER STORED:",
+          {
+            uiId:
+              newOrder.id,
+
+            ticket:
+              newOrder.ticket,
+
+            orderId:
+              newOrder.orderId,
+
+            brokerOrderId:
+              newOrder.brokerOrderId,
+
+            symbol:
+              newOrder.symbol,
+
+            orderType:
+              newOrder.orderType,
+
+            entry:
+              newOrder.entry,
+          }
+        );
+
+        setPendingOrders(
+          (prev) => {
+            const identifier =
+              String(
+                newOrder.orderId ??
+                  newOrder.ticket ??
+                  newOrder.id
+              );
+
+            const exists =
+              prev.some(
+                (existing) =>
+                  String(
+                    existing.orderId ??
+                      existing.ticket ??
+                      existing.id
+                  ) ===
+                  identifier
+              );
+
+            if (
+              exists
+            ) {
+              return prev.map(
+                (existing) =>
+                  String(
+                    existing.orderId ??
+                      existing.ticket ??
+                      existing.id
+                  ) ===
+                  identifier
+                    ? {
+                        ...existing,
+                        ...newOrder,
+                      }
+                    : existing
+              );
+            }
+
+            return [
+              ...prev,
+              newOrder,
+            ];
+          }
+        );
+
+        return newOrder;
+      },
+      [
+        currentSymbol,
+      ]
     );
 
-    return newOrder;
-  },
-  [currentSymbol]
-);
-
-  // ============================================================
+  // ==========================================================
   // CANCEL PENDING ORDER
-  // ============================================================
+  // ==========================================================
 
   const cancelPendingOrder =
     useCallback(
@@ -2058,7 +3375,9 @@ useCallback(
           orderId ===
             undefined ||
           orderId === null ||
-          String(orderId).trim() === ""
+          String(
+            orderId
+          ).trim() === ""
         ) {
           console.error(
             "❌ Cannot cancel pending order: missing order ID",
@@ -2081,17 +3400,21 @@ useCallback(
             await fetch(
               "http://localhost:4000/api/mt5/cancel-order",
               {
-                method: "POST",
+                method:
+                  "POST",
 
                 headers: {
                   "Content-Type":
                     "application/json",
                 },
 
-                body: JSON.stringify({
-                  ticket:
-                    Number(orderId),
-                }),
+                body:
+                  JSON.stringify({
+                    ticket:
+                      Number(
+                        orderId
+                      ),
+                  }),
               }
             );
 
@@ -2105,7 +3428,8 @@ useCallback(
 
           if (
             !response.ok ||
-            data.success !== true
+            data.success !==
+              true
           ) {
             throw new Error(
               data.error ||
@@ -2125,8 +3449,12 @@ useCallback(
                     item.id;
 
                   return (
-                    String(itemId) !==
-                    String(orderId)
+                    String(
+                      itemId
+                    ) !==
+                    String(
+                      orderId
+                    )
                   );
                 }
               )
@@ -2138,14 +3466,18 @@ useCallback(
           );
 
           return data;
-        } catch (error) {
+        } catch (
+          error
+        ) {
           console.error(
             "❌ MT5 PENDING ORDER CANCEL ERROR:",
             error
           );
 
           return {
-            success: false,
+            success:
+              false,
+
             error:
               error.message,
           };
@@ -2154,9 +3486,9 @@ useCallback(
       []
     );
 
-  // ============================================================
+  // ==========================================================
   // MODIFY PENDING ORDER HELPER
-  // ============================================================
+  // ==========================================================
 
   const updatePendingOrder =
     useCallback(
@@ -2166,8 +3498,11 @@ useCallback(
       ) => {
         if (!order) {
           return {
-            success: false,
-            error: "Pending order is required",
+            success:
+              false,
+
+            error:
+              "Pending order is required",
           };
         }
 
@@ -2177,10 +3512,15 @@ useCallback(
           order.ticket ??
           order.id;
 
-        const ticket = Number(orderId);
+        const ticket =
+          Number(
+            orderId
+          );
 
         if (
-          !Number.isFinite(ticket) ||
+          !Number.isFinite(
+            ticket
+          ) ||
           ticket <= 0
         ) {
           console.error(
@@ -2189,47 +3529,60 @@ useCallback(
           );
 
           return {
-            success: false,
-            error: "Invalid pending order ticket",
+            success:
+              false,
+
+            error:
+              "Invalid pending order ticket",
           };
         }
 
-        // Keep the existing broker values when only one field is modified.
-        const currentEntry = normalizeNumber(
-          order.entry ??
-            order.price ??
-            order.priceOpen
-        );
+        const currentEntry =
+          normalizeNumber(
+            order.entry ??
+              order.price ??
+              order.priceOpen
+          );
 
-        const currentStopLoss = normalizeNumber(
-          order.stopLoss ??
-            order.sl
-        );
+        const currentStopLoss =
+          normalizeNumber(
+            order.stopLoss ??
+              order.sl
+          );
 
-        const currentTakeProfit = normalizeNumber(
-          order.takeProfit ??
-            order.tp
-        );
+        const currentTakeProfit =
+          normalizeNumber(
+            order.takeProfit ??
+              order.tp
+          );
 
-        const price = normalizeNumber(
-          updates.entry ??
-            updates.price ??
-            currentEntry
-        );
+        const price =
+          normalizeNumber(
+            updates.entry ??
+              updates.price ??
+              currentEntry
+          );
 
-        const stopLoss = normalizeNumber(
-          updates.stopLoss ??
-            updates.sl ??
-            currentStopLoss
-        );
+        const stopLoss =
+          normalizeNumber(
+            updates.stopLoss ??
+              updates.sl ??
+              currentStopLoss
+          );
 
-        const takeProfit = normalizeNumber(
-          updates.takeProfit ??
-            updates.tp ??
-            currentTakeProfit
-        );
+        const takeProfit =
+          normalizeNumber(
+            updates.takeProfit ??
+              updates.tp ??
+              currentTakeProfit
+          );
 
-        if (!Number.isFinite(price) || price <= 0) {
+        if (
+          !Number.isFinite(
+            price
+          ) ||
+          price <= 0
+        ) {
           console.error(
             "❌ Cannot modify pending order: invalid entry price",
             {
@@ -2240,8 +3593,11 @@ useCallback(
           );
 
           return {
-            success: false,
-            error: "Invalid entry price",
+            success:
+              false,
+
+            error:
+              "Invalid entry price",
           };
         }
 
@@ -2261,17 +3617,21 @@ useCallback(
             await fetch(
               "http://localhost:4000/api/mt5/modify-order",
               {
-                method: "POST",
+                method:
+                  "POST",
+
                 headers: {
                   "Content-Type":
                     "application/json",
                 },
-                body: JSON.stringify({
-                  ticket,
-                  price,
-                  stopLoss,
-                  takeProfit,
-                }),
+
+                body:
+                  JSON.stringify({
+                    ticket,
+                    price,
+                    stopLoss,
+                    takeProfit,
+                  }),
               }
             );
 
@@ -2285,7 +3645,8 @@ useCallback(
 
           if (
             !response.ok ||
-            data.success !== true
+            data.success !==
+              true
           ) {
             throw new Error(
               data.error ||
@@ -2294,7 +3655,8 @@ useCallback(
             );
           }
 
-          let updatedOrder = null;
+          let updatedOrder =
+            null;
 
           setPendingOrders(
             (prev) =>
@@ -2307,27 +3669,43 @@ useCallback(
                     item.id;
 
                   if (
-                    String(itemId) !==
-                    String(ticket)
+                    String(
+                      itemId
+                    ) !==
+                    String(
+                      ticket
+                    )
                   ) {
                     return item;
                   }
 
-                  updatedOrder = {
-                    ...item,
-                    entry: price,
-                    price,
-                    stopLoss,
-                    sl: stopLoss,
-                    takeProfit,
-                    tp: takeProfit,
-                    updatedAt:
-                      new Date().toISOString(),
-                    rawBrokerOrder:
-                      data.pendingOrder ??
-                      data.order ??
-                      item.rawBrokerOrder,
-                  };
+                  updatedOrder =
+                    {
+                      ...item,
+
+                      entry:
+                        price,
+
+                      price,
+
+                      stopLoss,
+
+                      sl:
+                        stopLoss,
+
+                      takeProfit,
+
+                      tp:
+                        takeProfit,
+
+                      updatedAt:
+                        new Date().toISOString(),
+
+                      rawBrokerOrder:
+                        data.pendingOrder ??
+                        data.order ??
+                        item.rawBrokerOrder,
+                    };
 
                   return updatedOrder;
                 }
@@ -2346,19 +3724,30 @@ useCallback(
 
           return {
             ...data,
-            success: true,
-            orderId: ticket,
+
+            success:
+              true,
+
+            orderId:
+              ticket,
+
             ticket,
-            order: updatedOrder,
+
+            order:
+              updatedOrder,
           };
-        } catch (error) {
+        } catch (
+          error
+        ) {
           console.error(
             "❌ MT5 PENDING ORDER MODIFY ERROR:",
             error
           );
 
           return {
-            success: false,
+            success:
+              false,
+
             error:
               error?.message ||
               "Failed to modify pending order",
@@ -2368,9 +3757,9 @@ useCallback(
       []
     );
 
-  // ============================================================
+  // ==========================================================
   // MODIFY PENDING ENTRY
-  // ============================================================
+  // ==========================================================
 
   const modifyPendingOrderEntry =
     useCallback(
@@ -2410,9 +3799,9 @@ useCallback(
       ]
     );
 
-  // ============================================================
+  // ==========================================================
   // MODIFY PENDING STOP LOSS
-  // ============================================================
+  // ==========================================================
 
   const modifyPendingOrderStopLoss =
     useCallback(
@@ -2452,9 +3841,9 @@ useCallback(
       ]
     );
 
-  // ============================================================
+  // ==========================================================
   // MODIFY PENDING TAKE PROFIT
-  // ============================================================
+  // ==========================================================
 
   const modifyPendingOrderTakeProfit =
     useCallback(
@@ -2494,146 +3883,170 @@ useCallback(
       ]
     );
 
-  // ==========================================================
-  // EXECUTE LOCAL TRADE
-  // ==========================================================
+ // ==========================================================
+// EXECUTE REAL MT5 TRADE
+// ==========================================================
 
-  const executeTrade =
-    useCallback(
-      (trade) => {
-        const side =
-          normalizeSide(
-            trade.side
-          );
+const executeTrade = useCallback(
+  async (trade = {}) => {
+    const side = normalizeSide(trade.side);
 
-        const executionPrice =
-          side === "buy"
-            ? Number(ask)
-            : Number(bid);
-
-        if (
-          !Number.isFinite(
-            executionPrice
-          ) ||
-          executionPrice <= 0
-        ) {
-          return null;
-        }
-
-        const lots =
-          normalizeNumber(
-            trade.quantity
-          );
-
-        if (
-          lots <= 0
-        ) {
-          return null;
-        }
-
-        const symbol =
-          normalizeSymbol(
-            trade.symbol ||
-              currentSymbol
-          );
-
-        const contractSize =
-          symbol === "XAUUSD"
-            ? 100
-            : 100000;
-
-        const margin =
-          (
-            lots *
-            contractSize *
-            executionPrice
-          ) /
-          leverage;
-
-        const newTrade = {
-          id:
-            `local-${Date.now()}`,
-
-          status: "OPEN",
-
-          openedAt:
-            new Date().toISOString(),
-
-          openedAtMsc:
-            Date.now(),
-
-          symbol,
-
-          side,
-
-          entry:
-            executionPrice,
-
-          currentPrice:
-            executionPrice,
-
-          stopLoss:
-            normalizeNumber(
-              trade.stopLoss
-            ),
-
-          takeProfit:
-            normalizeNumber(
-              trade.takeProfit
-            ),
-
-          quantity:
-            lots,
-
-          margin,
-
-          grossProfit: 0,
-
-          netProfit: 0,
-
-          commission: 0,
-
-          swap: 0,
-
-          pnl: 0,
-
-          risk:
-            normalizeNumber(
-              trade.risk
-            ),
-
-          orderType:
-            trade.orderType ||
-            "Market",
-
-          broker: "Local",
-        };
-
-        setOpenTrades(
-          (prev) => [
-            ...prev,
-            newTrade,
-          ]
-        );
-
-        showTradeNotification(
-          newTrade
-        );
-
-        return newTrade;
-      },
-      [
-        bid,
-        ask,
-        leverage,
-        currentSymbol,
-        showTradeNotification,
-      ]
+    const lots = normalizeNumber(
+      trade.quantity ?? trade.lots
     );
 
-  // ============================================================
+    if (lots <= 0) {
+      console.error("❌ Invalid trade volume:", lots);
+
+      return {
+        success: false,
+        error: "Invalid trade volume.",
+      };
+    }
+
+    const symbol = normalizeSymbol(
+      trade.symbol || currentSymbol
+    );
+
+    const stopLoss = normalizeNumber(
+      trade.stopLoss ?? trade.sl
+    );
+
+    const takeProfit = normalizeNumber(
+      trade.takeProfit ?? trade.tp
+    );
+
+    const entryPrice =
+      side === "buy"
+        ? Number(ask)
+        : Number(bid);
+
+    if (
+      !Number.isFinite(entryPrice) ||
+      entryPrice <= 0
+    ) {
+      console.error(
+        "❌ Invalid market price:",
+        entryPrice
+      );
+
+      return {
+        success: false,
+        error: "Invalid market price.",
+      };
+    }
+
+    const requestBody = {
+      symbol,
+      side: side.toUpperCase(),
+      lots,
+      price: entryPrice,
+      stopLoss,
+      takeProfit,
+      comment: "EdgeFlo",
+      magic: 2026001,
+      deviation: 20,
+    };
+
+    console.log(
+      "📤 SENDING REAL MT5 ORDER:",
+      requestBody
+    );
+
+    try {
+      const response = await fetch(
+        "http://localhost:4000/api/mt5/order",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      let data = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+
+      console.log(
+        "📩 MT5 ORDER RESPONSE:",
+        {
+          status: response.status,
+          ok: response.ok,
+          data,
+        }
+      );
+
+      if (
+        !response.ok ||
+        data?.success !== true
+      ) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            "MT5 order execution failed."
+        );
+      }
+
+      console.log(
+        "✅ REAL MT5 ORDER EXECUTED:",
+        data
+      );
+
+      showTradeNotification({
+        id:
+          data.position?.ticket ??
+          data.order?.ticket ??
+          `mt5-${Date.now()}`,
+
+        symbol,
+        side,
+        quantity: lots,
+        entry: entryPrice,
+        stopLoss,
+        takeProfit,
+        broker: "MT5",
+      });
+
+      await syncMT5Positions();
+
+      return {
+        success: true,
+        ...data,
+      };
+    } catch (error) {
+      console.error(
+        "❌ REAL MT5 EXECUTION ERROR:",
+        error
+      );
+
+      return {
+        success: false,
+        error:
+          error?.message ||
+          "Failed to execute MT5 trade.",
+      };
+    }
+  },
+  [
+    bid,
+    ask,
+    currentSymbol,
+    showTradeNotification,
+    syncMT5Positions,
+  ]
+);
+
+  // ==========================================================
   // CLOSE TRADE
-  // ============================================================
+  // ==========================================================
 
   const closeTrade =
     useCallback(
@@ -2644,7 +4057,9 @@ useCallback(
               String(
                 item.id
               ) ===
-              String(id)
+              String(
+                id
+              )
           );
 
         if (!trade) {
@@ -2654,78 +4069,19 @@ useCallback(
         const closedTime =
           new Date();
 
-        const openedTime =
-          trade.openedAt
-            ? new Date(
-                trade.openedAt
-              )
-            : closedTime;
-
-        const durationSeconds =
-          Math.max(
-            0,
-            Math.floor(
-              (
-                closedTime -
-                openedTime
-              ) / 1000
-            )
-          );
-
-        const netProfit =
-          normalizeNumber(
-            trade.netProfit ??
-              trade.pnl
+        const journalData =
+          buildClosedTradeData(
+            trade,
+            closedTime
           );
 
         const closedTrade = {
           ...trade,
 
-          status: "CLOSED",
+          ...journalData,
 
-          closedAt:
-            closedTime.toISOString(),
-
-          durationSeconds,
-
-          date:
-            closedTime
-              .toISOString()
-              .split("T")[0],
-
-          pair:
-            trade.symbol,
-
-          direction:
-            normalizeSide(
-              trade.side
-            ) === "buy"
-              ? "Long"
-              : "Short",
-
-          entryPrice:
-            normalizeNumber(
-              trade.entry
-            ),
-
-          exitPrice:
-            normalizeNumber(
-              trade.currentPrice ??
-                trade.entry
-            ),
-
-          pnl:
-            netProfit,
-
-          netProfit:
-            netProfit,
-
-          result:
-            netProfit > 0
-              ? "Win"
-              : netProfit < 0
-              ? "Loss"
-              : "Breakeven",
+          id:
+            trade.id,
         };
 
         setOpenTrades(
@@ -2735,7 +4091,9 @@ useCallback(
                 String(
                   item.id
                 ) !==
-                String(id)
+                String(
+                  id
+                )
             )
         );
 
@@ -2750,6 +4108,11 @@ useCallback(
           closedTrade
         );
 
+        console.log(
+          "📔 TRADE CLOSED AND ADDED TO JOURNAL:",
+          closedTrade
+        );
+
         return closedTrade;
       },
       [
@@ -2758,9 +4121,9 @@ useCallback(
       ]
     );
 
-  // ============================================================
+  // ==========================================================
   // PARTIAL CLOSE
-  // ============================================================
+  // ==========================================================
 
   const partialCloseTrade =
     useCallback(
@@ -2774,7 +4137,9 @@ useCallback(
               String(
                 item.id
               ) ===
-              String(id)
+              String(
+                id
+              )
           );
 
         if (!trade) {
@@ -2802,7 +4167,9 @@ useCallback(
           quantityToClose >=
           currentQuantity
         ) {
-          return closeTrade(id);
+          return closeTrade(
+            id
+          );
         }
 
         const remainingQuantity =
@@ -2816,7 +4183,9 @@ useCallback(
                 String(
                   item.id
                 ) ===
-                String(id)
+                String(
+                  id
+                )
                   ? {
                       ...item,
 
@@ -2832,7 +4201,8 @@ useCallback(
         );
 
         return {
-          positionId: id,
+          positionId:
+            id,
 
           closedQuantity:
             quantityToClose,
@@ -2846,332 +4216,481 @@ useCallback(
       ]
     );
 
-// ============================================================
-// MODIFY STOP LOSS — REAL MT5 POSITION
-// ============================================================
+  // ==========================================================
+  // MODIFY STOP LOSS — REAL MT5 POSITION
+  // ==========================================================
 
-const modifyStopLoss = useCallback(
-  async (id, newStopLoss) => {
-    const stopLoss = normalizeNumber(newStopLoss);
-
-    if (!Number.isFinite(stopLoss) || stopLoss <= 0) {
-      throw new Error("Invalid Stop Loss price.");
-    }
-
-    const trade = openTrades.find(
-      (item) => String(item.id) === String(id)
-    );
-
-    if (!trade) {
-      throw new Error(
-        `Open position not found for ID: ${id}`
-      );
-    }
-
-    const broker = String(
-      trade.broker || trade.source || ""
-    ).toUpperCase();
-
-    console.log(
-      "🔎 MODIFY SL — TARGET TRADE:",
-      {
+  const modifyStopLoss =
+    useCallback(
+      async (
         id,
-        broker,
-        tradeId: trade.id,
-        brokerPositionId: trade.brokerPositionId,
-        positionId: trade.positionId,
-        ticket: trade.ticket,
-        rawBrokerTicket:
-          trade.rawBrokerPosition?.ticket,
-        stopLoss,
-        trade,
-      }
-    );
+        newStopLoss
+      ) => {
+        const stopLoss =
+          normalizeNumber(
+            newStopLoss
+          );
 
-    if (broker === "MT5") {
-      const rawTicket =
-        trade.brokerPositionId ??
-        trade.positionId ??
-        trade.ticket ??
-        trade.rawBrokerPosition?.ticket ??
-        String(trade.id).replace(/^mt5-/, "");
-
-      const ticket = Number(rawTicket);
-
-      if (
-        !Number.isInteger(ticket) ||
-        ticket <= 0
-      ) {
-        throw new Error(
-          `Invalid MT5 position ticket: ${rawTicket}`
-        );
-      }
-
-      console.log(
-        "✏️ SENDING REAL MT5 STOP LOSS MODIFY:",
-        {
-          ticket,
-          stopLoss,
+        if (
+          !Number.isFinite(
+            stopLoss
+          ) ||
+          stopLoss <= 0
+        ) {
+          throw new Error(
+            "Invalid Stop Loss price."
+          );
         }
-      );
 
-      const response = await fetch(
-        "http://localhost:4000/api/mt5/modify-position",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            ticket,
+        const trade =
+          openTrades.find(
+            (item) =>
+              String(
+                item.id
+              ) ===
+              String(
+                id
+              )
+          );
+
+        if (!trade) {
+          throw new Error(
+            `Open position not found for ID: ${id}`
+          );
+        }
+
+        const broker =
+          String(
+            trade.broker ||
+              trade.source ||
+              ""
+          ).toUpperCase();
+
+        console.log(
+          "🔎 MODIFY SL — TARGET TRADE:",
+          {
+            id,
+            broker,
+            tradeId:
+              trade.id,
+            brokerPositionId:
+              trade.brokerPositionId,
+            positionId:
+              trade.positionId,
+            ticket:
+              trade.ticket,
+            rawBrokerTicket:
+              trade.rawBrokerPosition
+                ?.ticket,
             stopLoss,
-          }),
-        }
-      );
-
-      let data = null;
-
-      try {
-        data = await response.json();
-      } catch {
-        data = null;
-      }
-
-      console.log(
-        "📩 MT5 MODIFY SL RESPONSE:",
-        {
-          status: response.status,
-          ok: response.ok,
-          data,
-        }
-      );
-
-      if (
-        !response.ok ||
-        data?.success !== true
-      ) {
-        throw new Error(
-          data?.message ||
-          data?.error ||
-          "MT5 rejected Stop Loss modification."
+            trade,
+          }
         );
-      }
 
-      setOpenTrades((prev) =>
-        prev.map((item) =>
-          String(item.id) === String(id)
-            ? {
-                ...item,
-                stopLoss,
-              }
-            : item
-        )
-      );
+        if (
+          broker ===
+          "MT5"
+        ) {
+          const rawTicket =
+            trade.brokerPositionId ??
+            trade.positionId ??
+            trade.ticket ??
+            trade.rawBrokerPosition
+              ?.ticket ??
+            String(
+              trade.id
+            ).replace(
+              /^mt5-/,
+              ""
+            );
 
-      console.log(
-        "✅ REAL MT5 STOP LOSS MODIFIED:",
-        {
-          ticket,
-          stopLoss,
-        }
-      );
+          const ticket =
+            Number(
+              rawTicket
+            );
 
-      return data;
-    }
+          if (
+            !Number.isInteger(
+              ticket
+            ) ||
+            ticket <= 0
+          ) {
+            throw new Error(
+              `Invalid MT5 position ticket: ${rawTicket}`
+            );
+          }
 
-    // NON-MT5 FALLBACK
-
-    setOpenTrades((prev) =>
-      prev.map((item) =>
-        String(item.id) === String(id)
-          ? {
-              ...item,
+          console.log(
+            "✏️ SENDING REAL MT5 STOP LOSS MODIFY:",
+            {
+              ticket,
               stopLoss,
             }
-          : item
-      )
-    );
+          );
 
-    return {
-      success: true,
-      positionId: id,
-      stopLoss,
-    };
-  },
-  [openTrades]
-);
+          const response =
+            await fetch(
+              "http://localhost:4000/api/mt5/modify-position",
+              {
+                method:
+                  "POST",
 
-// ============================================================
-// MODIFY TAKE PROFIT — REAL MT5 POSITION
-// ============================================================
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
 
-const modifyTakeProfit = useCallback(
-  async (id, newTakeProfit) => {
-    const takeProfit =
-      normalizeNumber(newTakeProfit);
-
-    if (
-      !Number.isFinite(takeProfit) ||
-      takeProfit <= 0
-    ) {
-      throw new Error(
-        "Invalid Take Profit price."
-      );
-    }
-
-    const trade = openTrades.find(
-      (item) => String(item.id) === String(id)
-    );
-
-    if (!trade) {
-      throw new Error(
-        `Open position not found for ID: ${id}`
-      );
-    }
-
-    const broker = String(
-      trade.broker || trade.source || ""
-    ).toUpperCase();
-
-    console.log(
-      "🔎 MODIFY TP — TARGET TRADE:",
-      {
-        id,
-        broker,
-        tradeId: trade.id,
-        brokerPositionId:
-          trade.brokerPositionId,
-        positionId: trade.positionId,
-        ticket: trade.ticket,
-        rawBrokerTicket:
-          trade.rawBrokerPosition?.ticket,
-        takeProfit,
-        trade,
-      }
-    );
-
-    if (broker === "MT5") {
-      const rawTicket =
-        trade.brokerPositionId ??
-        trade.positionId ??
-        trade.ticket ??
-        trade.rawBrokerPosition?.ticket ??
-        String(trade.id).replace(/^mt5-/, "");
-
-      const ticket = Number(rawTicket);
-
-      if (
-        !Number.isInteger(ticket) ||
-        ticket <= 0
-      ) {
-        throw new Error(
-          `Invalid MT5 position ticket: ${rawTicket}`
-        );
-      }
-
-      console.log(
-        "✏️ SENDING REAL MT5 TAKE PROFIT MODIFY:",
-        {
-          ticket,
-          takeProfit,
-        }
-      );
-
-      const response = await fetch(
-        "http://localhost:4000/api/mt5/modify-position",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            ticket,
-            takeProfit,
-          }),
-        }
-      );
-
-      let data = null;
-
-      try {
-        data = await response.json();
-      } catch {
-        data = null;
-      }
-
-      console.log(
-        "📩 MT5 MODIFY TP RESPONSE:",
-        {
-          status: response.status,
-          ok: response.ok,
-          data,
-        }
-      );
-
-      if (
-        !response.ok ||
-        data?.success !== true
-      ) {
-        throw new Error(
-          data?.message ||
-          data?.error ||
-          "MT5 rejected Take Profit modification."
-        );
-      }
-
-      setOpenTrades((prev) =>
-        prev.map((item) =>
-          String(item.id) === String(id)
-            ? {
-                ...item,
-                takeProfit,
+                body:
+                  JSON.stringify({
+                    ticket,
+                    stopLoss,
+                  }),
               }
-            : item
-        )
-      );
+            );
 
-      console.log(
-        "✅ REAL MT5 TAKE PROFIT MODIFIED:",
-        {
-          ticket,
-          takeProfit,
+          let data =
+            null;
+
+          try {
+            data =
+              await response.json();
+          } catch {
+            data =
+              null;
+          }
+
+          console.log(
+            "📩 MT5 MODIFY SL RESPONSE:",
+            {
+              status:
+                response.status,
+
+              ok:
+                response.ok,
+
+              data,
+            }
+          );
+
+          if (
+            !response.ok ||
+            data?.success !==
+              true
+          ) {
+            throw new Error(
+              data?.message ||
+                data?.error ||
+                "MT5 rejected Stop Loss modification."
+            );
+          }
+
+          setOpenTrades(
+            (prev) =>
+              prev.map(
+                (item) =>
+                  String(
+                    item.id
+                  ) ===
+                  String(
+                    id
+                  )
+                    ? {
+                        ...item,
+                        stopLoss,
+                      }
+                    : item
+              )
+          );
+
+          console.log(
+            "✅ REAL MT5 STOP LOSS MODIFIED:",
+            {
+              ticket,
+              stopLoss,
+            }
+          );
+
+          return data;
         }
-      );
 
-      return data;
-    }
+        // NON-MT5 FALLBACK
 
-    // NON-MT5 FALLBACK
+        setOpenTrades(
+          (prev) =>
+            prev.map(
+              (item) =>
+                String(
+                  item.id
+                ) ===
+                String(
+                  id
+                )
+                  ? {
+                      ...item,
+                      stopLoss,
+                    }
+                  : item
+            )
+        );
 
-    setOpenTrades((prev) =>
-      prev.map((item) =>
-        String(item.id) === String(id)
-          ? {
-              ...item,
+        return {
+          success:
+            true,
+
+          positionId:
+            id,
+
+          stopLoss,
+        };
+      },
+      [
+        openTrades,
+      ]
+    );
+
+  // ==========================================================
+  // MODIFY TAKE PROFIT — REAL MT5 POSITION
+  // ==========================================================
+
+  const modifyTakeProfit =
+    useCallback(
+      async (
+        id,
+        newTakeProfit
+      ) => {
+        const takeProfit =
+          normalizeNumber(
+            newTakeProfit
+          );
+
+        if (
+          !Number.isFinite(
+            takeProfit
+          ) ||
+          takeProfit <= 0
+        ) {
+          throw new Error(
+            "Invalid Take Profit price."
+          );
+        }
+
+        const trade =
+          openTrades.find(
+            (item) =>
+              String(
+                item.id
+              ) ===
+              String(
+                id
+              )
+          );
+
+        if (!trade) {
+          throw new Error(
+            `Open position not found for ID: ${id}`
+          );
+        }
+
+        const broker =
+          String(
+            trade.broker ||
+              trade.source ||
+              ""
+          ).toUpperCase();
+
+        console.log(
+          "🔎 MODIFY TP — TARGET TRADE:",
+          {
+            id,
+            broker,
+            tradeId:
+              trade.id,
+            brokerPositionId:
+              trade.brokerPositionId,
+            positionId:
+              trade.positionId,
+            ticket:
+              trade.ticket,
+            rawBrokerTicket:
+              trade.rawBrokerPosition
+                ?.ticket,
+            takeProfit,
+            trade,
+          }
+        );
+
+        if (
+          broker ===
+          "MT5"
+        ) {
+          const rawTicket =
+            trade.brokerPositionId ??
+            trade.positionId ??
+            trade.ticket ??
+            trade.rawBrokerPosition
+              ?.ticket ??
+            String(
+              trade.id
+            ).replace(
+              /^mt5-/,
+              ""
+            );
+
+          const ticket =
+            Number(
+              rawTicket
+            );
+
+          if (
+            !Number.isInteger(
+              ticket
+            ) ||
+            ticket <= 0
+          ) {
+            throw new Error(
+              `Invalid MT5 position ticket: ${rawTicket}`
+            );
+          }
+
+          console.log(
+            "✏️ SENDING REAL MT5 TAKE PROFIT MODIFY:",
+            {
+              ticket,
               takeProfit,
             }
-          : item
-      )
+          );
+
+          const response =
+            await fetch(
+              "http://localhost:4000/api/mt5/modify-position",
+              {
+                method:
+                  "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                body:
+                  JSON.stringify({
+                    ticket,
+                    takeProfit,
+                  }),
+              }
+            );
+
+          let data =
+            null;
+
+          try {
+            data =
+              await response.json();
+          } catch {
+            data =
+              null;
+          }
+
+          console.log(
+            "📩 MT5 MODIFY TP RESPONSE:",
+            {
+              status:
+                response.status,
+
+              ok:
+                response.ok,
+
+              data,
+            }
+          );
+
+          if (
+            !response.ok ||
+            data?.success !==
+              true
+          ) {
+            throw new Error(
+              data?.message ||
+                data?.error ||
+                "MT5 rejected Take Profit modification."
+            );
+          }
+
+          setOpenTrades(
+            (prev) =>
+              prev.map(
+                (item) =>
+                  String(
+                    item.id
+                  ) ===
+                  String(
+                    id
+                  )
+                    ? {
+                        ...item,
+                        takeProfit,
+                      }
+                    : item
+              )
+          );
+
+          console.log(
+            "✅ REAL MT5 TAKE PROFIT MODIFIED:",
+            {
+              ticket,
+              takeProfit,
+            }
+          );
+
+          return data;
+        }
+
+        // NON-MT5 FALLBACK
+
+        setOpenTrades(
+          (prev) =>
+            prev.map(
+              (item) =>
+                String(
+                  item.id
+                ) ===
+                String(
+                  id
+                )
+                  ? {
+                      ...item,
+                      takeProfit,
+                    }
+                  : item
+            )
+        );
+
+        return {
+          success:
+            true,
+
+          positionId:
+            id,
+
+          takeProfit,
+        };
+      },
+      [
+        openTrades,
+      ]
     );
 
-    return {
-      success: true,
-      positionId: id,
-      takeProfit,
-    };
-  },
-  [openTrades]
-);
-
-  // ============================================================
+  // ==========================================================
   // DELETE TRADE
-  // ============================================================
+  // ==========================================================
 
   const deleteTrade =
     useCallback(
       (id) => {
         const targetId =
-          String(id);
+          String(
+            id
+          );
 
         setOpenTrades(
           (prev) =>
@@ -3209,9 +4728,9 @@ const modifyTakeProfit = useCallback(
       []
     );
 
-  // ============================================================
+  // ==========================================================
   // UPDATE ACCOUNT
-  // ============================================================
+  // ==========================================================
 
   const updateAccount =
     useCallback(
@@ -3226,9 +4745,9 @@ const modifyTakeProfit = useCallback(
       []
     );
 
-  // ============================================================
+  // ==========================================================
   // CONTEXT VALUE
-  // ============================================================
+  // ==========================================================
 
   const value = {
     // Trades

@@ -765,11 +765,11 @@ export default function OpenPositionRow({
     const seconds = Number(parts[2]);
 
     if (hours > 0) {
-      return `${hours}h ${minutes}m`;
+      return `${hours}h ${minutes}min ${seconds}s`;
     }
 
     if (minutes > 0) {
-      return `${minutes}m ${seconds}s`;
+      return `${minutes}min ${seconds}s`;
     }
 
     return `${seconds}s`;
@@ -1156,10 +1156,8 @@ export default function OpenPositionRow({
       pnl,
       margin,
       duration,
-
       durationTimestamp:
         getOpenTimestamp(trade),
-
       brokerTimeMsc:
         getTradeValue(trade, [
           "broker_time_msc",
@@ -1168,19 +1166,14 @@ export default function OpenPositionRow({
           "serverTimeMsc",
           "server_time_msc",
         ]),
-
       rawTimeMsc:
         trade?.time_msc,
-
       rawTime:
         trade?.time,
-
       nestedTimeMsc:
         trade?.position?.time_msc,
-
       nestedTime:
         trade?.position?.time,
-
       rawTrade: trade,
     }
   );

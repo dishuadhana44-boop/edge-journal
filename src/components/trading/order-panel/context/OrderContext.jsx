@@ -1,3 +1,4 @@
+
 import {
   createContext,
   useMemo,
@@ -6,7 +7,6 @@ import {
 } from "react";
 
 import { useMarket } from "../../../../context/MarketContext";
-
 import { calculateLotSize } from "../../../../utils/calculator/lotCalculator";
 import { calculatePips } from "../../../../utils/calculator/pipCalculator";
 import { calculateRR } from "../../../../utils/calculator/rrCalculator";
@@ -21,7 +21,61 @@ export const OrderContext = createContext(null);
 const DEFAULT_GUARDRAILS = {
   enabled: true,
   riskPerTrade: 1,
+  maxTradesPerDay: 10,
+  maxDailyLoss: 3000,
+  maxDailyProfit: 10000,
+  tradingWindowStart: "11:30",
+  tradingWindowEnd: "19:30",
 };
+
+// ============================================================
+// TIME HELPERS
+// ============================================================
+
+function getCurrentTimeInMinutes() {
+  const now = new Date();
+
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+function timeToMinutes(time) {
+  if (!time || !time.includes(":")) {
+    return 0;
+  }
+
+  const [hours, minutes] = time.split(":").map(Number);
+
+  return hours * 60 + minutes;
+}
+
+function isWithinTradingWindow(start, end) {
+  const currentMinutes = getCurrentTimeInMinutes();
+  const startMinutes = timeToMinutes(start);
+  const endMinutes = timeToMinutes(end);
+
+  // Same start and end means the window is closed.
+  if (startMinutes === endMinutes) {
+    return false;
+  }
+
+  // Normal window, for example 11:30 to 19:30.
+  if (startMinutes < endMinutes) {
+    return (
+      currentMinutes >= startMinutes &&
+      currentMinutes < endMinutes
+    );
+  }
+
+  // Overnight window, for example 22:00 to 02:00.
+  return (
+    currentMinutes >= startMinutes ||
+    currentMinutes < endMinutes
+  );
+}
+
+// ============================================================
+// ORDER PROVIDER
+// ============================================================
 
 export function OrderProvider({ children }) {
   // ==========================================================
@@ -29,6 +83,10 @@ export function OrderProvider({ children }) {
   // ==========================================================
 
   const market = useMarket();
+
+  const symbol = String(market?.symbol || "EURUSD")
+    .trim()
+    .toUpperCase();
 
   const bid = Number(market?.bid || 0);
   const ask = Number(market?.ask || 0);
@@ -55,17 +113,55 @@ export function OrderProvider({ children }) {
   // PRICES
   // ==========================================================
 
-  const [entry, setEntry] = useState("");
-  const [sl, setSL] = useState("");
-  const [tp, setTP] = useState("");
+// ==========================================================
+// PERSISTENT ORDER PRICES
+// ==========================================================
+
+const [entry, setEntry] = useState(() => {
+  try {
+    return localStorage.getItem("edgeflo_order_entry") || "";
+  } catch (error) {
+    console.error("Failed to load entry:", error);
+    return "";
+  }
+});
+
+const [sl, setSL] = useState(() => {
+  try {
+    return localStorage.getItem("edgeflo_order_sl") || "";
+  } catch (error) {
+    console.error("Failed to load Stop Loss:", error);
+    return "";
+  }
+});
+
+const [tp, setTP] = useState(() => {
+  try {
+    return localStorage.getItem("edgeflo_order_tp") || "";
+  } catch (error) {
+    console.error("Failed to load Take Profit:", error);
+    return "";
+  }
+});
+
+// ==========================================================
+// SAVE ORDER PRICES TO LOCALSTORAGE
+// ==========================================================
+
+useEffect(() => {
+  try {
+    localStorage.setItem("edgeflo_order_entry", entry);
+    localStorage.setItem("edgeflo_order_sl", sl);
+    localStorage.setItem("edgeflo_order_tp", tp);
+  } catch (error) {
+    console.error("Failed to save order prices:", error);
+  }
+}, [entry, sl, tp]);
 
   // ==========================================================
   // LIVE MARKET ENTRY SYNC
-  //
-  // BUY  MARKET -> ASK
+  // BUY MARKET  -> ASK
   // SELL MARKET -> BID
-  //
-  // This is the SINGLE SOURCE OF TRUTH for market entry.
   // ==========================================================
 
   useEffect(() => {
@@ -73,17 +169,10 @@ export function OrderProvider({ children }) {
       return;
     }
 
-    const marketEntry =
-      side === "buy"
-        ? ask
-        : bid;
+    const marketEntry = side === "buy" ? ask : bid;
 
-    if (
-      Number.isFinite(marketEntry) &&
-      marketEntry > 0
-    ) {
-      const formattedEntry =
-        marketEntry.toFixed(5);
+    if (Number.isFinite(marketEntry) && marketEntry > 0) {
+      const formattedEntry = marketEntry.toFixed(5);
 
       setEntry((previousEntry) => {
         if (previousEntry === formattedEntry) {
@@ -93,52 +182,38 @@ export function OrderProvider({ children }) {
         return formattedEntry;
       });
     }
-  }, [
-    orderType,
-    side,
-    bid,
-    ask,
-  ]);
+  }, [orderType, side, bid, ask]);
 
   // ==========================================================
   // TRADING GUARDRAILS
   // ==========================================================
 
-  const [guardrails, setGuardrails] =
-    useState(() => {
-      try {
-        const saved =
-          localStorage.getItem(
-            "tradingGuardrails"
-          );
+  const [guardrails, setGuardrails] = useState(() => {
+    
+    try {
+      const saved = localStorage.getItem("tradingGuardrails");
 
-        return saved
-          ? {
-              ...DEFAULT_GUARDRAILS,
-              ...JSON.parse(saved),
-            }
-          : DEFAULT_GUARDRAILS;
-      } catch (error) {
-        console.error(
-          "Failed to load trading guardrails:",
-          error
-        );
+      return saved
+        ? {
+            ...DEFAULT_GUARDRAILS,
+            ...JSON.parse(saved),
+          }
+        : DEFAULT_GUARDRAILS;
+    } catch (error) {
+      console.error("Failed to load trading guardrails:", error);
 
-        return DEFAULT_GUARDRAILS;
-      }
-    });
+      return DEFAULT_GUARDRAILS;
+    }
+  });
 
   // ==========================================================
-  // LISTEN FOR GUARDRAILS UPDATES
+  // LISTEN FOR GUARDRAIL UPDATES
   // ==========================================================
 
   useEffect(() => {
     const handleGuardrailsUpdate = () => {
       try {
-        const saved =
-          localStorage.getItem(
-            "tradingGuardrails"
-          );
+        const saved = localStorage.getItem("tradingGuardrails");
 
         if (saved) {
           setGuardrails({
@@ -154,56 +229,96 @@ export function OrderProvider({ children }) {
       }
     };
 
+    const handleStorageUpdate = (event) => {
+      if (event.key === "tradingGuardrails") {
+        handleGuardrailsUpdate();
+      }
+    };
+
     window.addEventListener(
       "guardrailsUpdated",
       handleGuardrailsUpdate
     );
+
+    window.addEventListener("storage", handleStorageUpdate);
 
     return () => {
       window.removeEventListener(
         "guardrailsUpdated",
         handleGuardrailsUpdate
       );
+
+      window.removeEventListener(
+        "storage",
+        handleStorageUpdate
+      );
     };
   }, []);
+
+  // ==========================================================
+  // TRADING WINDOW
+  // ==========================================================
+
+  const tradingWindowStart =
+    guardrails?.tradingWindowStart ||
+    DEFAULT_GUARDRAILS.tradingWindowStart;
+
+  const tradingWindowEnd =
+    guardrails?.tradingWindowEnd ||
+    DEFAULT_GUARDRAILS.tradingWindowEnd;
+
+  const [currentTime, setCurrentTime] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const tradingWindowOpen = useMemo(() => {
+    // currentTime ensures this value refreshes every second.
+    void currentTime;
+
+    if (guardrails?.enabled === false) {
+      return true;
+    }
+
+    return isWithinTradingWindow(
+      tradingWindowStart,
+      tradingWindowEnd
+    );
+  }, [
+    currentTime,
+    guardrails?.enabled,
+    tradingWindowStart,
+    tradingWindowEnd,
+  ]);
 
   // ==========================================================
   // FIXED RISK FROM GUARDRAILS
   // ==========================================================
 
   const risk = useMemo(() => {
-    const configuredRisk =
-      Number(
-        guardrails?.riskPerTrade || 0
-      );
+    const configuredRisk = Number(
+      guardrails?.riskPerTrade || 0
+    );
 
     return configuredRisk;
-  }, [
-    guardrails?.riskPerTrade,
-  ]);
+  }, [guardrails?.riskPerTrade]);
 
   // ==========================================================
   // EFFECTIVE ENTRY
-  //
-  // MARKET:
-  // BUY  -> ASK
-  // SELL -> BID
-  //
-  // LIMIT / STOP:
-  // Manual entry
   // ==========================================================
 
   const effectiveEntry = useMemo(() => {
     if (orderType === "Market") {
       if (side === "buy") {
-        return ask > 0
-          ? ask
-          : 0;
+        return ask > 0 ? ask : 0;
       }
 
-      return bid > 0
-        ? bid
-        : 0;
+      return bid > 0 ? bid : 0;
     }
 
     return Number(entry || 0);
@@ -220,10 +335,7 @@ export function OrderProvider({ children }) {
   // ==========================================================
 
   const riskPips = useMemo(() => {
-    if (
-      !effectiveEntry ||
-      !sl
-    ) {
+    if (!effectiveEntry || !sl) {
       return 0;
     }
 
@@ -231,20 +343,14 @@ export function OrderProvider({ children }) {
       Number(effectiveEntry),
       Number(sl)
     );
-  }, [
-    effectiveEntry,
-    sl,
-  ]);
+  }, [effectiveEntry, sl]);
 
   // ==========================================================
   // REWARD PIPS
   // ==========================================================
 
   const rewardPips = useMemo(() => {
-    if (
-      !effectiveEntry ||
-      !tp
-    ) {
+    if (!effectiveEntry || !tp) {
       return 0;
     }
 
@@ -252,10 +358,7 @@ export function OrderProvider({ children }) {
       Number(effectiveEntry),
       Number(tp)
     );
-  }, [
-    effectiveEntry,
-    tp,
-  ]);
+  }, [effectiveEntry, tp]);
 
   // ==========================================================
   // RISK AMOUNT
@@ -266,21 +369,14 @@ export function OrderProvider({ children }) {
       Number(balance),
       Number(risk)
     );
-  }, [
-    balance,
-    risk,
-  ]);
+  }, [balance, risk]);
 
   // ==========================================================
   // R:R CALCULATION
   // ==========================================================
 
   const rr = useMemo(() => {
-    if (
-      !effectiveEntry ||
-      !sl ||
-      !tp
-    ) {
+    if (!effectiveEntry || !sl || !tp) {
       return 0;
     }
 
@@ -289,45 +385,33 @@ export function OrderProvider({ children }) {
       Number(sl),
       Number(tp)
     );
-  }, [
-    effectiveEntry,
-    sl,
-    tp,
-  ]);
+  }, [effectiveEntry, sl, tp]);
 
   // ==========================================================
   // AUTO LOT CALCULATION
   // ==========================================================
 
-  const calculatedLotSize =
-    useMemo(() => {
-      if (
-        Number(riskAmount) <= 0 ||
-        Number(riskPips) <= 0
-      ) {
-        return 0;
-      }
+  const calculatedLotSize = useMemo(() => {
+    if (
+      Number(riskAmount) <= 0 ||
+      Number(riskPips) <= 0
+    ) {
+      return 0;
+    }
 
-      return calculateLotSize(
-        Number(riskAmount),
-        Number(riskPips)
-      );
-    }, [
-      riskAmount,
-      riskPips,
-    ]);
+    return calculateLotSize(
+      Number(riskAmount),
+      Number(riskPips)
+    );
+  }, [riskAmount, riskPips]);
 
   // ==========================================================
   // FINAL LOT SIZE
   // ==========================================================
 
   const lotSize = useMemo(() => {
-    return Number(
-      calculatedLotSize || 0
-    );
-  }, [
-    calculatedLotSize,
-  ]);
+    return Number(calculatedLotSize || 0);
+  }, [calculatedLotSize]);
 
   // ==========================================================
   // REWARD AMOUNT
@@ -338,10 +422,7 @@ export function OrderProvider({ children }) {
       Number(riskAmount || 0) *
       Number(rr || 0)
     );
-  }, [
-    riskAmount,
-    rr,
-  ]);
+  }, [riskAmount, rr]);
 
   // ==========================================================
   // ORDER VALIDATION
@@ -350,48 +431,35 @@ export function OrderProvider({ children }) {
   const validation = useMemo(() => {
     const errors = [];
 
-    const currentBid =
-      Number(bid || 0);
+    const currentBid = Number(bid || 0);
+    const currentAsk = Number(ask || 0);
+    const entryPrice = Number(effectiveEntry || 0);
+    const stopLoss = Number(sl || 0);
+    const takeProfit = Number(tp || 0);
+    const riskValue = Number(risk || 0);
+    const lotsValue = Number(lotSize || 0);
 
-    const currentAsk =
-      Number(ask || 0);
+    // ========================================================
+    // TRADING WINDOW
+    // ========================================================
 
-    const entryPrice =
-      Number(effectiveEntry || 0);
-
-    const stopLoss =
-      Number(sl || 0);
-
-    const takeProfit =
-      Number(tp || 0);
-
-    const riskValue =
-      Number(risk || 0);
-
-    const lotsValue =
-      Number(lotSize || 0);
+    if (!tradingWindowOpen) {
+      errors.push(
+        `Trading window is closed. Trading is allowed from ${tradingWindowStart} to ${tradingWindowEnd}.`
+      );
+    }
 
     // ========================================================
     // MARKET DATA
     // ========================================================
 
     if (orderType === "Market") {
-      if (
-        side === "buy" &&
-        currentAsk <= 0
-      ) {
-        errors.push(
-          "Live Ask price is not available."
-        );
+      if (side === "buy" && currentAsk <= 0) {
+        errors.push("Live Ask price is not available.");
       }
 
-      if (
-        side === "sell" &&
-        currentBid <= 0
-      ) {
-        errors.push(
-          "Live Bid price is not available."
-        );
+      if (side === "sell" && currentBid <= 0) {
+        errors.push("Live Bid price is not available.");
       }
     }
 
@@ -399,49 +467,31 @@ export function OrderProvider({ children }) {
     // ENTRY
     // ========================================================
 
-    if (
-      !entryPrice ||
-      entryPrice <= 0
-    ) {
-      errors.push(
-        "Entry price is required."
-      );
+    if (!entryPrice || entryPrice <= 0) {
+      errors.push("Entry price is required.");
     }
 
     // ========================================================
     // STOP LOSS
     // ========================================================
 
-    if (
-      !stopLoss ||
-      stopLoss <= 0
-    ) {
-      errors.push(
-        "Stop Loss is required."
-      );
+    if (!stopLoss || stopLoss <= 0) {
+      errors.push("Stop Loss is required.");
     }
 
     // ========================================================
     // TAKE PROFIT
     // ========================================================
 
-    if (
-      !takeProfit ||
-      takeProfit <= 0
-    ) {
-      errors.push(
-        "Take Profit is required."
-      );
+    if (!takeProfit || takeProfit <= 0) {
+      errors.push("Take Profit is required.");
     }
 
     // ========================================================
     // GUARDRAILS RISK
     // ========================================================
 
-    if (
-      !riskValue ||
-      riskValue <= 0
-    ) {
+    if (!riskValue || riskValue <= 0) {
       errors.push(
         "Risk Per Trade is not configured in Guardrails."
       );
@@ -577,9 +627,7 @@ export function OrderProvider({ children }) {
     // ========================================================
 
     if (
-      !Number.isFinite(
-        Number(riskPips)
-      ) ||
+      !Number.isFinite(Number(riskPips)) ||
       Number(riskPips) <= 0
     ) {
       errors.push(
@@ -592,8 +640,7 @@ export function OrderProvider({ children }) {
     // ========================================================
 
     return {
-      valid:
-        errors.length === 0,
+      valid: errors.length === 0,
       errors,
     };
   }, [
@@ -607,6 +654,9 @@ export function OrderProvider({ children }) {
     risk,
     lotSize,
     riskPips,
+    tradingWindowOpen,
+    tradingWindowStart,
+    tradingWindowEnd,
   ]);
 
   // ==========================================================
@@ -616,76 +666,51 @@ export function OrderProvider({ children }) {
   return (
     <OrderContext.Provider
       value={{
-        // ======================================================
         // ACCOUNT
-        // ======================================================
-
         balance,
 
-        // ======================================================
         // MARKET
-        // ======================================================
-
+        symbol,
         bid,
         ask,
 
-        // ======================================================
         // SIDE
-        // ======================================================
-
         side,
         setSide,
 
-        // ======================================================
         // ORDER TYPE
-        // ======================================================
-
         orderType,
         setOrderType,
 
-        // ======================================================
         // PRICES
-        // ======================================================
-
         entry,
         setEntry,
-
         effectiveEntry,
-
         sl,
         setSL,
-
         tp,
         setTP,
 
-        // ======================================================
         // GUARDRAILS
-        // ======================================================
-
         guardrails,
         setGuardrails,
-
         risk,
 
-        // ======================================================
-        // CALCULATIONS
-        // ======================================================
+        // TRADING WINDOW
+        tradingWindowOpen,
+        tradingWindowStart,
+        tradingWindowEnd,
 
+        // CALCULATIONS
         riskAmount,
         rewardAmount,
-
         riskPips,
         rewardPips,
-
         rr,
-
         calculatedLotSize,
         lotSize,
 
-        // ======================================================
         // VALIDATION
-        // ======================================================
-
         validation,
       }}
     >

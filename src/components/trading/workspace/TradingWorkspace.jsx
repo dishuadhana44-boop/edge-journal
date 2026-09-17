@@ -1,16 +1,12 @@
+
 import { useState, useRef } from "react";
 
 import TradingChart from "../chart/TradingChart";
 import OrderPanel from "../order-panel/OrderPanel";
 import QuickOrderPanel from "../quick-order/QuickOrderPanel";
-
 import { useUI } from "../../../context/UIContext";
-
 import PositionsPanel from "../positions/PositionsPanel";
 import TradingInsightsPanel from "../right-panel/TradingInsightsPanel";
-
-import TradeExecutionPopup from "../TradeExecutionPopup";
-
 import TradeExecutionNotification from "../../../components/trading/TradeExecutionNotification";
 
 export default function TradingWorkspace() {
@@ -22,24 +18,15 @@ export default function TradingWorkspace() {
     rightPanel,
   } = useUI();
 
-  /* ==========================================================
-     POSITIONS TERMINAL HEIGHT
-  ========================================================== */
-
-  const [terminalHeight, setTerminalHeight] =
-    useState(0);
-
+  // Positions terminal height
+  const [terminalHeight, setTerminalHeight] = useState(0);
   const animationFrame = useRef(null);
 
-  /* ==========================================================
-     RESIZE POSITIONS PANEL
-  ========================================================== */
-
+  // Resize positions panel
   const startResize = (e) => {
     e.preventDefault();
 
     const startY = e.clientY;
-
     const startHeight = terminalHeight;
 
     const handleMouseMove = (event) => {
@@ -56,60 +43,37 @@ export default function TradingWorkspace() {
       }
 
       if (animationFrame.current) {
-        cancelAnimationFrame(
-          animationFrame.current
-        );
+        cancelAnimationFrame(animationFrame.current);
       }
 
-      animationFrame.current =
-        requestAnimationFrame(() => {
-          setTerminalHeight(newHeight);
-        });
+      animationFrame.current = requestAnimationFrame(() => {
+        setTerminalHeight(newHeight);
+      });
     };
 
     const handleMouseUp = () => {
-      window.removeEventListener(
-        "mousemove",
-        handleMouseMove
-      );
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
 
-      window.removeEventListener(
-        "mouseup",
-        handleMouseUp
-      );
+      if (animationFrame.current) {
+        cancelAnimationFrame(animationFrame.current);
+        animationFrame.current = null;
+      }
     };
 
-    window.addEventListener(
-      "mousemove",
-      handleMouseMove
-    );
-
-    window.addEventListener(
-      "mouseup",
-      handleMouseUp
-    );
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
   };
-
-  /* ==========================================================
-     RENDER
-  ========================================================== */
 
   return (
     <>
       <div className="flex h-[calc(100vh-58px)] min-h-0 gap-1 overflow-hidden">
-        {/* =====================================================
-            MAIN CHART AREA
-        ====================================================== */}
-
+        {/* Main chart area */}
         <div
           className={`
-            relative
-            h-[calc(100vh-90px)]
-            transition-all
-            duration-300
+            relative h-[calc(100vh-90px)] transition-all duration-300
             ${
-              orderOpen ||
-              rightPanel === "insights"
+              orderOpen || rightPanel === "insights"
                 ? "flex-1"
                 : "w-full"
             }
@@ -121,30 +85,18 @@ export default function TradingWorkspace() {
               height: "calc(100vh - 55px)",
             }}
           >
-            {/* =====================
-                TRADING CHART
-            ====================== */}
-
+            {/* Trading chart */}
             <div className="absolute inset-0">
               <TradingChart />
             </div>
 
-            {/* =====================
-                DRAG HANDLE
-            ====================== */}
-
+            {/* Drag handle */}
             <div
               id="terminal-resize-handle"
               onMouseDown={startResize}
               className="
-                absolute
-                left-0
-                right-0
-                z-30
-                flex
-                cursor-row-resize
-                justify-center
-                transition-all
+                absolute left-0 right-0 z-30 flex cursor-row-resize
+                justify-center transition-all
               "
               style={{
                 bottom: `${terminalHeight}px`,
@@ -153,20 +105,11 @@ export default function TradingWorkspace() {
               <div className="my-1 h-2 w-16 rounded-full bg-gray-400" />
             </div>
 
-            {/* =====================
-                POSITIONS TERMINAL
-            ====================== */}
-
+            {/* Positions terminal */}
             <div
               className="
-                absolute
-                bottom-0
-                left-0
-                right-0
-                z-20
-                overflow-hidden
-                border-t
-                bg-white
+                absolute bottom-0 left-0 right-0 z-20
+                overflow-hidden border-t bg-white
               "
               style={{
                 height: terminalHeight,
@@ -176,53 +119,30 @@ export default function TradingWorkspace() {
             </div>
           </div>
 
-          {/* =====================
-              QUICK ORDER
-          ====================== */}
-
+          {/* Quick order panel */}
           {quickOrderOpen && (
             <QuickOrderPanel
-              setQuickOrderOpen={
-                setQuickOrderOpen
-              }
+              setQuickOrderOpen={setQuickOrderOpen}
             />
           )}
         </div>
 
-        {/* =====================================================
-            ORDER PANEL
-        ====================================================== */}
-
+        {/* Order panel */}
         {orderOpen && (
           <div className="w-[300px] shrink-0">
-            <OrderPanel
-              setOrderOpen={setOrderOpen}
-            />
+            <OrderPanel setOrderOpen={setOrderOpen} />
           </div>
         )}
 
-        {/* =====================================================
-            TRADING INSIGHTS
-        ====================================================== */}
-
-        {rightPanel === "insights" &&
-          !orderOpen && (
-            <div className="h-full min-h-0 w-[300px] shrink-0">
-              <TradingInsightsPanel />
-            </div>
-          )}
-
-        {/* =====================================================
-            OLD TRADE EXECUTION POPUP
-        ====================================================== */}
-
-        <TradeExecutionPopup />
+        {/* Trading insights */}
+        {rightPanel === "insights" && !orderOpen && (
+          <div className="h-full min-h-0 w-[300px] shrink-0">
+            <TradingInsightsPanel />
+          </div>
+        )}
       </div>
 
-      {/* =====================================================
-          NEW TRADE EXECUTION NOTIFICATION
-      ====================================================== */}
-
+      {/* Only one trade execution notification */}
       <TradeExecutionNotification />
     </>
   );

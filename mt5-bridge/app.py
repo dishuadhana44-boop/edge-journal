@@ -3,7 +3,8 @@ from flask_cors import CORS
 
 import MetaTrader5 as mt5
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
 import traceback
 import math
 import time
@@ -4298,10 +4299,12 @@ def close_position():
             close_volume = position_volume
 
         else:
+
             try:
                 close_volume = float(
                     requested_volume
                 )
+
             except Exception:
                 return jsonify({
                     "success": False,
@@ -4486,43 +4489,168 @@ def close_position():
                 retcode
             )
 
-            if is_success_retcode(
-                retcode
-            ):
+            if is_success_retcode(retcode):
 
                 print(
                     "✅ MT5 POSITION CLOSE SUCCESS"
                 )
 
+                # --------------------------------------------------
+                # GET ACTUAL MT5 CLOSE DEAL TIME
+                # --------------------------------------------------
+
+                deal_ticket = getattr(
+                    result,
+                    "deal",
+                    None
+                )
+
+                close_deal = None
+                close_time_msc = None
+                closed_at = None
+
+                if deal_ticket:
+
+                    try:
+
+                        deals = None
+
+                        # MT5 history can take a moment to update
+                        for _ in range(10):
+
+                            deals = mt5.history_deals_get(
+                                ticket=int(deal_ticket)
+                            )
+
+                            if deals:
+                                break
+
+                            time.sleep(0.2)
+
+                        if deals:
+
+                            close_deal = deals[0]
+
+                            close_time_msc = getattr(
+                                close_deal,
+                                "time_msc",
+                                None
+                            )
+
+                            # Fallback if time_msc is unavailable
+                            if close_time_msc is None:
+
+                                close_time = getattr(
+                                    close_deal,
+                                    "time",
+                                    None
+                                )
+
+                                if close_time is not None:
+
+                                    close_time_msc = (
+                                        int(close_time) * 1000
+                                    )
+
+                            if close_time_msc:
+
+                                closed_at = (
+                                    datetime.fromtimestamp(
+                                        close_time_msc / 1000,
+                                        tz=timezone.utc
+                                    )
+                                    .isoformat()
+                                    .replace(
+                                        "+00:00",
+                                        "Z"
+                                    )
+                                )
+
+                    except Exception as history_error:
+
+                        print(
+                            "⚠️ Could not fetch MT5 close deal:",
+                            history_error
+                        )
+
+                print(
+                    "📌 CLOSE DEAL:",
+                    deal_ticket
+                )
+
+                print(
+                    "📌 CLOSE TIME MSC:",
+                    close_time_msc
+                )
+
+                print(
+                    "📌 CLOSED AT:",
+                    closed_at
+                )
+
                 return jsonify({
-                    "success": True,
+
+                    "success":
+                        True,
+
                     "message":
                         "MT5 position closed successfully.",
+
                     "ticket":
                         ticket,
+
                     "volume":
                         close_volume,
+
                     "retcode":
                         retcode,
+
+                    "deal":
+                        deal_ticket,
+
+                    "closeTimeMsc":
+                        close_time_msc,
+
+                    "closedAt":
+                        closed_at,
+
+                    "closeDeal":
+                        (
+                            serialize_value(
+                                close_deal
+                            )
+                            if close_deal
+                            else None
+                        ),
+
                     "result":
                         serialize_value(
                             result
                         )
+
                 }), 200
 
+        # ------------------------------------------------------
+        # CLOSE FAILED
+        # ------------------------------------------------------
+
         return jsonify({
-            "success": False,
+
+            "success":
+                False,
+
             "message":
-                "MT5 rejected position close.",
+                "Unable to close MT5 position.",
+
             "ticket":
                 ticket,
+
             "result":
                 serialize_value(
                     last_result
-                ),
-            "error":
-                mt5_error()
-        }), 400
+                )
+
+        }), 500
 
     except Exception as error:
 
@@ -4534,12 +4662,18 @@ def close_position():
         traceback.print_exc()
 
         return jsonify({
-            "success": False,
+
+            "success":
+                False,
+
             "message":
                 "Failed to close MT5 position.",
+
             "error":
                 str(error)
+
         }), 500
+
 
 # ==========================================================
 # MODIFY OPEN POSITION SL/TP

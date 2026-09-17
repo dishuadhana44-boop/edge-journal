@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+
 import {
   CircleCheck,
   AlertTriangle,
@@ -9,273 +10,296 @@ import {
   ClipboardList,
   Plus,
   Trash2,
-  X,
 } from "lucide-react";
 
 import { useTrade } from "../../../context/TradeContext";
 
-
 /* ============================================================
    DEFAULT GUARDRAILS
-============================================================ */
+   ============================================================ */
 
 const DEFAULT_GUARDRAILS = {
   enabled: true,
   maxTradesPerDay: 10,
   maxDailyLoss: 3000,
   maxDailyProfit: 10000,
-  tradingWindowStart: "10:30",
-  tradingWindowEnd: "13:30",
-};
 
+  // 24-hour internal format
+  // Display will be 12-hour format.
+  tradingWindowStart: "11:30",
+  tradingWindowEnd: "19:30",
+};
 
 /* ============================================================
    DEFAULT WATCHLIST
-============================================================ */
+   ============================================================ */
 
 const DEFAULT_WATCHLIST = [];
 
+/* ============================================================
+   GUARDRAIL NORMALIZER
+   ============================================================ */
+
+const normalizeGuardrails = (saved) => {
+  const parsed = saved && typeof saved === "object" ? saved : {};
+
+  // Migrate the previous default window automatically.
+  const oldDefaultWindow =
+    parsed.tradingWindowStart === "10:30" &&
+    parsed.tradingWindowEnd === "13:30";
+
+  return {
+    ...DEFAULT_GUARDRAILS,
+    ...parsed,
+
+    ...(oldDefaultWindow
+      ? {
+          tradingWindowStart: "11:30",
+          tradingWindowEnd: "19:30",
+        }
+      : {}),
+  };
+};
 
 /* ============================================================
    COMPONENT
-============================================================ */
+   ============================================================ */
 
 export default function TradingInsightsPanel() {
+  const {
+    openTrades = [],
+    closedTrades = [],
+  } = useTrade();
+  /* ============================================================
+     MT5 HISTORY
+     ============================================================ */
 
-  const { trades = [] } = useTrade();
+  const [mt5History, setMt5History] = useState([]);
+  const [mt5HistoryLoading, setMt5HistoryLoading] = useState(false);
+  const [mt5HistoryError, setMt5HistoryError] = useState(null);
+
+  /* ============================================================
+     MAIN UI STATE
+     ============================================================ */
 
   const [activeTab, setActiveTab] = useState("watchlist");
-
-  const [isGuardrailsOpen, setIsGuardrailsOpen] =
-    useState(true);
-
+  const [isGuardrailsOpen, setIsGuardrailsOpen] = useState(true);
 
   /* ============================================================
      WATCHLIST
-  ============================================================ */
+     ============================================================ */
 
   const [watchlist, setWatchlist] = useState(() => {
-
     try {
+      const saved = localStorage.getItem("edgefloWatchlist");
 
-      const saved =
-        localStorage.getItem("edgefloWatchlist");
+      if (!saved) {
+        return DEFAULT_WATCHLIST;
+      }
 
-      return saved
-        ? JSON.parse(saved)
+      const parsed = JSON.parse(saved);
+
+      return Array.isArray(parsed)
+        ? parsed
         : DEFAULT_WATCHLIST;
-
-    } catch {
-
+    } catch (error) {
+      console.error("Failed to load watchlist:", error);
       return DEFAULT_WATCHLIST;
-
     }
-
   });
-
 
   const [showWatchlistInput, setShowWatchlistInput] =
     useState(false);
 
-  const [newSymbol, setNewSymbol] =
-    useState("");
-
+  const [newSymbol, setNewSymbol] = useState("");
 
   /* ============================================================
      ALERTS
-  ============================================================ */
+     ============================================================ */
 
   const [alerts, setAlerts] = useState(() => {
-
     try {
+      const saved = localStorage.getItem("edgefloAlerts");
 
-      const saved =
-        localStorage.getItem("edgefloAlerts");
+      if (!saved) {
+        return [];
+      }
 
-      return saved
-        ? JSON.parse(saved)
-        : [];
+      const parsed = JSON.parse(saved);
 
-    } catch {
-
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.error("Failed to load alerts:", error);
       return [];
-
     }
-
   });
 
+  const [showAlertForm, setShowAlertForm] = useState(false);
 
-  const [showAlertForm, setShowAlertForm] =
-    useState(false);
-
-
-  const [alertSymbol, setAlertSymbol] =
-    useState("EURUSD");
+  const [alertSymbol, setAlertSymbol] = useState("EURUSD");
 
   const [alertCondition, setAlertCondition] =
     useState("above");
 
-  const [alertPrice, setAlertPrice] =
-    useState("");
-
+  const [alertPrice, setAlertPrice] = useState("");
 
   /* ============================================================
      GUARDRAILS
-  ============================================================ */
+     ============================================================ */
 
   const [guardrails, setGuardrails] = useState(() => {
-
     try {
+      const saved = localStorage.getItem(
+        "tradingGuardrails"
+      );
 
-      const saved =
-        localStorage.getItem("tradingGuardrails");
+      if (!saved) {
+        return DEFAULT_GUARDRAILS;
+      }
 
-      return saved
-        ? {
-            ...DEFAULT_GUARDRAILS,
-            ...JSON.parse(saved),
-          }
-        : DEFAULT_GUARDRAILS;
-
-    } catch {
-
+      return normalizeGuardrails(JSON.parse(saved));
+    } catch (error) {
+      console.error("Failed to load guardrails:", error);
       return DEFAULT_GUARDRAILS;
-
     }
-
   });
-
 
   /* ============================================================
      SELECTED EDGE PLAN
-  ============================================================ */
+     ============================================================ */
 
   const [selectedEdgePlan, setSelectedEdgePlan] =
     useState(null);
 
-
   /* ============================================================
-     TRADE PLAN CHECKLIST STATE
-  ============================================================ */
+     TRADE PLAN CHECKLIST
+     ============================================================ */
 
-  const [checkedItems, setCheckedItems] =
-    useState({});
-
+  const [checkedItems, setCheckedItems] = useState({});
 
   /* ============================================================
      SAVE WATCHLIST
-  ============================================================ */
+     ============================================================ */
 
   useEffect(() => {
-
-    localStorage.setItem(
-      "edgefloWatchlist",
-      JSON.stringify(watchlist)
-    );
-
+    try {
+      localStorage.setItem(
+        "edgefloWatchlist",
+        JSON.stringify(watchlist)
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save watchlist:",
+        error
+      );
+    }
   }, [watchlist]);
-
 
   /* ============================================================
      SAVE ALERTS
-  ============================================================ */
+     ============================================================ */
 
   useEffect(() => {
-
-    localStorage.setItem(
-      "edgefloAlerts",
-      JSON.stringify(alerts)
-    );
-
+    try {
+      localStorage.setItem(
+        "edgefloAlerts",
+        JSON.stringify(alerts)
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save alerts:",
+        error
+      );
+    }
   }, [alerts]);
-
 
   /* ============================================================
      LOAD CHECKLIST STATE
-  ============================================================ */
+     ============================================================ */
 
   useEffect(() => {
-
     try {
-
-      const saved =
-        localStorage.getItem("edgefloTradePlanChecklist");
-
-      setCheckedItems(
-        saved ? JSON.parse(saved) : {}
+      const saved = localStorage.getItem(
+        "edgefloTradePlanChecklist"
       );
 
-    } catch {
+      if (!saved) {
+        setCheckedItems({});
+        return;
+      }
+
+      const parsed = JSON.parse(saved);
+
+      setCheckedItems(
+        parsed && typeof parsed === "object"
+          ? parsed
+          : {}
+      );
+    } catch (error) {
+      console.error(
+        "Failed to load trade plan checklist:",
+        error
+      );
 
       setCheckedItems({});
-
     }
-
   }, []);
-
 
   /* ============================================================
      SAVE CHECKLIST STATE
-  ============================================================ */
+     ============================================================ */
 
   useEffect(() => {
-
-    localStorage.setItem(
-      "edgefloTradePlanChecklist",
-      JSON.stringify(checkedItems)
-    );
-
+    try {
+      localStorage.setItem(
+        "edgefloTradePlanChecklist",
+        JSON.stringify(checkedItems)
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save trade plan checklist:",
+        error
+      );
+    }
   }, [checkedItems]);
-
 
   /* ============================================================
      LOAD SELECTED EDGE PLAN
-  ============================================================ */
+     ============================================================ */
 
   useEffect(() => {
-
     const loadSelectedPlan = () => {
-
       try {
-
-        const saved =
-          localStorage.getItem("selectedEdgePlan");
+        const saved = localStorage.getItem(
+          "selectedEdgePlan"
+        );
 
         setSelectedEdgePlan(
           saved ? JSON.parse(saved) : null
         );
-
       } catch (error) {
-
         console.error(
           "Failed to load selected Edge plan:",
           error
         );
 
         setSelectedEdgePlan(null);
-
       }
-
     };
 
-
     loadSelectedPlan();
-
 
     window.addEventListener(
       "selectedEdgePlanUpdated",
       loadSelectedPlan
     );
 
-
     window.addEventListener(
       "storage",
       loadSelectedPlan
     );
 
-
     return () => {
-
       window.removeEventListener(
         "selectedEdgePlanUpdated",
         loadSelectedPlan
@@ -285,48 +309,45 @@ export default function TradingInsightsPanel() {
         "storage",
         loadSelectedPlan
       );
-
     };
-
   }, []);
-
 
   /* ============================================================
      LOAD GUARDRAILS
-  ============================================================ */
+     ============================================================ */
 
   useEffect(() => {
-
     const loadGuardrails = () => {
-
       try {
+        const saved = localStorage.getItem(
+          "tradingGuardrails"
+        );
 
-        const saved =
-          localStorage.getItem("tradingGuardrails");
-
-        if (saved) {
-
-          setGuardrails({
-            ...DEFAULT_GUARDRAILS,
-            ...JSON.parse(saved),
-          });
-
+        if (!saved) {
+          setGuardrails(DEFAULT_GUARDRAILS);
+          return;
         }
 
-      } catch (error) {
+        const normalized = normalizeGuardrails(
+          JSON.parse(saved)
+        );
 
+        setGuardrails(normalized);
+
+        // Save migrated values so they persist.
+        localStorage.setItem(
+          "tradingGuardrails",
+          JSON.stringify(normalized)
+        );
+      } catch (error) {
         console.error(
           "Failed to load guardrails:",
           error
         );
-
       }
-
     };
 
-
     loadGuardrails();
-
 
     window.addEventListener(
       "storage",
@@ -338,9 +359,7 @@ export default function TradingInsightsPanel() {
       loadGuardrails
     );
 
-
     return () => {
-
       window.removeEventListener(
         "storage",
         loadGuardrails
@@ -350,519 +369,485 @@ export default function TradingInsightsPanel() {
         "guardrailsUpdated",
         loadGuardrails
       );
-
     };
-
   }, []);
 
-
   /* ============================================================
-     TODAY'S TRADES
-  ============================================================ */
+     LOAD MT5 TRADE HISTORY
+     ============================================================ */
 
-  const todayTrades = useMemo(() => {
+  useEffect(() => {
+    let cancelled = false;
 
-    const today = new Date();
+    const loadMT5History = async () => {
+      try {
+        setMt5HistoryLoading(true);
+        setMt5HistoryError(null);
 
+        const response = await fetch(
+          "http://localhost:4000/api/mt5/history?days=1"
+        );
 
-    return trades.filter((trade) => {
+        if (!response.ok) {
+          throw new Error(
+            `MT5 history request failed: ${response.status}`
+          );
+        }
 
-      const dateValue =
-        trade.date ??
-        trade.createdAt ??
-        trade.openedAt ??
-        trade.timestamp;
+        const data = await response.json();
 
+        if (cancelled) {
+          return;
+        }
 
-      if (!dateValue) return false;
+        const history = Array.isArray(data)
+          ? data
+          : Array.isArray(data.history)
+          ? data.history
+          : Array.isArray(data.deals)
+          ? data.deals
+          : [];
 
+        setMt5History(history);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
 
-      const tradeDate =
-        new Date(dateValue);
+        console.error(
+          "Failed to load MT5 history:",
+          error
+        );
 
+        setMt5HistoryError(
+          error?.message ||
+            "Unable to load MT5 history."
+        );
 
-      if (
-        Number.isNaN(
-          tradeDate.getTime()
-        )
-      ) {
-        return false;
+        setMt5History([]);
+      } finally {
+        if (!cancelled) {
+          setMt5HistoryLoading(false);
+        }
       }
+    };
 
+    loadMT5History();
 
-      return (
+    const interval = setInterval(
+      loadMT5History,
+      5000
+    );
 
-        tradeDate.getFullYear() ===
-          today.getFullYear() &&
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
-        tradeDate.getMonth() ===
-          today.getMonth() &&
+ /* ============================================================
+   TODAY'S TRADES - LOCAL + MT5 HISTORY
+============================================================ */
 
-        tradeDate.getDate() ===
-          today.getDate()
+const allTrades = useMemo(() => {
+  const combinedTrades = [
+    ...openTrades,
+    ...closedTrades,
+    ...mt5History,
+  ];
 
-      );
+  const uniqueTrades = Array.from(
+    new Map(
+      combinedTrades.map((trade, index) => {
+        const tradeId =
+          trade.id ??
+          trade.ticket ??
+          trade.deal ??
+          `trade-${index}`;
 
-    });
+        return [String(tradeId), trade];
+      })
+    ).values()
+  );
 
-  }, [trades]);
+  return uniqueTrades;
+}, [
+  openTrades,
+  closedTrades,
+  mt5History,
+]);
 
+const getTradeDate = (trade) => {
+  const dateValue =
+    trade.closedAt ??
+    trade.closeTime ??
+    trade.time ??
+    trade.openedAt ??
+    trade.openTime ??
+    trade.createdAt ??
+    trade.date ??
+    trade.timestamp;
+
+  if (!dateValue) {
+    return null;
+  }
+
+  let date;
+
+  if (
+    typeof dateValue === "number" &&
+    dateValue < 100000000000
+  ) {
+    date = new Date(dateValue * 1000);
+  } else {
+    date = new Date(dateValue);
+  }
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+};
+
+const todayTrades = useMemo(() => {
+  const today = new Date();
+
+  return allTrades.filter((trade) => {
+    const tradeDate = getTradeDate(trade);
+
+    if (!tradeDate) {
+      return false;
+    }
+
+    return (
+      tradeDate.getFullYear() === today.getFullYear() &&
+      tradeDate.getMonth() === today.getMonth() &&
+      tradeDate.getDate() === today.getDate()
+    );
+  });
+}, [allTrades]);
 
   /* ============================================================
      TRADE COUNT
-  ============================================================ */
+     ============================================================ */
 
-  const tradeCount =
-    todayTrades.length;
-
+  const tradeCount = todayTrades.length;
 
   const maxTrades = Math.max(
-
-    Number(
-      guardrails.maxTradesPerDay
-    ) || 1,
-
+    Number(guardrails.maxTradesPerDay) || 1,
     1
-
   );
 
-
   /* ============================================================
-     DAILY PNL
-  ============================================================ */
+   TODAY'S NET P&L
+============================================================ */
 
-  const dailyPnL = useMemo(() => {
+const dailyPnL = useMemo(() => {
+  return todayTrades.reduce((total, trade) => {
+    const pnlValue =
+      trade.netProfit ??
+      trade.netPnL ??
+      trade.realizedPnL ??
+      trade.profit ??
+      trade.pnl ??
+      trade.profitLoss ??
+      0;
 
-    return todayTrades.reduce(
-      (total, trade) => {
+    const pnl = Number(pnlValue);
 
-        const pnl = Number(
+    if (!Number.isFinite(pnl)) {
+      return total;
+    }
 
-          trade.pnl ??
-          trade.profit ??
-          trade.realizedPnL ??
-          trade.netPnL ??
-          0
-
-        );
-
-
-        return total + pnl;
-
-      },
-
-      0
-    );
-
-  }, [todayTrades]);
-
-
+    return total + pnl;
+  }, 0);
+}, [todayTrades]);
   /* ============================================================
      GUARDRAIL LIMITS
-  ============================================================ */
+     ============================================================ */
 
   const maxDailyLoss = Math.max(
-
-    Number(
-      guardrails.maxDailyLoss
-    ) || 0,
-
+    Number(guardrails.maxDailyLoss) || 0,
     0
-
   );
-
 
   const maxDailyProfit = Math.max(
-
-    Number(
-      guardrails.maxDailyProfit
-    ) || 0,
-
+    Number(guardrails.maxDailyProfit) || 0,
     0
-
   );
 
-
   /* ============================================================
-     PNL PROGRESS
-  ============================================================ */
+     P&L PROGRESS
+     ============================================================ */
 
   const lossProgress =
-
     maxDailyLoss > 0
-
       ? Math.min(
-
-          Math.abs(
-            Math.min(dailyPnL, 0)
-          ) / maxDailyLoss,
-
+          Math.abs(Math.min(dailyPnL, 0)) /
+            maxDailyLoss,
           1
-
         )
-
       : 0;
-
 
   const profitProgress =
-
     maxDailyProfit > 0
-
       ? Math.min(
-
           Math.max(dailyPnL, 0) /
             maxDailyProfit,
-
           1
-
         )
-
       : 0;
-
 
   /* ============================================================
      FORMATTERS
-  ============================================================ */
+     ============================================================ */
 
   const formatMoney = (value) => {
-
-    return Number(value || 0)
-      .toLocaleString(
-        "en-US",
-        {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }
-      );
-
+    return Number(value || 0).toLocaleString(
+      "en-US",
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }
+    );
   };
-
 
   const formatCompactMoney = (value) => {
-
-    const number =
-      Number(value || 0);
-
+    const number = Number(value || 0);
 
     if (number >= 1000000) {
-
-      return `$${(
-        number / 1000000
-      ).toFixed(1)}M`;
-
+      return `$${(number / 1000000).toFixed(1)}M`;
     }
-
 
     if (number >= 1000) {
-
-      return `$${(
-        number / 1000
-      ).toFixed(1)}K`;
-
+      return `$${(number / 1000).toFixed(1)}K`;
     }
-
 
     return `$${formatMoney(number)}`;
-
   };
-
 
   const formatPnL = (value) => {
-
-    const number =
-      Number(value || 0);
-
+    const number = Number(value || 0);
 
     if (number > 0) {
-
       return `+$${formatMoney(number)}`;
-
     }
-
 
     if (number < 0) {
-
-      return `-$${formatMoney(
-        Math.abs(number)
-      )}`;
-
+      return `-$${formatMoney(Math.abs(number))}`;
     }
 
-
     return "$0.00";
-
   };
 
+  /* ============================================================
+     12-HOUR TIME FORMATTER
+     ============================================================ */
+
+  const formatTime12Hour = (time) => {
+    if (!time) {
+      return "--";
+    }
+
+    const [hours, minutes] = String(time)
+      .split(":")
+      .map(Number);
+
+    if (
+      !Number.isFinite(hours) ||
+      !Number.isFinite(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return time;
+    }
+
+    const period = hours >= 12 ? "PM" : "AM";
+
+    const hour12 = hours % 12 || 12;
+
+    return `${hour12}:${String(minutes).padStart(
+      2,
+      "0"
+    )} ${period}`;
+  };
 
   /* ============================================================
      TRADING WINDOW
-  ============================================================ */
+     Uses user's local/system timezone.
+     Internal values remain 24-hour format.
+     Display uses 12-hour format.
+     ============================================================ */
 
   const isTradingWindowOpen = () => {
-
     if (!guardrails.enabled) {
       return true;
     }
 
-
     const now = new Date();
 
-
     const currentMinutes =
-
-      now.getUTCHours() * 60 +
-      now.getUTCMinutes();
-
+      now.getHours() * 60 +
+      now.getMinutes();
 
     const [
       startHour,
-      startMinute
-    ] =
-      (
-        guardrails.tradingWindowStart ||
-        "10:30"
-      )
-        .split(":")
-        .map(Number);
-
+      startMinute,
+    ] = (
+      guardrails.tradingWindowStart ||
+      "11:30"
+    )
+      .split(":")
+      .map(Number);
 
     const [
       endHour,
-      endMinute
-    ] =
-      (
-        guardrails.tradingWindowEnd ||
-        "13:30"
-      )
-        .split(":")
-        .map(Number);
-
+      endMinute,
+    ] = (
+      guardrails.tradingWindowEnd ||
+      "19:30"
+    )
+      .split(":")
+      .map(Number);
 
     const startMinutes =
-
       startHour * 60 +
       startMinute;
 
-
     const endMinutes =
-
       endHour * 60 +
       endMinute;
 
-
     /* NORMAL WINDOW */
 
-    if (
-      startMinutes <= endMinutes
-    ) {
-
+    if (startMinutes <= endMinutes) {
       return (
-
         currentMinutes >= startMinutes &&
         currentMinutes <= endMinutes
-
       );
-
     }
-
 
     /* OVERNIGHT WINDOW */
 
     return (
-
       currentMinutes >= startMinutes ||
       currentMinutes <= endMinutes
-
     );
-
   };
-
 
   const tradingWindowOpen =
     isTradingWindowOpen();
 
-
   /* ============================================================
-     RULE VIOLATION
-  ============================================================ */
+   RULE VIOLATION
+============================================================ */
 
-  const ruleViolation = useMemo(() => {
-
-    if (!guardrails.enabled) {
-
-      return null;
-
-    }
-
-
-    if (
-
-      maxTrades > 0 &&
-
-      tradeCount >= maxTrades
-
-    ) {
-
-      return `Daily trade limit reached (${tradeCount}/${maxTrades}).`;
-
-    }
-
-
-    if (
-
-      maxDailyLoss > 0 &&
-
-      dailyPnL <= -maxDailyLoss
-
-    ) {
-
-      return `Maximum daily loss reached (${formatPnL(
-        dailyPnL
-      )}).`;
-
-    }
-
-
-    if (
-
-      maxDailyProfit > 0 &&
-
-      dailyPnL >= maxDailyProfit
-
-    ) {
-
-      return `Daily profit target reached (${formatPnL(
-        dailyPnL
-      )}).`;
-
-    }
-
-
-    if (!tradingWindowOpen) {
-
-      return "Trading window is currently closed.";
-
-    }
-
-
+const ruleViolation = useMemo(() => {
+  if (!guardrails.enabled) {
     return null;
+  }
 
-  }, [
+  if (
+    maxDailyLoss > 0 &&
+    dailyPnL <= -maxDailyLoss
+  ) {
+    return `MAX LOSS HIT: ${formatPnL(dailyPnL)}`;
+  }
 
-    guardrails.enabled,
+  if (
+    maxDailyProfit > 0 &&
+    dailyPnL >= maxDailyProfit
+  ) {
+    return `DAILY P&L HIT: ${formatPnL(dailyPnL)}`;
+  }
 
-    maxTrades,
+  if (
+    maxTrades > 0 &&
+    tradeCount >= maxTrades
+  ) {
+    return `DAILY TRADE LIMIT HIT: ${tradeCount}/${maxTrades}`;
+  }
 
-    tradeCount,
+  if (!tradingWindowOpen) {
+    return "TRADING WINDOW CLOSED";
+  }
 
-    maxDailyLoss,
-
-    maxDailyProfit,
-
-    dailyPnL,
-
-    tradingWindowOpen,
-
-  ]);
-
-
-  const tradingStart =
-    guardrails.tradingWindowStart ||
-    "10:30";
-
-
-  const tradingEnd =
-    guardrails.tradingWindowEnd ||
-    "13:30";
-
+  return null;
+}, [
+  guardrails.enabled,
+  maxDailyLoss,
+  maxDailyProfit,
+  dailyPnL,
+  maxTrades,
+  tradeCount,
+  tradingWindowOpen,
+]);
 
   /* ============================================================
      WATCHLIST FUNCTIONS
-  ============================================================ */
+     ============================================================ */
 
   const addToWatchlist = () => {
+    const symbol = newSymbol
+      .trim()
+      .toUpperCase();
 
-    const symbol =
-      newSymbol
-        .trim()
-        .toUpperCase();
-
-
-    if (!symbol) return;
-
-
-    const alreadyExists =
-      watchlist.some(
-
-        (item) =>
-          item.symbol === symbol
-
-      );
-
-
-    if (alreadyExists) {
-
-      setNewSymbol("");
-      setShowWatchlistInput(false);
-
+    if (!symbol) {
       return;
-
     }
 
+    const alreadyExists = watchlist.some(
+      (item) =>
+        String(item.symbol).toUpperCase() ===
+        symbol
+    );
+
+    if (alreadyExists) {
+      setNewSymbol("");
+      setShowWatchlistInput(false);
+      return;
+    }
 
     const item = {
-
       id: Date.now(),
-
       symbol,
-
-      createdAt:
-        new Date().toISOString(),
-
+      createdAt: new Date().toISOString(),
     };
 
-
     setWatchlist((previous) => [
-
       ...previous,
-
       item,
-
     ]);
 
-
     setNewSymbol("");
-
     setShowWatchlistInput(false);
-
   };
 
-
   const removeFromWatchlist = (id) => {
-
     setWatchlist((previous) =>
-
       previous.filter(
         (item) => item.id !== id
       )
-
     );
-
   };
 
-
-  const selectWatchlistSymbol = (
-    symbol
-  ) => {
-
-    localStorage.setItem(
-      "selectedSymbol",
-      symbol
-    );
-
+  const selectWatchlistSymbol = (symbol) => {
+    try {
+      localStorage.setItem(
+        "selectedSymbol",
+        symbol
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save selected symbol:",
+        error
+      );
+    }
 
     window.dispatchEvent(
-
       new CustomEvent(
         "selectedSymbolUpdated",
         {
@@ -871,195 +856,122 @@ export default function TradingInsightsPanel() {
           },
         }
       )
-
     );
-
   };
-
 
   /* ============================================================
      ALERT FUNCTIONS
-  ============================================================ */
+     ============================================================ */
 
   const addAlert = () => {
+    const symbol = alertSymbol
+      .trim()
+      .toUpperCase();
 
-    const symbol =
-      alertSymbol
-        .trim()
-        .toUpperCase();
+    const price = Number(alertPrice);
 
-
-    const price =
-      Number(alertPrice);
-
-
-    if (!symbol || !price) {
-
+    if (
+      !symbol ||
+      !Number.isFinite(price)
+    ) {
       return;
-
     }
 
-
-    const alert = {
-
+    const newAlert = {
       id: Date.now(),
-
       symbol,
-
-      condition:
-        alertCondition,
-
+      condition: alertCondition,
       price,
-
       active: true,
-
-      createdAt:
-        new Date().toISOString(),
-
+      createdAt: new Date().toISOString(),
     };
 
-
     setAlerts((previous) => [
-
       ...previous,
-
-      alert,
-
+      newAlert,
     ]);
 
-
     setAlertPrice("");
-
     setShowAlertForm(false);
-
   };
-
 
   const removeAlert = (id) => {
-
     setAlerts((previous) =>
-
       previous.filter(
-        (alert) =>
-          alert.id !== id
+        (alert) => alert.id !== id
       )
-
     );
-
   };
-
 
   /* ============================================================
      TRADE PLAN FUNCTIONS
-  ============================================================ */
+     ============================================================ */
 
   const getChecklistItems = (value) => {
-
-    if (!value) return [];
-
+    if (!value) {
+      return [];
+    }
 
     if (Array.isArray(value)) {
-
       return value
-
         .map((item) => {
-
-          if (
-            typeof item === "string"
-          ) {
+          if (typeof item === "string") {
             return item;
           }
 
-
           if (
-            typeof item === "object"
+            typeof item === "object" &&
+            item !== null
           ) {
-
             return (
-
               item.text ??
               item.title ??
               item.name ??
               item.description ??
               ""
-
             );
-
           }
 
-
           return "";
-
         })
-
         .filter(Boolean);
-
     }
 
-
-    if (
-      typeof value === "string"
-    ) {
-
+    if (typeof value === "string") {
       return value
-
         .split("\n")
-
         .map((item) =>
-
           item
             .replace(/^[-•*]\s*/, "")
             .trim()
-
         )
-
         .filter(Boolean);
-
     }
 
-
     return [];
-
   };
-
 
   const toggleChecklistItem = (key) => {
-
     setCheckedItems((previous) => ({
-
       ...previous,
-
-      [key]:
-        !previous[key],
-
+      [key]: !previous[key],
     }));
-
   };
-
 
   /* ============================================================
      TRADE PLAN SECTION
-  ============================================================ */
+     ============================================================ */
 
   const TradePlanSection = ({
-
     title,
-
     items,
-
     sectionKey,
-
   }) => {
-
     if (!items.length) {
-
       return null;
-
     }
 
-
     return (
-
       <div
         className="
           rounded-xl
@@ -1069,7 +981,6 @@ export default function TradingInsightsPanel() {
           p-3
         "
       >
-
         <p
           className="
             text-[11px]
@@ -1081,85 +992,56 @@ export default function TradingInsightsPanel() {
           {title}
         </p>
 
-
         <div className="space-y-2">
+          {items.map((item, index) => {
+            const key = `${sectionKey}-${index}`;
 
-          {items.map(
-            (item, index) => {
-
-              const key =
-                `${sectionKey}-${index}`;
-
-
-              return (
-
-                <label
-                  key={key}
+            return (
+              <label
+                key={key}
+                className="
+                  flex
+                  items-start
+                  gap-2
+                  cursor-pointer
+                "
+              >
+                <input
+                  type="checkbox"
+                  checked={!!checkedItems[key]}
+                  onChange={() =>
+                    toggleChecklistItem(key)
+                  }
                   className="
-                    flex
-                    items-start
-                    gap-2
-                    cursor-pointer
+                    mt-[2px]
+                    accent-violet-600
                   "
+                />
+
+                <span
+                  className={`
+                    text-[11px]
+                    leading-relaxed
+                    ${
+                      checkedItems[key]
+                        ? "text-gray-400 line-through"
+                        : "text-gray-700"
+                    }
+                  `}
                 >
-
-                  <input
-
-                    type="checkbox"
-
-                    checked={
-                      !!checkedItems[key]
-                    }
-
-                    onChange={() =>
-                      toggleChecklistItem(key)
-                    }
-
-                    className="
-                      mt-[2px]
-                      accent-violet-600
-                    "
-
-                  />
-
-
-                  <span
-                    className={`
-                      text-[11px]
-                      leading-relaxed
-                      ${
-                        checkedItems[key]
-
-                          ? "text-gray-400 line-through"
-
-                          : "text-gray-700"
-                      }
-                    `}
-                  >
-
-                    {item}
-
-                  </span>
-
-                </label>
-
-              );
-
-            }
-          )}
-
+                  {item}
+                </span>
+              </label>
+            );
+          })}
         </div>
-
       </div>
-
     );
-
   };
-
 
   /* ============================================================
      UI
-  ============================================================ */
+     ============================================================ */
 
   return (
     <div
@@ -1172,11 +1054,9 @@ export default function TradingInsightsPanel() {
         gap-1
       "
     >
-
-
       {/* ======================================================
           GUARDRAILS
-      ====================================================== */}
+          ====================================================== */}
 
       <div
         className="
@@ -1190,10 +1070,7 @@ export default function TradingInsightsPanel() {
           overflow-hidden
         "
       >
-
         <div className="px-4 py-4">
-
-
           {/* HEADER */}
 
           <div
@@ -1203,7 +1080,6 @@ export default function TradingInsightsPanel() {
               justify-between
             "
           >
-
             <div
               className="
                 flex
@@ -1212,7 +1088,6 @@ export default function TradingInsightsPanel() {
                 min-w-0
               "
             >
-
               <h3
                 className="
                   text-[13px]
@@ -1223,6 +1098,7 @@ export default function TradingInsightsPanel() {
                 Trades Today
               </h3>
 
+              {/* DYNAMIC TRADE COUNT */}
 
               <span
                 className="
@@ -1234,39 +1110,30 @@ export default function TradingInsightsPanel() {
                 {tradeCount}/{maxTrades}
               </span>
 
+              {/* TRADE DOTS */}
 
               <div className="flex gap-2">
-
                 {Array.from({
-
-                  length:
-                    Math.min(maxTrades, 8),
-
+                  length: Math.min(
+                    maxTrades,
+                    8
+                  ),
                 }).map((_, index) => (
-
                   <span
-
                     key={index}
-
                     className={`
                       w-[7px]
                       h-[7px]
                       rounded-full
                       ${
                         index < tradeCount
-
                           ? "bg-violet-500"
-
                           : "bg-gray-200"
                       }
                     `}
-
                   />
-
                 ))}
-
               </div>
-
 
               <span
                 className="
@@ -1276,20 +1143,15 @@ export default function TradingInsightsPanel() {
               >
                 Daily limit
               </span>
-
             </div>
 
-
             <button
-
               type="button"
-
               onClick={() =>
                 setIsGuardrailsOpen(
                   !isGuardrailsOpen
                 )
               }
-
               className="
                 w-7
                 h-7
@@ -1301,35 +1163,22 @@ export default function TradingInsightsPanel() {
                 hover:bg-gray-100
                 transition
               "
-
             >
-
               {isGuardrailsOpen ? (
-
                 <ChevronUp size={15} />
-
               ) : (
-
                 <ChevronDown size={15} />
-
               )}
-
             </button>
-
           </div>
-
 
           {/* CONTENT */}
 
           {isGuardrailsOpen && (
-
             <>
-
-
               {/* TRADING WINDOW */}
 
               <div className="mt-4">
-
                 <div
                   className="
                     flex
@@ -1337,7 +1186,6 @@ export default function TradingInsightsPanel() {
                     justify-between
                   "
                 >
-
                   <span
                     className="
                       text-[11px]
@@ -1350,7 +1198,6 @@ export default function TradingInsightsPanel() {
                     Trading Window
                   </span>
 
-
                   <span
                     className={`
                       px-2
@@ -1361,22 +1208,18 @@ export default function TradingInsightsPanel() {
                       font-medium
                       ${
                         tradingWindowOpen
-
                           ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-
                           : "bg-red-50 border-red-100 text-red-600"
                       }
                     `}
                   >
-
                     {tradingWindowOpen
                       ? "Open"
                       : "Closed"}
-
                   </span>
-
                 </div>
 
+                {/* 12-HOUR DISPLAY */}
 
                 <p
                   className="
@@ -1386,16 +1229,19 @@ export default function TradingInsightsPanel() {
                     text-gray-900
                   "
                 >
-                  {tradingStart} - {tradingEnd} UTC
+                {formatTime12Hour(
+  guardrails.tradingWindowStart
+)}{" "}
+-{" "}
+{formatTime12Hour(
+  guardrails.tradingWindowEnd
+)}
                 </p>
-
               </div>
-
 
               {/* PNL */}
 
               <div className="mt-5">
-
                 <div
                   className="
                     flex
@@ -1403,7 +1249,6 @@ export default function TradingInsightsPanel() {
                     justify-between
                   "
                 >
-
                   <p
                     className="
                       text-[11px]
@@ -1416,32 +1261,24 @@ export default function TradingInsightsPanel() {
                     Today's Net P&L
                   </p>
 
-
                   <p
                     className={`
                       text-[13px]
                       font-semibold
                       ${
                         dailyPnL < 0
-
                           ? "text-red-500"
-
                           : dailyPnL > 0
-
                           ? "text-emerald-500"
-
                           : "text-gray-900"
                       }
                     `}
                   >
                     {formatPnL(dailyPnL)}
                   </p>
-
                 </div>
 
-
                 <div className="mt-1">
-
                   <div
                     className="
                       relative
@@ -1452,9 +1289,7 @@ export default function TradingInsightsPanel() {
                       overflow-visible
                     "
                   >
-
                     {dailyPnL < 0 && (
-
                       <div
                         className="
                           absolute
@@ -1465,18 +1300,14 @@ export default function TradingInsightsPanel() {
                           rounded-l-full
                         "
                         style={{
-
-                          width:
-                            `${lossProgress * 50}%`,
-
+                          width: `${
+                            lossProgress * 50
+                          }%`,
                         }}
                       />
-
                     )}
 
-
                     {dailyPnL > 0 && (
-
                       <div
                         className="
                           absolute
@@ -1487,15 +1318,12 @@ export default function TradingInsightsPanel() {
                           rounded-r-full
                         "
                         style={{
-
-                          width:
-                            `${profitProgress * 50}%`,
-
+                          width: `${
+                            profitProgress * 50
+                          }%`,
                         }}
                       />
-
                     )}
-
 
                     <div
                       className="
@@ -1509,9 +1337,7 @@ export default function TradingInsightsPanel() {
                         bg-gray-400
                       "
                     />
-
                   </div>
-
 
                   <div
                     className="
@@ -1521,36 +1347,26 @@ export default function TradingInsightsPanel() {
                       text-[9px]
                     "
                   >
-
                     <span className="text-gray-500">
-
-                      -{formatCompactMoney(
+                      -
+                      {formatCompactMoney(
                         maxDailyLoss
                       )}
-
                     </span>
-
 
                     <span className="text-gray-400">
                       $0
                     </span>
 
-
                     <span className="text-gray-500">
-
                       +
                       {formatCompactMoney(
                         maxDailyProfit
                       )}
-
                     </span>
-
                   </div>
-
                 </div>
-
               </div>
-
 
               {/* LIMITS */}
 
@@ -1562,9 +1378,7 @@ export default function TradingInsightsPanel() {
                   mt-5
                 "
               >
-
                 <div>
-
                   <p
                     className="
                       text-[11px]
@@ -1576,7 +1390,6 @@ export default function TradingInsightsPanel() {
                   >
                     Max Loss
                   </p>
-
 
                   <p
                     className="
@@ -1590,12 +1403,9 @@ export default function TradingInsightsPanel() {
                       maxDailyLoss
                     )}
                   </p>
-
                 </div>
 
-
                 <div>
-
                   <p
                     className="
                       text-[11px]
@@ -1607,7 +1417,6 @@ export default function TradingInsightsPanel() {
                   >
                     Daily Target
                   </p>
-
 
                   <p
                     className="
@@ -1621,11 +1430,8 @@ export default function TradingInsightsPanel() {
                       maxDailyProfit
                     )}
                   </p>
-
                 </div>
-
               </div>
-
 
               {/* RULE STATUS */}
 
@@ -1641,18 +1447,13 @@ export default function TradingInsightsPanel() {
                   py-2.5
                   ${
                     ruleViolation
-
                       ? "bg-red-50 border-red-100"
-
                       : "bg-emerald-50 border-emerald-100"
                   }
                 `}
               >
-
                 {ruleViolation ? (
-
                   <>
-
                     <AlertTriangle
                       size={14}
                       className="
@@ -1670,13 +1471,9 @@ export default function TradingInsightsPanel() {
                     >
                       {ruleViolation}
                     </span>
-
                   </>
-
                 ) : (
-
                   <>
-
                     <CircleCheck
                       size={14}
                       className="
@@ -1694,44 +1491,34 @@ export default function TradingInsightsPanel() {
                     >
                       No rule violations today
                     </span>
-
                   </>
-
                 )}
-
               </div>
-
             </>
-
           )}
-
         </div>
-
       </div>
-
 
       {/* ======================================================
           BOTTOM PANEL
-      ====================================================== */}
+          ====================================================== */}
 
-<div
-  className="
-    flex-1
-    min-h-0
-    h-full
-    w-full
-    rounded-2xl
-    border
-    border-gray-200
-    bg-white
-    shadow-[0_2px_12px_rgba(0,0,0,0.05)]
-    overflow-hidden
-    flex
-    flex-col
-  "
->
-
-
+      <div
+        className="
+          flex-1
+          min-h-0
+          h-full
+          w-full
+          rounded-2xl
+          border
+          border-gray-200
+          bg-white
+          shadow-[0_2px_12px_rgba(0,0,0,0.05)]
+          overflow-hidden
+          flex
+          flex-col
+        "
+      >
         {/* TABS */}
 
         <div
@@ -1743,18 +1530,13 @@ export default function TradingInsightsPanel() {
             border-gray-200
           "
         >
-
-
           {/* WATCHLIST TAB */}
 
           <button
-
             type="button"
-
             onClick={() =>
               setActiveTab("watchlist")
             }
-
             className={`
               relative
               h-12
@@ -1766,22 +1548,16 @@ export default function TradingInsightsPanel() {
               font-medium
               ${
                 activeTab === "watchlist"
-
                   ? "text-violet-600"
-
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
-
           >
-
             <List size={15} />
 
             Watchlist
 
-
             {activeTab === "watchlist" && (
-
               <span
                 className="
                   absolute
@@ -1792,22 +1568,16 @@ export default function TradingInsightsPanel() {
                   bg-violet-600
                 "
               />
-
             )}
-
           </button>
-
 
           {/* ALERTS TAB */}
 
           <button
-
             type="button"
-
             onClick={() =>
               setActiveTab("alerts")
             }
-
             className={`
               relative
               h-12
@@ -1819,22 +1589,16 @@ export default function TradingInsightsPanel() {
               font-medium
               ${
                 activeTab === "alerts"
-
                   ? "text-violet-600"
-
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
-
           >
-
             <Bell size={15} />
 
             Alerts
 
-
             {activeTab === "alerts" && (
-
               <span
                 className="
                   absolute
@@ -1845,22 +1609,16 @@ export default function TradingInsightsPanel() {
                   bg-violet-600
                 "
               />
-
             )}
-
           </button>
-
 
           {/* TRADE PLAN TAB */}
 
           <button
-
             type="button"
-
             onClick={() =>
               setActiveTab("tradeplan")
             }
-
             className={`
               relative
               h-12
@@ -1872,22 +1630,16 @@ export default function TradingInsightsPanel() {
               font-medium
               ${
                 activeTab === "tradeplan"
-
                   ? "text-violet-600"
-
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
-
           >
-
             <ClipboardList size={15} />
 
             Trade Plan
 
-
             {activeTab === "tradeplan" && (
-
               <span
                 className="
                   absolute
@@ -1898,17 +1650,11 @@ export default function TradingInsightsPanel() {
                   bg-violet-600
                 "
               />
-
             )}
-
           </button>
-
         </div>
 
-
-        {/* ======================================================
-            TAB CONTENT
-        ====================================================== */}
+        {/* TAB CONTENT */}
 
         <div
           className="
@@ -1918,16 +1664,12 @@ export default function TradingInsightsPanel() {
             p-4
           "
         >
-
-
           {/* ==================================================
               WATCHLIST
-          ================================================== */}
+              ================================================== */}
 
           {activeTab === "watchlist" && (
-
             <div>
-
               <div
                 className="
                   flex
@@ -1936,7 +1678,6 @@ export default function TradingInsightsPanel() {
                   mb-3
                 "
               >
-
                 <h3
                   className="
                     text-[12px]
@@ -1947,17 +1688,13 @@ export default function TradingInsightsPanel() {
                   Watchlist
                 </h3>
 
-
                 <button
-
                   type="button"
-
                   onClick={() =>
                     setShowWatchlistInput(
                       !showWatchlistInput
                     )
                   }
-
                   className="
                     flex
                     items-center
@@ -1970,22 +1707,15 @@ export default function TradingInsightsPanel() {
                     text-[10px]
                     font-medium
                   "
-
                 >
-
                   <Plus size={12} />
-
                   Add
-
                 </button>
-
               </div>
-
 
               {/* ADD SYMBOL */}
 
               {showWatchlistInput && (
-
                 <div
                   className="
                     flex
@@ -1993,31 +1723,21 @@ export default function TradingInsightsPanel() {
                     mb-3
                   "
                 >
-
                   <input
-
                     value={newSymbol}
-
                     onChange={(event) =>
                       setNewSymbol(
                         event.target.value
                       )
                     }
-
                     onKeyDown={(event) => {
-
                       if (
                         event.key === "Enter"
                       ) {
-
                         addToWatchlist();
-
                       }
-
                     }}
-
                     placeholder="EURUSD"
-
                     className="
                       flex-1
                       px-3
@@ -2029,16 +1749,11 @@ export default function TradingInsightsPanel() {
                       outline-none
                       focus:border-violet-400
                     "
-
                   />
 
-
                   <button
-
                     type="button"
-
                     onClick={addToWatchlist}
-
                     className="
                       px-3
                       rounded-lg
@@ -2046,20 +1761,15 @@ export default function TradingInsightsPanel() {
                       text-white
                       text-[11px]
                     "
-
                   >
                     Add
                   </button>
-
                 </div>
-
               )}
-
 
               {/* EMPTY */}
 
               {watchlist.length === 0 && (
-
                 <div
                   className="
                     min-h-[115px]
@@ -2073,7 +1783,6 @@ export default function TradingInsightsPanel() {
                     justify-center
                   "
                 >
-
                   <List
                     size={20}
                     className="
@@ -2088,24 +1797,18 @@ export default function TradingInsightsPanel() {
                       text-gray-500
                     "
                   >
-                    No instruments in your watchlist
+                    No instruments in your
+                    watchlist
                   </p>
-
                 </div>
-
               )}
-
 
               {/* WATCHLIST ITEMS */}
 
               <div className="space-y-2">
-
                 {watchlist.map((item) => (
-
                   <div
-
                     key={item.id}
-
                     className="
                       flex
                       items-center
@@ -2118,73 +1821,50 @@ export default function TradingInsightsPanel() {
                       hover:border-violet-200
                       transition
                     "
-
                   >
-
                     <button
-
                       type="button"
-
                       onClick={() =>
                         selectWatchlistSymbol(
                           item.symbol
                         )
                       }
-
                       className="
                         text-[12px]
                         font-semibold
                         text-gray-800
                         hover:text-violet-600
                       "
-
                     >
-
                       {item.symbol}
-
                     </button>
 
-
                     <button
-
                       type="button"
-
                       onClick={() =>
                         removeFromWatchlist(
                           item.id
                         )
                       }
-
                       className="
                         text-gray-400
                         hover:text-red-500
                       "
-
                     >
-
                       <Trash2 size={14} />
-
                     </button>
-
                   </div>
-
                 ))}
-
               </div>
-
             </div>
-
           )}
-
 
           {/* ==================================================
               ALERTS
-          ================================================== */}
+              ================================================== */}
 
           {activeTab === "alerts" && (
-
             <div>
-
               <div
                 className="
                   flex
@@ -2193,7 +1873,6 @@ export default function TradingInsightsPanel() {
                   mb-3
                 "
               >
-
                 <h3
                   className="
                     text-[12px]
@@ -2204,17 +1883,13 @@ export default function TradingInsightsPanel() {
                   Alerts
                 </h3>
 
-
                 <button
-
                   type="button"
-
                   onClick={() =>
                     setShowAlertForm(
                       !showAlertForm
                     )
                   }
-
                   className="
                     flex
                     items-center
@@ -2227,22 +1902,15 @@ export default function TradingInsightsPanel() {
                     text-[10px]
                     font-medium
                   "
-
                 >
-
                   <Plus size={12} />
-
                   Add
-
                 </button>
-
               </div>
-
 
               {/* ALERT FORM */}
 
               {showAlertForm && (
-
                 <div
                   className="
                     mb-4
@@ -2254,19 +1922,14 @@ export default function TradingInsightsPanel() {
                     space-y-2
                   "
                 >
-
                   <input
-
                     value={alertSymbol}
-
                     onChange={(event) =>
                       setAlertSymbol(
                         event.target.value
                       )
                     }
-
                     placeholder="Symbol"
-
                     className="
                       w-full
                       px-3
@@ -2276,22 +1939,16 @@ export default function TradingInsightsPanel() {
                       border-gray-200
                       text-[11px]
                     "
-
                   />
 
-
                   <div className="flex gap-2">
-
                     <select
-
                       value={alertCondition}
-
                       onChange={(event) =>
                         setAlertCondition(
                           event.target.value
                         )
                       }
-
                       className="
                         flex-1
                         px-2
@@ -2301,9 +1958,7 @@ export default function TradingInsightsPanel() {
                         border-gray-200
                         text-[11px]
                       "
-
                     >
-
                       <option value="above">
                         Above
                       </option>
@@ -2311,24 +1966,17 @@ export default function TradingInsightsPanel() {
                       <option value="below">
                         Below
                       </option>
-
                     </select>
 
-
                     <input
-
                       type="number"
-
                       value={alertPrice}
-
                       onChange={(event) =>
                         setAlertPrice(
                           event.target.value
                         )
                       }
-
                       placeholder="Price"
-
                       className="
                         flex-1
                         px-3
@@ -2338,18 +1986,12 @@ export default function TradingInsightsPanel() {
                         border-gray-200
                         text-[11px]
                       "
-
                     />
-
                   </div>
 
-
                   <button
-
                     type="button"
-
                     onClick={addAlert}
-
                     className="
                       w-full
                       py-2
@@ -2359,20 +2001,15 @@ export default function TradingInsightsPanel() {
                       text-[11px]
                       font-medium
                     "
-
                   >
                     Create Alert
                   </button>
-
                 </div>
-
               )}
-
 
               {/* EMPTY */}
 
               {alerts.length === 0 && (
-
                 <div
                   className="
                     min-h-[115px]
@@ -2386,7 +2023,6 @@ export default function TradingInsightsPanel() {
                     justify-center
                   "
                 >
-
                   <Bell
                     size={20}
                     className="
@@ -2403,22 +2039,15 @@ export default function TradingInsightsPanel() {
                   >
                     No active alerts
                   </p>
-
                 </div>
-
               )}
-
 
               {/* ALERT LIST */}
 
               <div className="space-y-2">
-
                 {alerts.map((alert) => (
-
                   <div
-
                     key={alert.id}
-
                     className="
                       flex
                       items-center
@@ -2428,11 +2057,8 @@ export default function TradingInsightsPanel() {
                       border
                       border-gray-100
                     "
-
                   >
-
                     <div>
-
                       <p
                         className="
                           text-[12px]
@@ -2443,7 +2069,6 @@ export default function TradingInsightsPanel() {
                         {alert.symbol}
                       </p>
 
-
                       <p
                         className="
                           mt-1
@@ -2451,58 +2076,41 @@ export default function TradingInsightsPanel() {
                           text-gray-500
                         "
                       >
-                        {alertCondition === "above"
-                          ? "Above"
-                          : alert.condition === "above"
+                        {alert.condition ===
+                        "above"
                           ? "Above"
                           : "Below"}{" "}
                         {alert.price}
-
                       </p>
-
                     </div>
 
-
                     <button
-
                       type="button"
-
                       onClick={() =>
-                        removeAlert(alert.id)
+                        removeAlert(
+                          alert.id
+                        )
                       }
-
                       className="
                         text-gray-400
                         hover:text-red-500
                       "
-
                     >
-
                       <Trash2 size={14} />
-
                     </button>
-
                   </div>
-
                 ))}
-
               </div>
-
             </div>
-
           )}
-
 
           {/* ==================================================
               TRADE PLAN
-          ================================================== */}
+              ================================================== */}
 
           {activeTab === "tradeplan" && (
-
             <div>
-
               <div className="mb-0">
-
                 <h3
                   className="
                     text-[12px]
@@ -2513,9 +2121,7 @@ export default function TradingInsightsPanel() {
                   Trade Plan
                 </h3>
 
-
                 {selectedEdgePlan?.name && (
-
                   <p
                     className="
                       mt-1
@@ -2525,14 +2131,10 @@ export default function TradingInsightsPanel() {
                   >
                     {selectedEdgePlan.name}
                   </p>
-
                 )}
-
               </div>
 
-
               {!selectedEdgePlan ? (
-
                 <div
                   className="
                     min-h-[115px]
@@ -2547,7 +2149,6 @@ export default function TradingInsightsPanel() {
                     text-center
                   "
                 >
-
                   <ClipboardList
                     size={20}
                     className="
@@ -2564,71 +2165,38 @@ export default function TradingInsightsPanel() {
                   >
                     Select a plan from Edge
                   </p>
-
                 </div>
-
               ) : (
-
                 <div className="space-y-1">
-
                   <TradePlanSection
-
                     title="Charting Process"
-
-                    items={
-                      getChecklistItems(
-                        selectedEdgePlan.chartingProcess
-                      )
-                    }
-
+                    items={getChecklistItems(
+                      selectedEdgePlan.chartingProcess
+                    )}
                     sectionKey="charting"
-
                   />
 
-
                   <TradePlanSection
-
                     title="Entry Criteria"
-
-                    items={
-                      getChecklistItems(
-                        selectedEdgePlan.entryCriteria
-                      )
-                    }
-
+                    items={getChecklistItems(
+                      selectedEdgePlan.entryCriteria
+                    )}
                     sectionKey="entry"
-
                   />
-
 
                   <TradePlanSection
-
                     title="Exit Criteria"
-
-                    items={
-                      getChecklistItems(
-                        selectedEdgePlan.exitCriteria
-                      )
-                    }
-
+                    items={getChecklistItems(
+                      selectedEdgePlan.exitCriteria
+                    )}
                     sectionKey="exit"
-
                   />
-
                 </div>
-
               )}
-
             </div>
-
           )}
-
         </div>
-
       </div>
-
     </div>
-
   );
-
 }

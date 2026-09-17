@@ -208,3 +208,73 @@ body,
     border-color 0.3s ease;
 }
 
+
+
+
+/* Clean Center Popup Animation */
+
+@keyframes tradeBackdropIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tradeBackdropOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes tradePopupIn {
+ 0% {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+
+  70% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tradePopupOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+.animate-trade-backdrop-in {
+  animation: tradeBackdropIn 180ms ease-out forwards;
+}
+
+.animate-trade-backdrop-out {
+  animation: tradeBackdropOut 220ms ease-in forwards;
+}
+
+.animate-trade-popup-in {
+  animation: tradePopupIn 380ms cubic-bezier(0.16, 1, 0.3, 1)
+    forwards;
+}
+
+.animate-trade-popup-out {
+  animation: tradePopupOut 220ms ease-in forwards;
+}
