@@ -7,14 +7,11 @@ import PlanCard from "./PlanCard";
 import { Trash2 } from "lucide-react";
 
 export default function MyPlansPage({
-
-    plans,
-  
-    onOpenPlan,
-  
-    onPreview,
-  
-  }) {
+  plans,
+  onOpenPlan,
+  onPreview,
+  onSelect,
+}) {
 
     const [showFolderModal, setShowFolderModal] = useState(false);
 
@@ -317,6 +314,10 @@ function createFolder(name) {
           key={plan.id}
       
           plan={plan}
+
+          onSelect={(plan) => {
+            onSelect(plan);
+          }}
       
           onPreview={(plan) => {
 

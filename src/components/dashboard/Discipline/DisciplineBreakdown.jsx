@@ -219,10 +219,7 @@ export default function DisciplineBreakdown({ trades = [] }) {
           color="bg-orange-500"
         />
 
-        {/* SCORE CIRCLE */}
-        <div className="flex justify-center my-6">
-          <ScoreCircle score={stats.overall} />
-        </div>
+       
 
         {/* FOOTER */}
         <div className="border-t border-gray-200 pt-3 flex items-center justify-between">

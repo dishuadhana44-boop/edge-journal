@@ -185,12 +185,13 @@ setStatsView("home");
 
 <MyPlansPage
   plans={plans}
-
+  onSelect={(plan) => {
+    selectActivePlan(plan);
+  }}
   onOpenPlan={(plan) => {
     selectActivePlan(plan);
     setMode("edit");
   }}
-
   onPreview={(plan) => {
     selectActivePlan(plan);
     setPreviewPlan(plan);

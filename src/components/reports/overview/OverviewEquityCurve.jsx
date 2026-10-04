@@ -18,7 +18,7 @@ export default function OverviewEquityCurve() {
 
   const [mode, setMode] = useState("Balance");
   console.log("Overview Mode =", mode);
-  const startingBalance = 10000;
+  const startingBalance = 100000;
 
   const filteredTrades =
   filterTradesByPeriod(

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-
 import {
   CircleCheck,
   AlertTriangle,
@@ -10,296 +9,279 @@ import {
   ClipboardList,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { useTrade } from "../../../context/TradeContext";
 
+
 /* ============================================================
    DEFAULT GUARDRAILS
-   ============================================================ */
+============================================================ */
 
 const DEFAULT_GUARDRAILS = {
   enabled: true,
   maxTradesPerDay: 10,
   maxDailyLoss: 3000,
   maxDailyProfit: 10000,
-
-  // 24-hour internal format
-  // Display will be 12-hour format.
-  tradingWindowStart: "11:30",
-  tradingWindowEnd: "19:30",
+  tradingWindowStart: "10:30",
+  tradingWindowEnd: "13:30",
 };
+
 
 /* ============================================================
    DEFAULT WATCHLIST
-   ============================================================ */
+============================================================ */
 
 const DEFAULT_WATCHLIST = [];
 
-/* ============================================================
-   GUARDRAIL NORMALIZER
-   ============================================================ */
-
-const normalizeGuardrails = (saved) => {
-  const parsed = saved && typeof saved === "object" ? saved : {};
-
-  // Migrate the previous default window automatically.
-  const oldDefaultWindow =
-    parsed.tradingWindowStart === "10:30" &&
-    parsed.tradingWindowEnd === "13:30";
-
-  return {
-    ...DEFAULT_GUARDRAILS,
-    ...parsed,
-
-    ...(oldDefaultWindow
-      ? {
-          tradingWindowStart: "11:30",
-          tradingWindowEnd: "19:30",
-        }
-      : {}),
-  };
-};
 
 /* ============================================================
    COMPONENT
-   ============================================================ */
+============================================================ */
 
 export default function TradingInsightsPanel() {
+
   const {
     openTrades = [],
     closedTrades = [],
   } = useTrade();
-  /* ============================================================
-     MT5 HISTORY
-     ============================================================ */
-
-  const [mt5History, setMt5History] = useState([]);
-  const [mt5HistoryLoading, setMt5HistoryLoading] = useState(false);
-  const [mt5HistoryError, setMt5HistoryError] = useState(null);
-
-  /* ============================================================
-     MAIN UI STATE
-     ============================================================ */
 
   const [activeTab, setActiveTab] = useState("watchlist");
-  const [isGuardrailsOpen, setIsGuardrailsOpen] = useState(true);
+
+  const [isGuardrailsOpen, setIsGuardrailsOpen] =
+    useState(true);
+
 
   /* ============================================================
      WATCHLIST
-     ============================================================ */
+  ============================================================ */
 
   const [watchlist, setWatchlist] = useState(() => {
+
     try {
-      const saved = localStorage.getItem("edgefloWatchlist");
 
-      if (!saved) {
-        return DEFAULT_WATCHLIST;
-      }
+      const saved =
+        localStorage.getItem("edgefloWatchlist");
 
-      const parsed = JSON.parse(saved);
-
-      return Array.isArray(parsed)
-        ? parsed
+      return saved
+        ? JSON.parse(saved)
         : DEFAULT_WATCHLIST;
-    } catch (error) {
-      console.error("Failed to load watchlist:", error);
+
+    } catch {
+
       return DEFAULT_WATCHLIST;
+
     }
+
   });
+
 
   const [showWatchlistInput, setShowWatchlistInput] =
     useState(false);
 
-  const [newSymbol, setNewSymbol] = useState("");
+  const [newSymbol, setNewSymbol] =
+    useState("");
+
 
   /* ============================================================
      ALERTS
-     ============================================================ */
+  ============================================================ */
 
   const [alerts, setAlerts] = useState(() => {
+
     try {
-      const saved = localStorage.getItem("edgefloAlerts");
 
-      if (!saved) {
-        return [];
-      }
+      const saved =
+        localStorage.getItem("edgefloAlerts");
 
-      const parsed = JSON.parse(saved);
+      return saved
+        ? JSON.parse(saved)
+        : [];
 
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.error("Failed to load alerts:", error);
+    } catch {
+
       return [];
+
     }
+
   });
 
-  const [showAlertForm, setShowAlertForm] = useState(false);
 
-  const [alertSymbol, setAlertSymbol] = useState("EURUSD");
+  const [showAlertForm, setShowAlertForm] =
+    useState(false);
+
+
+  const [alertSymbol, setAlertSymbol] =
+    useState("EURUSD");
 
   const [alertCondition, setAlertCondition] =
     useState("above");
 
-  const [alertPrice, setAlertPrice] = useState("");
+  const [alertPrice, setAlertPrice] =
+    useState("");
+
 
   /* ============================================================
      GUARDRAILS
-     ============================================================ */
+  ============================================================ */
 
   const [guardrails, setGuardrails] = useState(() => {
+
     try {
-      const saved = localStorage.getItem(
-        "tradingGuardrails"
-      );
 
-      if (!saved) {
-        return DEFAULT_GUARDRAILS;
-      }
+      const saved =
+        localStorage.getItem("tradingGuardrails");
 
-      return normalizeGuardrails(JSON.parse(saved));
-    } catch (error) {
-      console.error("Failed to load guardrails:", error);
+      return saved
+        ? {
+            ...DEFAULT_GUARDRAILS,
+            ...JSON.parse(saved),
+          }
+        : DEFAULT_GUARDRAILS;
+
+    } catch {
+
       return DEFAULT_GUARDRAILS;
+
     }
+
   });
+
 
   /* ============================================================
      SELECTED EDGE PLAN
-     ============================================================ */
+  ============================================================ */
 
   const [selectedEdgePlan, setSelectedEdgePlan] =
     useState(null);
 
-  /* ============================================================
-     TRADE PLAN CHECKLIST
-     ============================================================ */
 
-  const [checkedItems, setCheckedItems] = useState({});
+  /* ============================================================
+     TRADE PLAN CHECKLIST STATE
+  ============================================================ */
+
+  const [checkedItems, setCheckedItems] =
+    useState({});
+
+    useEffect(() => {
+      setCheckedItems({});
+    }, [selectedEdgePlan?.id]);
 
   /* ============================================================
      SAVE WATCHLIST
-     ============================================================ */
+  ============================================================ */
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        "edgefloWatchlist",
-        JSON.stringify(watchlist)
-      );
-    } catch (error) {
-      console.error(
-        "Failed to save watchlist:",
-        error
-      );
-    }
+
+    localStorage.setItem(
+      "edgefloWatchlist",
+      JSON.stringify(watchlist)
+    );
+
   }, [watchlist]);
+
 
   /* ============================================================
      SAVE ALERTS
-     ============================================================ */
+  ============================================================ */
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        "edgefloAlerts",
-        JSON.stringify(alerts)
-      );
-    } catch (error) {
-      console.error(
-        "Failed to save alerts:",
-        error
-      );
-    }
+
+    localStorage.setItem(
+      "edgefloAlerts",
+      JSON.stringify(alerts)
+    );
+
   }, [alerts]);
+
 
   /* ============================================================
      LOAD CHECKLIST STATE
-     ============================================================ */
+  ============================================================ */
 
   useEffect(() => {
+
     try {
-      const saved = localStorage.getItem(
-        "edgefloTradePlanChecklist"
-      );
 
-      if (!saved) {
-        setCheckedItems({});
-        return;
-      }
-
-      const parsed = JSON.parse(saved);
+      const saved =
+        localStorage.getItem("edgefloTradePlanChecklist");
 
       setCheckedItems(
-        parsed && typeof parsed === "object"
-          ? parsed
-          : {}
-      );
-    } catch (error) {
-      console.error(
-        "Failed to load trade plan checklist:",
-        error
+        saved ? JSON.parse(saved) : {}
       );
 
+    } catch {
+
       setCheckedItems({});
+
     }
+
   }, []);
+
 
   /* ============================================================
      SAVE CHECKLIST STATE
-     ============================================================ */
+  ============================================================ */
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        "edgefloTradePlanChecklist",
-        JSON.stringify(checkedItems)
-      );
-    } catch (error) {
-      console.error(
-        "Failed to save trade plan checklist:",
-        error
-      );
-    }
+
+    localStorage.setItem(
+      "edgefloTradePlanChecklist",
+      JSON.stringify(checkedItems)
+    );
+
   }, [checkedItems]);
+
 
   /* ============================================================
      LOAD SELECTED EDGE PLAN
-     ============================================================ */
+  ============================================================ */
 
   useEffect(() => {
+
     const loadSelectedPlan = () => {
+
       try {
-        const saved = localStorage.getItem(
-          "selectedEdgePlan"
-        );
+
+        const saved =
+          localStorage.getItem("selectedEdgePlan");
 
         setSelectedEdgePlan(
           saved ? JSON.parse(saved) : null
         );
+
       } catch (error) {
+
         console.error(
           "Failed to load selected Edge plan:",
           error
         );
 
         setSelectedEdgePlan(null);
+
       }
+
     };
 
+
     loadSelectedPlan();
+
 
     window.addEventListener(
       "selectedEdgePlanUpdated",
       loadSelectedPlan
     );
 
+
     window.addEventListener(
       "storage",
       loadSelectedPlan
     );
 
+
     return () => {
+
       window.removeEventListener(
         "selectedEdgePlanUpdated",
         loadSelectedPlan
@@ -309,45 +291,48 @@ export default function TradingInsightsPanel() {
         "storage",
         loadSelectedPlan
       );
+
     };
+
   }, []);
+
 
   /* ============================================================
      LOAD GUARDRAILS
-     ============================================================ */
+  ============================================================ */
 
   useEffect(() => {
-    const loadGuardrails = () => {
-      try {
-        const saved = localStorage.getItem(
-          "tradingGuardrails"
-        );
 
-        if (!saved) {
-          setGuardrails(DEFAULT_GUARDRAILS);
-          return;
+    const loadGuardrails = () => {
+
+      try {
+
+        const saved =
+          localStorage.getItem("tradingGuardrails");
+
+        if (saved) {
+
+          setGuardrails({
+            ...DEFAULT_GUARDRAILS,
+            ...JSON.parse(saved),
+          });
+
         }
 
-        const normalized = normalizeGuardrails(
-          JSON.parse(saved)
-        );
-
-        setGuardrails(normalized);
-
-        // Save migrated values so they persist.
-        localStorage.setItem(
-          "tradingGuardrails",
-          JSON.stringify(normalized)
-        );
       } catch (error) {
+
         console.error(
           "Failed to load guardrails:",
           error
         );
+
       }
+
     };
 
+
     loadGuardrails();
+
 
     window.addEventListener(
       "storage",
@@ -359,7 +344,9 @@ export default function TradingInsightsPanel() {
       loadGuardrails
     );
 
+
     return () => {
+
       window.removeEventListener(
         "storage",
         loadGuardrails
@@ -369,485 +356,563 @@ export default function TradingInsightsPanel() {
         "guardrailsUpdated",
         loadGuardrails
       );
+
     };
+
   }, []);
+
 
   /* ============================================================
-     LOAD MT5 TRADE HISTORY
-     ============================================================ */
+     TODAY'S TRADES
 
-  useEffect(() => {
-    let cancelled = false;
+     IMPORTANT:
+     - Trade count is based on actual executed trades.
+     - Open + closed trades are used here.
+     - MT5 history is intentionally NOT merged here because the
+       same MT5 trade can exist in both journal state and MT5 history.
+     - Daily P&L is calculated separately from CLOSED trades only.
+  ============================================================ */
 
-    const loadMT5History = async () => {
-      try {
-        setMt5HistoryLoading(true);
-        setMt5HistoryError(null);
-
-        const response = await fetch(
-          "http://localhost:4000/api/mt5/history?days=1"
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            `MT5 history request failed: ${response.status}`
-          );
-        }
-
-        const data = await response.json();
-
-        if (cancelled) {
-          return;
-        }
-
-        const history = Array.isArray(data)
-          ? data
-          : Array.isArray(data.history)
-          ? data.history
-          : Array.isArray(data.deals)
-          ? data.deals
-          : [];
-
-        setMt5History(history);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        console.error(
-          "Failed to load MT5 history:",
-          error
-        );
-
-        setMt5HistoryError(
-          error?.message ||
-            "Unable to load MT5 history."
-        );
-
-        setMt5History([]);
-      } finally {
-        if (!cancelled) {
-          setMt5HistoryLoading(false);
-        }
-      }
-    };
-
-    loadMT5History();
-
-    const interval = setInterval(
-      loadMT5History,
-      5000
+  const getTradeId = (trade, index = 0) => {
+    return (
+      trade?.id ??
+      trade?.ticket ??
+      trade?.positionId ??
+      trade?.brokerPositionId ??
+      trade?.deal ??
+      `trade-${index}`
     );
+  };
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  const getTradeDate = (trade) => {
+    const dateValue =
+      trade?.closedAt ??
+      trade?.closeTime ??
+      trade?.time ??
+      trade?.openedAt ??
+      trade?.openTime ??
+      trade?.createdAt ??
+      trade?.date ??
+      trade?.timestamp;
 
- /* ============================================================
-   TODAY'S TRADES - LOCAL + MT5 HISTORY
-============================================================ */
+    if (!dateValue) {
+      return null;
+    }
 
-const allTrades = useMemo(() => {
-  const combinedTrades = [
-    ...openTrades,
-    ...closedTrades,
-    ...mt5History,
-  ];
+    let tradeDate;
 
-  const uniqueTrades = Array.from(
-    new Map(
-      combinedTrades.map((trade, index) => {
-        const tradeId =
-          trade.id ??
-          trade.ticket ??
-          trade.deal ??
-          `trade-${index}`;
+    if (typeof dateValue === "number") {
+      tradeDate =
+        dateValue < 100000000000
+          ? new Date(dateValue * 1000)
+          : new Date(dateValue);
+    } else {
+      tradeDate = new Date(dateValue);
+    }
 
-        return [String(tradeId), trade];
-      })
-    ).values()
-  );
+    if (Number.isNaN(tradeDate.getTime())) {
+      return null;
+    }
 
-  return uniqueTrades;
-}, [
-  openTrades,
-  closedTrades,
-  mt5History,
-]);
+    return tradeDate;
+  };
 
-const getTradeDate = (trade) => {
-  const dateValue =
-    trade.closedAt ??
-    trade.closeTime ??
-    trade.time ??
-    trade.openedAt ??
-    trade.openTime ??
-    trade.createdAt ??
-    trade.date ??
-    trade.timestamp;
-
-  if (!dateValue) {
-    return null;
-  }
-
-  let date;
-
-  if (
-    typeof dateValue === "number" &&
-    dateValue < 100000000000
-  ) {
-    date = new Date(dateValue * 1000);
-  } else {
-    date = new Date(dateValue);
-  }
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date;
-};
-
-const todayTrades = useMemo(() => {
-  const today = new Date();
-
-  return allTrades.filter((trade) => {
-    const tradeDate = getTradeDate(trade);
-
-    if (!tradeDate) {
+  const isToday = (date) => {
+    if (!date) {
       return false;
     }
 
+    const today = new Date();
+
     return (
-      tradeDate.getFullYear() === today.getFullYear() &&
-      tradeDate.getMonth() === today.getMonth() &&
-      tradeDate.getDate() === today.getDate()
+      date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate()
     );
-  });
-}, [allTrades]);
+  };
+
+  const allTrades = useMemo(() => {
+    const combinedTrades = [
+      ...openTrades,
+      ...closedTrades,
+    ];
+
+    return Array.from(
+      new Map(
+        combinedTrades.map((trade, index) => [
+          String(getTradeId(trade, index)),
+          trade,
+        ])
+      ).values()
+    );
+  }, [openTrades, closedTrades]);
+
+  const todayTrades = useMemo(() => {
+    return allTrades.filter((trade) =>
+      isToday(getTradeDate(trade))
+    );
+  }, [allTrades]);
+
+  const todayClosedTrades = useMemo(() => {
+    return closedTrades.filter((trade) =>
+      isToday(getTradeDate(trade))
+    );
+  }, [closedTrades]);
 
   /* ============================================================
      TRADE COUNT
-     ============================================================ */
+  ============================================================ */
 
   const tradeCount = todayTrades.length;
 
+
   const maxTrades = Math.max(
-    Number(guardrails.maxTradesPerDay) || 1,
+
+    Number(
+      guardrails.maxTradesPerDay
+    ) || 1,
+
     1
+
   );
 
+
   /* ============================================================
-   TODAY'S NET P&L
-============================================================ */
+     DAILY PNL
 
-const dailyPnL = useMemo(() => {
-  return todayTrades.reduce((total, trade) => {
-    const pnlValue =
-      trade.netProfit ??
-      trade.netPnL ??
-      trade.realizedPnL ??
-      trade.profit ??
-      trade.pnl ??
-      trade.profitLoss ??
-      0;
+     IMPORTANT:
+     Today's Net P&L is REALIZED P&L only.
+     Open/floating P&L must not be included here.
+  ============================================================ */
 
-    const pnl = Number(pnlValue);
+  const dailyPnL = useMemo(() => {
+    return todayClosedTrades.reduce((total, trade) => {
+      const pnlValue =
+        trade?.netProfit ??
+        trade?.netPnL ??
+        trade?.realizedPnL ??
+        trade?.pnl ??
+        trade?.profit ??
+        0;
 
-    if (!Number.isFinite(pnl)) {
-      return total;
-    }
+      const pnl = Number(pnlValue);
 
-    return total + pnl;
-  }, 0);
-}, [todayTrades]);
+      if (!Number.isFinite(pnl)) {
+        return total;
+      }
+
+      return total + pnl;
+    }, 0);
+  }, [todayClosedTrades]);
+
   /* ============================================================
      GUARDRAIL LIMITS
-     ============================================================ */
+  ============================================================ */
 
   const maxDailyLoss = Math.max(
-    Number(guardrails.maxDailyLoss) || 0,
+
+    Number(
+      guardrails.maxDailyLoss
+    ) || 0,
+
     0
+
   );
+
 
   const maxDailyProfit = Math.max(
-    Number(guardrails.maxDailyProfit) || 0,
+
+    Number(
+      guardrails.maxDailyProfit
+    ) || 0,
+
     0
+
   );
 
+
   /* ============================================================
-     P&L PROGRESS
-     ============================================================ */
+     PNL PROGRESS
+  ============================================================ */
 
   const lossProgress =
+
     maxDailyLoss > 0
+
       ? Math.min(
-          Math.abs(Math.min(dailyPnL, 0)) /
-            maxDailyLoss,
+
+          Math.abs(
+            Math.min(dailyPnL, 0)
+          ) / maxDailyLoss,
+
           1
+
         )
+
       : 0;
 
+
   const profitProgress =
+
     maxDailyProfit > 0
+
       ? Math.min(
+
           Math.max(dailyPnL, 0) /
             maxDailyProfit,
+
           1
+
         )
+
       : 0;
+
 
   /* ============================================================
      FORMATTERS
-     ============================================================ */
+  ============================================================ */
 
   const formatMoney = (value) => {
-    return Number(value || 0).toLocaleString(
-      "en-US",
-      {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }
-    );
+
+    return Number(value || 0)
+      .toLocaleString(
+        "en-US",
+        {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }
+      );
+
   };
+
 
   const formatCompactMoney = (value) => {
-    const number = Number(value || 0);
+
+    const number =
+      Number(value || 0);
+
 
     if (number >= 1000000) {
-      return `$${(number / 1000000).toFixed(1)}M`;
+
+      return `$${(
+        number / 1000000
+      ).toFixed(1)}M`;
+
     }
+
 
     if (number >= 1000) {
-      return `$${(number / 1000).toFixed(1)}K`;
+
+      return `$${(
+        number / 1000
+      ).toFixed(1)}K`;
+
     }
+
 
     return `$${formatMoney(number)}`;
+
   };
+
 
   const formatPnL = (value) => {
-    const number = Number(value || 0);
+
+    const number =
+      Number(value || 0);
+
 
     if (number > 0) {
+
       return `+$${formatMoney(number)}`;
+
     }
+
 
     if (number < 0) {
-      return `-$${formatMoney(Math.abs(number))}`;
+
+      return `-$${formatMoney(
+        Math.abs(number)
+      )}`;
+
     }
+
 
     return "$0.00";
+
   };
 
-  /* ============================================================
-     12-HOUR TIME FORMATTER
-     ============================================================ */
 
-  const formatTime12Hour = (time) => {
-    if (!time) {
-      return "--";
-    }
+ // ============================================================
+// TRADING WINDOW
+// ============================================================
 
-    const [hours, minutes] = String(time)
-      .split(":")
-      .map(Number);
+const isTradingWindowOpen = () => {
+  if (!guardrails.enabled) {
+    return true;
+  }
 
-    if (
-      !Number.isFinite(hours) ||
-      !Number.isFinite(minutes) ||
-      hours < 0 ||
-      hours > 23 ||
-      minutes < 0 ||
-      minutes > 59
-    ) {
-      return time;
-    }
+  const now = new Date();
 
-    const period = hours >= 12 ? "PM" : "AM";
+  // Use user's local time (IST on this machine)
+  const currentMinutes =
+    now.getHours() * 60 +
+    now.getMinutes();
 
-    const hour12 = hours % 12 || 12;
+  const [
+    startHour,
+    startMinute,
+  ] = (
+    guardrails.tradingWindowStart ||
+    "07:30"
+  )
+    .split(":")
+    .map(Number);
 
-    return `${hour12}:${String(minutes).padStart(
-      2,
-      "0"
-    )} ${period}`;
-  };
+  const [
+    endHour,
+    endMinute,
+  ] = (
+    guardrails.tradingWindowEnd ||
+    "20:30"
+  )
+    .split(":")
+    .map(Number);
 
-  /* ============================================================
-     TRADING WINDOW
-     Uses user's local/system timezone.
-     Internal values remain 24-hour format.
-     Display uses 12-hour format.
-     ============================================================ */
+  const startMinutes =
+    startHour * 60 +
+    startMinute;
 
-  const isTradingWindowOpen = () => {
-    if (!guardrails.enabled) {
-      return true;
-    }
+  const endMinutes =
+    endHour * 60 +
+    endMinute;
 
-    const now = new Date();
+  // ==========================================================
+  // NORMAL WINDOW
+  // ==========================================================
 
-    const currentMinutes =
-      now.getHours() * 60 +
-      now.getMinutes();
-
-    const [
-      startHour,
-      startMinute,
-    ] = (
-      guardrails.tradingWindowStart ||
-      "11:30"
-    )
-      .split(":")
-      .map(Number);
-
-    const [
-      endHour,
-      endMinute,
-    ] = (
-      guardrails.tradingWindowEnd ||
-      "19:30"
-    )
-      .split(":")
-      .map(Number);
-
-    const startMinutes =
-      startHour * 60 +
-      startMinute;
-
-    const endMinutes =
-      endHour * 60 +
-      endMinute;
-
-    /* NORMAL WINDOW */
-
-    if (startMinutes <= endMinutes) {
-      return (
-        currentMinutes >= startMinutes &&
-        currentMinutes <= endMinutes
-      );
-    }
-
-    /* OVERNIGHT WINDOW */
-
+  if (startMinutes <= endMinutes) {
     return (
-      currentMinutes >= startMinutes ||
+      currentMinutes >= startMinutes &&
       currentMinutes <= endMinutes
     );
-  };
+  }
 
-  const tradingWindowOpen =
-    isTradingWindowOpen();
+  // ==========================================================
+  // OVERNIGHT WINDOW
+  // ==========================================================
+
+  return (
+    currentMinutes >= startMinutes ||
+    currentMinutes <= endMinutes
+  );
+};
+
+const tradingWindowOpen =
+  isTradingWindowOpen();
 
   /* ============================================================
-   RULE VIOLATION
-============================================================ */
+     RULE VIOLATION
+  ============================================================ */
 
-const ruleViolation = useMemo(() => {
-  if (!guardrails.enabled) {
+  const ruleViolation = useMemo(() => {
+
+    if (!guardrails.enabled) {
+
+      return null;
+
+    }
+
+
+    if (
+
+      maxTrades > 0 &&
+
+      tradeCount >= maxTrades
+
+    ) {
+
+      return `Daily trade limit reached (${tradeCount}/${maxTrades}).`;
+
+    }
+
+
+    if (
+
+      maxDailyLoss > 0 &&
+
+      dailyPnL <= -maxDailyLoss
+
+    ) {
+
+      return `Maximum daily loss reached (${formatPnL(
+        dailyPnL
+      )}).`;
+
+    }
+
+
+    if (
+
+      maxDailyProfit > 0 &&
+
+      dailyPnL >= maxDailyProfit
+
+    ) {
+
+      return `Daily profit target reached (${formatPnL(
+        dailyPnL
+      )}).`;
+
+    }
+
+
+    if (!tradingWindowOpen) {
+
+      return "Trading window is currently closed.";
+
+    }
+
+
     return null;
-  }
+
+  }, [
+
+    guardrails.enabled,
+
+    maxTrades,
+
+    tradeCount,
+
+    maxDailyLoss,
+
+    maxDailyProfit,
+
+    dailyPnL,
+
+    tradingWindowOpen,
+
+  ]);
+
+
+  const tradingStart =
+    guardrails.tradingWindowStart ||
+    "10:30";
+
+
+  const tradingEnd =
+    guardrails.tradingWindowEnd ||
+    "13:30";
+
+const formatTradingTime = (time) => {
+  if (!time) return "-";
+
+  const [hour, minute] = time
+    .split(":")
+    .map(Number);
 
   if (
-    maxDailyLoss > 0 &&
-    dailyPnL <= -maxDailyLoss
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute)
   ) {
-    return `MAX LOSS HIT: ${formatPnL(dailyPnL)}`;
+    return time;
   }
 
-  if (
-    maxDailyProfit > 0 &&
-    dailyPnL >= maxDailyProfit
-  ) {
-    return `DAILY P&L HIT: ${formatPnL(dailyPnL)}`;
-  }
+  const period =
+    hour >= 12 ? "PM" : "AM";
 
-  if (
-    maxTrades > 0 &&
-    tradeCount >= maxTrades
-  ) {
-    return `DAILY TRADE LIMIT HIT: ${tradeCount}/${maxTrades}`;
-  }
+  const displayHour =
+    hour % 12 || 12;
 
-  if (!tradingWindowOpen) {
-    return "TRADING WINDOW CLOSED";
-  }
-
-  return null;
-}, [
-  guardrails.enabled,
-  maxDailyLoss,
-  maxDailyProfit,
-  dailyPnL,
-  maxTrades,
-  tradeCount,
-  tradingWindowOpen,
-]);
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${period}`;
+};
 
   /* ============================================================
      WATCHLIST FUNCTIONS
-     ============================================================ */
+  ============================================================ */
 
   const addToWatchlist = () => {
-    const symbol = newSymbol
-      .trim()
-      .toUpperCase();
 
-    if (!symbol) {
-      return;
-    }
+    const symbol =
+      newSymbol
+        .trim()
+        .toUpperCase();
 
-    const alreadyExists = watchlist.some(
-      (item) =>
-        String(item.symbol).toUpperCase() ===
-        symbol
-    );
+
+    if (!symbol) return;
+
+
+    const alreadyExists =
+      watchlist.some(
+
+        (item) =>
+          item.symbol === symbol
+
+      );
+
 
     if (alreadyExists) {
+
       setNewSymbol("");
       setShowWatchlistInput(false);
+
       return;
+
     }
 
+
     const item = {
+
       id: Date.now(),
+
       symbol,
-      createdAt: new Date().toISOString(),
+
+      createdAt:
+        new Date().toISOString(),
+
     };
 
+
     setWatchlist((previous) => [
+
       ...previous,
+
       item,
+
     ]);
 
+
     setNewSymbol("");
+
     setShowWatchlistInput(false);
+
   };
 
+
   const removeFromWatchlist = (id) => {
+
     setWatchlist((previous) =>
+
       previous.filter(
         (item) => item.id !== id
       )
+
     );
+
   };
 
-  const selectWatchlistSymbol = (symbol) => {
-    try {
-      localStorage.setItem(
-        "selectedSymbol",
-        symbol
-      );
-    } catch (error) {
-      console.error(
-        "Failed to save selected symbol:",
-        error
-      );
-    }
+
+  const selectWatchlistSymbol = (
+    symbol
+  ) => {
+
+    localStorage.setItem(
+      "selectedSymbol",
+      symbol
+    );
+
 
     window.dispatchEvent(
+
       new CustomEvent(
         "selectedSymbolUpdated",
         {
@@ -856,122 +921,195 @@ const ruleViolation = useMemo(() => {
           },
         }
       )
+
     );
+
   };
+
 
   /* ============================================================
      ALERT FUNCTIONS
-     ============================================================ */
+  ============================================================ */
 
   const addAlert = () => {
-    const symbol = alertSymbol
-      .trim()
-      .toUpperCase();
 
-    const price = Number(alertPrice);
+    const symbol =
+      alertSymbol
+        .trim()
+        .toUpperCase();
 
-    if (
-      !symbol ||
-      !Number.isFinite(price)
-    ) {
+
+    const price =
+      Number(alertPrice);
+
+
+    if (!symbol || !price) {
+
       return;
+
     }
 
-    const newAlert = {
+
+    const alert = {
+
       id: Date.now(),
+
       symbol,
-      condition: alertCondition,
+
+      condition:
+        alertCondition,
+
       price,
+
       active: true,
-      createdAt: new Date().toISOString(),
+
+      createdAt:
+        new Date().toISOString(),
+
     };
 
+
     setAlerts((previous) => [
+
       ...previous,
-      newAlert,
+
+      alert,
+
     ]);
 
+
     setAlertPrice("");
+
     setShowAlertForm(false);
+
   };
 
+
   const removeAlert = (id) => {
+
     setAlerts((previous) =>
+
       previous.filter(
-        (alert) => alert.id !== id
+        (alert) =>
+          alert.id !== id
       )
+
     );
+
   };
+
 
   /* ============================================================
      TRADE PLAN FUNCTIONS
-     ============================================================ */
+  ============================================================ */
 
   const getChecklistItems = (value) => {
-    if (!value) {
-      return [];
-    }
+
+    if (!value) return [];
+
 
     if (Array.isArray(value)) {
+
       return value
+
         .map((item) => {
-          if (typeof item === "string") {
+
+          if (
+            typeof item === "string"
+          ) {
             return item;
           }
 
+
           if (
-            typeof item === "object" &&
-            item !== null
+            typeof item === "object"
           ) {
+
             return (
+
               item.text ??
               item.title ??
               item.name ??
               item.description ??
               ""
+
             );
+
           }
 
+
           return "";
+
         })
+
         .filter(Boolean);
+
     }
 
-    if (typeof value === "string") {
+
+    if (
+      typeof value === "string"
+    ) {
+
       return value
+
         .split("\n")
+
         .map((item) =>
+
           item
             .replace(/^[-•*]\s*/, "")
             .trim()
+
         )
+
         .filter(Boolean);
+
     }
 
+
     return [];
+
   };
 
+
   const toggleChecklistItem = (key) => {
+
     setCheckedItems((previous) => ({
+
       ...previous,
-      [key]: !previous[key],
+
+      [key]:
+        !previous[key],
+
     }));
+
   };
+
 
   /* ============================================================
      TRADE PLAN SECTION
-     ============================================================ */
+  ============================================================ */
 
   const TradePlanSection = ({
+
     title,
+
     items,
+
     sectionKey,
+
   }) => {
+
     if (!items.length) {
+
       return null;
+
     }
 
+
     return (
+
       <div
         className="
           rounded-xl
@@ -981,6 +1119,7 @@ const ruleViolation = useMemo(() => {
           p-3
         "
       >
+
         <p
           className="
             text-[11px]
@@ -992,71 +1131,102 @@ const ruleViolation = useMemo(() => {
           {title}
         </p>
 
+
         <div className="space-y-2">
-          {items.map((item, index) => {
-            const key = `${sectionKey}-${index}`;
 
-            return (
-              <label
-                key={key}
-                className="
-                  flex
-                  items-start
-                  gap-2
-                  cursor-pointer
-                "
-              >
-                <input
-                  type="checkbox"
-                  checked={!!checkedItems[key]}
-                  onChange={() =>
-                    toggleChecklistItem(key)
-                  }
+          {items.map(
+            (item, index) => {
+
+              const key =
+                `${sectionKey}-${index}`;
+
+
+              return (
+
+                <label
+                  key={key}
                   className="
-                    mt-[2px]
-                    accent-violet-600
+                    flex
+                    items-start
+                    gap-2
+                    cursor-pointer
                   "
-                />
-
-                <span
-                  className={`
-                    text-[11px]
-                    leading-relaxed
-                    ${
-                      checkedItems[key]
-                        ? "text-gray-400 line-through"
-                        : "text-gray-700"
-                    }
-                  `}
                 >
-                  {item}
-                </span>
-              </label>
-            );
-          })}
+
+                  <input
+
+                    type="checkbox"
+
+                    checked={
+                      !!checkedItems[key]
+                    }
+
+                    onChange={() =>
+                      toggleChecklistItem(key)
+                    }
+
+                    className="
+                      mt-[2px]
+                      accent-violet-600
+                    "
+
+                  />
+
+
+                  <span
+                    className={`
+                      text-[11px]
+                      leading-relaxed
+                      ${
+                        checkedItems[key]
+
+                          ? "text-gray-400 line-through"
+
+                          : "text-gray-700"
+                      }
+                    `}
+                  >
+
+                    {item}
+
+                  </span>
+
+                </label>
+
+              );
+
+            }
+          )}
+
         </div>
+
       </div>
+
     );
+
   };
+
 
   /* ============================================================
      UI
-     ============================================================ */
+  ============================================================ */
 
   return (
+
     <div
       className="
         w-full
         h-full
-        min-h-0
         flex
         flex-col
-        gap-1
+        gap-2
       "
     >
+
+
       {/* ======================================================
           GUARDRAILS
-          ====================================================== */}
+      ====================================================== */}
 
       <div
         className="
@@ -1070,7 +1240,10 @@ const ruleViolation = useMemo(() => {
           overflow-hidden
         "
       >
+
         <div className="px-4 py-4">
+
+
           {/* HEADER */}
 
           <div
@@ -1080,6 +1253,7 @@ const ruleViolation = useMemo(() => {
               justify-between
             "
           >
+
             <div
               className="
                 flex
@@ -1088,6 +1262,7 @@ const ruleViolation = useMemo(() => {
                 min-w-0
               "
             >
+
               <h3
                 className="
                   text-[13px]
@@ -1098,7 +1273,6 @@ const ruleViolation = useMemo(() => {
                 Trades Today
               </h3>
 
-              {/* DYNAMIC TRADE COUNT */}
 
               <span
                 className="
@@ -1110,30 +1284,39 @@ const ruleViolation = useMemo(() => {
                 {tradeCount}/{maxTrades}
               </span>
 
-              {/* TRADE DOTS */}
 
               <div className="flex gap-2">
+
                 {Array.from({
-                  length: Math.min(
-                    maxTrades,
-                    8
-                  ),
+
+                  length:
+                    Math.min(maxTrades, 8),
+
                 }).map((_, index) => (
+
                   <span
+
                     key={index}
+
                     className={`
                       w-[7px]
                       h-[7px]
                       rounded-full
                       ${
                         index < tradeCount
+
                           ? "bg-violet-500"
+
                           : "bg-gray-200"
                       }
                     `}
+
                   />
+
                 ))}
+
               </div>
+
 
               <span
                 className="
@@ -1143,15 +1326,20 @@ const ruleViolation = useMemo(() => {
               >
                 Daily limit
               </span>
+
             </div>
 
+
             <button
+
               type="button"
+
               onClick={() =>
                 setIsGuardrailsOpen(
                   !isGuardrailsOpen
                 )
               }
+
               className="
                 w-7
                 h-7
@@ -1163,22 +1351,35 @@ const ruleViolation = useMemo(() => {
                 hover:bg-gray-100
                 transition
               "
+
             >
+
               {isGuardrailsOpen ? (
+
                 <ChevronUp size={15} />
+
               ) : (
+
                 <ChevronDown size={15} />
+
               )}
+
             </button>
+
           </div>
+
 
           {/* CONTENT */}
 
           {isGuardrailsOpen && (
+
             <>
+
+
               {/* TRADING WINDOW */}
 
               <div className="mt-4">
+
                 <div
                   className="
                     flex
@@ -1186,6 +1387,7 @@ const ruleViolation = useMemo(() => {
                     justify-between
                   "
                 >
+
                   <span
                     className="
                       text-[11px]
@@ -1198,6 +1400,7 @@ const ruleViolation = useMemo(() => {
                     Trading Window
                   </span>
 
+
                   <span
                     className={`
                       px-2
@@ -1208,18 +1411,22 @@ const ruleViolation = useMemo(() => {
                       font-medium
                       ${
                         tradingWindowOpen
+
                           ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+
                           : "bg-red-50 border-red-100 text-red-600"
                       }
                     `}
                   >
+
                     {tradingWindowOpen
                       ? "Open"
                       : "Closed"}
+
                   </span>
+
                 </div>
 
-                {/* 12-HOUR DISPLAY */}
 
                 <p
                   className="
@@ -1229,19 +1436,16 @@ const ruleViolation = useMemo(() => {
                     text-gray-900
                   "
                 >
-                {formatTime12Hour(
-  guardrails.tradingWindowStart
-)}{" "}
--{" "}
-{formatTime12Hour(
-  guardrails.tradingWindowEnd
-)}
+                 {formatTradingTime(tradingStart)} - {formatTradingTime(tradingEnd)} IST
                 </p>
+
               </div>
+
 
               {/* PNL */}
 
               <div className="mt-5">
+
                 <div
                   className="
                     flex
@@ -1249,6 +1453,7 @@ const ruleViolation = useMemo(() => {
                     justify-between
                   "
                 >
+
                   <p
                     className="
                       text-[11px]
@@ -1261,24 +1466,32 @@ const ruleViolation = useMemo(() => {
                     Today's Net P&L
                   </p>
 
+
                   <p
                     className={`
                       text-[13px]
                       font-semibold
                       ${
                         dailyPnL < 0
+
                           ? "text-red-500"
+
                           : dailyPnL > 0
+
                           ? "text-emerald-500"
+
                           : "text-gray-900"
                       }
                     `}
                   >
                     {formatPnL(dailyPnL)}
                   </p>
+
                 </div>
 
+
                 <div className="mt-1">
+
                   <div
                     className="
                       relative
@@ -1289,7 +1502,9 @@ const ruleViolation = useMemo(() => {
                       overflow-visible
                     "
                   >
+
                     {dailyPnL < 0 && (
+
                       <div
                         className="
                           absolute
@@ -1300,14 +1515,18 @@ const ruleViolation = useMemo(() => {
                           rounded-l-full
                         "
                         style={{
-                          width: `${
-                            lossProgress * 50
-                          }%`,
+
+                          width:
+                            `${lossProgress * 50}%`,
+
                         }}
                       />
+
                     )}
 
+
                     {dailyPnL > 0 && (
+
                       <div
                         className="
                           absolute
@@ -1318,12 +1537,15 @@ const ruleViolation = useMemo(() => {
                           rounded-r-full
                         "
                         style={{
-                          width: `${
-                            profitProgress * 50
-                          }%`,
+
+                          width:
+                            `${profitProgress * 50}%`,
+
                         }}
                       />
+
                     )}
+
 
                     <div
                       className="
@@ -1337,7 +1559,9 @@ const ruleViolation = useMemo(() => {
                         bg-gray-400
                       "
                     />
+
                   </div>
+
 
                   <div
                     className="
@@ -1347,26 +1571,36 @@ const ruleViolation = useMemo(() => {
                       text-[9px]
                     "
                   >
+
                     <span className="text-gray-500">
-                      -
-                      {formatCompactMoney(
+
+                      -{formatCompactMoney(
                         maxDailyLoss
                       )}
+
                     </span>
+
 
                     <span className="text-gray-400">
                       $0
                     </span>
 
+
                     <span className="text-gray-500">
+
                       +
                       {formatCompactMoney(
                         maxDailyProfit
                       )}
+
                     </span>
+
                   </div>
+
                 </div>
+
               </div>
+
 
               {/* LIMITS */}
 
@@ -1378,7 +1612,9 @@ const ruleViolation = useMemo(() => {
                   mt-5
                 "
               >
+
                 <div>
+
                   <p
                     className="
                       text-[11px]
@@ -1390,6 +1626,7 @@ const ruleViolation = useMemo(() => {
                   >
                     Max Loss
                   </p>
+
 
                   <p
                     className="
@@ -1403,9 +1640,12 @@ const ruleViolation = useMemo(() => {
                       maxDailyLoss
                     )}
                   </p>
+
                 </div>
 
+
                 <div>
+
                   <p
                     className="
                       text-[11px]
@@ -1417,6 +1657,7 @@ const ruleViolation = useMemo(() => {
                   >
                     Daily Target
                   </p>
+
 
                   <p
                     className="
@@ -1430,8 +1671,11 @@ const ruleViolation = useMemo(() => {
                       maxDailyProfit
                     )}
                   </p>
+
                 </div>
+
               </div>
+
 
               {/* RULE STATUS */}
 
@@ -1447,13 +1691,18 @@ const ruleViolation = useMemo(() => {
                   py-2.5
                   ${
                     ruleViolation
+
                       ? "bg-red-50 border-red-100"
+
                       : "bg-emerald-50 border-emerald-100"
                   }
                 `}
               >
+
                 {ruleViolation ? (
+
                   <>
+
                     <AlertTriangle
                       size={14}
                       className="
@@ -1471,9 +1720,13 @@ const ruleViolation = useMemo(() => {
                     >
                       {ruleViolation}
                     </span>
+
                   </>
+
                 ) : (
+
                   <>
+
                     <CircleCheck
                       size={14}
                       className="
@@ -1491,34 +1744,44 @@ const ruleViolation = useMemo(() => {
                     >
                       No rule violations today
                     </span>
+
                   </>
+
                 )}
+
               </div>
+
             </>
+
           )}
+
         </div>
+
       </div>
+
 
       {/* ======================================================
           BOTTOM PANEL
-          ====================================================== */}
+      ====================================================== */}
 
-      <div
-        className="
-          flex-1
-          min-h-0
-          h-full
-          w-full
-          rounded-2xl
-          border
-          border-gray-200
-          bg-white
-          shadow-[0_2px_12px_rgba(0,0,0,0.05)]
-          overflow-hidden
-          flex
-          flex-col
-        "
-      >
+<div
+  className="
+    flex-1
+    min-h-0
+    h-full
+    w-full
+    rounded-2xl
+    border
+    border-gray-200
+    bg-white
+    shadow-[0_2px_12px_rgba(0,0,0,0.05)]
+    overflow-hidden
+    flex
+    flex-col
+  "
+>
+
+
         {/* TABS */}
 
         <div
@@ -1530,13 +1793,18 @@ const ruleViolation = useMemo(() => {
             border-gray-200
           "
         >
+
+
           {/* WATCHLIST TAB */}
 
           <button
+
             type="button"
+
             onClick={() =>
               setActiveTab("watchlist")
             }
+
             className={`
               relative
               h-12
@@ -1548,16 +1816,22 @@ const ruleViolation = useMemo(() => {
               font-medium
               ${
                 activeTab === "watchlist"
+
                   ? "text-violet-600"
+
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
+
           >
+
             <List size={15} />
 
             Watchlist
 
+
             {activeTab === "watchlist" && (
+
               <span
                 className="
                   absolute
@@ -1568,16 +1842,22 @@ const ruleViolation = useMemo(() => {
                   bg-violet-600
                 "
               />
+
             )}
+
           </button>
+
 
           {/* ALERTS TAB */}
 
           <button
+
             type="button"
+
             onClick={() =>
               setActiveTab("alerts")
             }
+
             className={`
               relative
               h-12
@@ -1589,16 +1869,22 @@ const ruleViolation = useMemo(() => {
               font-medium
               ${
                 activeTab === "alerts"
+
                   ? "text-violet-600"
+
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
+
           >
+
             <Bell size={15} />
 
             Alerts
 
+
             {activeTab === "alerts" && (
+
               <span
                 className="
                   absolute
@@ -1609,16 +1895,22 @@ const ruleViolation = useMemo(() => {
                   bg-violet-600
                 "
               />
+
             )}
+
           </button>
+
 
           {/* TRADE PLAN TAB */}
 
           <button
+
             type="button"
+
             onClick={() =>
               setActiveTab("tradeplan")
             }
+
             className={`
               relative
               h-12
@@ -1630,16 +1922,22 @@ const ruleViolation = useMemo(() => {
               font-medium
               ${
                 activeTab === "tradeplan"
+
                   ? "text-violet-600"
+
                   : "text-gray-500 hover:text-gray-700"
               }
             `}
+
           >
+
             <ClipboardList size={15} />
 
             Trade Plan
 
+
             {activeTab === "tradeplan" && (
+
               <span
                 className="
                   absolute
@@ -1650,11 +1948,17 @@ const ruleViolation = useMemo(() => {
                   bg-violet-600
                 "
               />
+
             )}
+
           </button>
+
         </div>
 
-        {/* TAB CONTENT */}
+
+        {/* ======================================================
+            TAB CONTENT
+        ====================================================== */}
 
         <div
           className="
@@ -1664,12 +1968,16 @@ const ruleViolation = useMemo(() => {
             p-4
           "
         >
+
+
           {/* ==================================================
               WATCHLIST
-              ================================================== */}
+          ================================================== */}
 
           {activeTab === "watchlist" && (
+
             <div>
+
               <div
                 className="
                   flex
@@ -1678,6 +1986,7 @@ const ruleViolation = useMemo(() => {
                   mb-3
                 "
               >
+
                 <h3
                   className="
                     text-[12px]
@@ -1688,13 +1997,17 @@ const ruleViolation = useMemo(() => {
                   Watchlist
                 </h3>
 
+
                 <button
+
                   type="button"
+
                   onClick={() =>
                     setShowWatchlistInput(
                       !showWatchlistInput
                     )
                   }
+
                   className="
                     flex
                     items-center
@@ -1707,15 +2020,22 @@ const ruleViolation = useMemo(() => {
                     text-[10px]
                     font-medium
                   "
+
                 >
+
                   <Plus size={12} />
+
                   Add
+
                 </button>
+
               </div>
+
 
               {/* ADD SYMBOL */}
 
               {showWatchlistInput && (
+
                 <div
                   className="
                     flex
@@ -1723,21 +2043,31 @@ const ruleViolation = useMemo(() => {
                     mb-3
                   "
                 >
+
                   <input
+
                     value={newSymbol}
+
                     onChange={(event) =>
                       setNewSymbol(
                         event.target.value
                       )
                     }
+
                     onKeyDown={(event) => {
+
                       if (
                         event.key === "Enter"
                       ) {
+
                         addToWatchlist();
+
                       }
+
                     }}
+
                     placeholder="EURUSD"
+
                     className="
                       flex-1
                       px-3
@@ -1749,11 +2079,16 @@ const ruleViolation = useMemo(() => {
                       outline-none
                       focus:border-violet-400
                     "
+
                   />
 
+
                   <button
+
                     type="button"
+
                     onClick={addToWatchlist}
+
                     className="
                       px-3
                       rounded-lg
@@ -1761,15 +2096,20 @@ const ruleViolation = useMemo(() => {
                       text-white
                       text-[11px]
                     "
+
                   >
                     Add
                   </button>
+
                 </div>
+
               )}
+
 
               {/* EMPTY */}
 
               {watchlist.length === 0 && (
+
                 <div
                   className="
                     min-h-[115px]
@@ -1783,6 +2123,7 @@ const ruleViolation = useMemo(() => {
                     justify-center
                   "
                 >
+
                   <List
                     size={20}
                     className="
@@ -1797,18 +2138,24 @@ const ruleViolation = useMemo(() => {
                       text-gray-500
                     "
                   >
-                    No instruments in your
-                    watchlist
+                    No instruments in your watchlist
                   </p>
+
                 </div>
+
               )}
+
 
               {/* WATCHLIST ITEMS */}
 
               <div className="space-y-2">
+
                 {watchlist.map((item) => (
+
                   <div
+
                     key={item.id}
+
                     className="
                       flex
                       items-center
@@ -1821,50 +2168,73 @@ const ruleViolation = useMemo(() => {
                       hover:border-violet-200
                       transition
                     "
+
                   >
+
                     <button
+
                       type="button"
+
                       onClick={() =>
                         selectWatchlistSymbol(
                           item.symbol
                         )
                       }
+
                       className="
                         text-[12px]
                         font-semibold
                         text-gray-800
                         hover:text-violet-600
                       "
+
                     >
+
                       {item.symbol}
+
                     </button>
 
+
                     <button
+
                       type="button"
+
                       onClick={() =>
                         removeFromWatchlist(
                           item.id
                         )
                       }
+
                       className="
                         text-gray-400
                         hover:text-red-500
                       "
+
                     >
+
                       <Trash2 size={14} />
+
                     </button>
+
                   </div>
+
                 ))}
+
               </div>
+
             </div>
+
           )}
+
 
           {/* ==================================================
               ALERTS
-              ================================================== */}
+          ================================================== */}
 
           {activeTab === "alerts" && (
+
             <div>
+
               <div
                 className="
                   flex
@@ -1873,6 +2243,7 @@ const ruleViolation = useMemo(() => {
                   mb-3
                 "
               >
+
                 <h3
                   className="
                     text-[12px]
@@ -1883,13 +2254,17 @@ const ruleViolation = useMemo(() => {
                   Alerts
                 </h3>
 
+
                 <button
+
                   type="button"
+
                   onClick={() =>
                     setShowAlertForm(
                       !showAlertForm
                     )
                   }
+
                   className="
                     flex
                     items-center
@@ -1902,15 +2277,22 @@ const ruleViolation = useMemo(() => {
                     text-[10px]
                     font-medium
                   "
+
                 >
+
                   <Plus size={12} />
+
                   Add
+
                 </button>
+
               </div>
+
 
               {/* ALERT FORM */}
 
               {showAlertForm && (
+
                 <div
                   className="
                     mb-4
@@ -1922,14 +2304,19 @@ const ruleViolation = useMemo(() => {
                     space-y-2
                   "
                 >
+
                   <input
+
                     value={alertSymbol}
+
                     onChange={(event) =>
                       setAlertSymbol(
                         event.target.value
                       )
                     }
+
                     placeholder="Symbol"
+
                     className="
                       w-full
                       px-3
@@ -1939,16 +2326,22 @@ const ruleViolation = useMemo(() => {
                       border-gray-200
                       text-[11px]
                     "
+
                   />
 
+
                   <div className="flex gap-2">
+
                     <select
+
                       value={alertCondition}
+
                       onChange={(event) =>
                         setAlertCondition(
                           event.target.value
                         )
                       }
+
                       className="
                         flex-1
                         px-2
@@ -1958,7 +2351,9 @@ const ruleViolation = useMemo(() => {
                         border-gray-200
                         text-[11px]
                       "
+
                     >
+
                       <option value="above">
                         Above
                       </option>
@@ -1966,17 +2361,24 @@ const ruleViolation = useMemo(() => {
                       <option value="below">
                         Below
                       </option>
+
                     </select>
 
+
                     <input
+
                       type="number"
+
                       value={alertPrice}
+
                       onChange={(event) =>
                         setAlertPrice(
                           event.target.value
                         )
                       }
+
                       placeholder="Price"
+
                       className="
                         flex-1
                         px-3
@@ -1986,12 +2388,18 @@ const ruleViolation = useMemo(() => {
                         border-gray-200
                         text-[11px]
                       "
+
                     />
+
                   </div>
 
+
                   <button
+
                     type="button"
+
                     onClick={addAlert}
+
                     className="
                       w-full
                       py-2
@@ -2001,15 +2409,20 @@ const ruleViolation = useMemo(() => {
                       text-[11px]
                       font-medium
                     "
+
                   >
                     Create Alert
                   </button>
+
                 </div>
+
               )}
+
 
               {/* EMPTY */}
 
               {alerts.length === 0 && (
+
                 <div
                   className="
                     min-h-[115px]
@@ -2023,6 +2436,7 @@ const ruleViolation = useMemo(() => {
                     justify-center
                   "
                 >
+
                   <Bell
                     size={20}
                     className="
@@ -2039,15 +2453,22 @@ const ruleViolation = useMemo(() => {
                   >
                     No active alerts
                   </p>
+
                 </div>
+
               )}
+
 
               {/* ALERT LIST */}
 
               <div className="space-y-2">
+
                 {alerts.map((alert) => (
+
                   <div
+
                     key={alert.id}
+
                     className="
                       flex
                       items-center
@@ -2057,8 +2478,11 @@ const ruleViolation = useMemo(() => {
                       border
                       border-gray-100
                     "
+
                   >
+
                     <div>
+
                       <p
                         className="
                           text-[12px]
@@ -2069,6 +2493,7 @@ const ruleViolation = useMemo(() => {
                         {alert.symbol}
                       </p>
 
+
                       <p
                         className="
                           mt-1
@@ -2076,41 +2501,58 @@ const ruleViolation = useMemo(() => {
                           text-gray-500
                         "
                       >
-                        {alert.condition ===
-                        "above"
+                        {alertCondition === "above"
+                          ? "Above"
+                          : alert.condition === "above"
                           ? "Above"
                           : "Below"}{" "}
                         {alert.price}
+
                       </p>
+
                     </div>
 
+
                     <button
+
                       type="button"
+
                       onClick={() =>
-                        removeAlert(
-                          alert.id
-                        )
+                        removeAlert(alert.id)
                       }
+
                       className="
                         text-gray-400
                         hover:text-red-500
                       "
+
                     >
+
                       <Trash2 size={14} />
+
                     </button>
+
                   </div>
+
                 ))}
+
               </div>
+
             </div>
+
           )}
+
 
           {/* ==================================================
               TRADE PLAN
-              ================================================== */}
+          ================================================== */}
 
           {activeTab === "tradeplan" && (
+
             <div>
+
               <div className="mb-0">
+
                 <h3
                   className="
                     text-[12px]
@@ -2121,20 +2563,33 @@ const ruleViolation = useMemo(() => {
                   Trade Plan
                 </h3>
 
-                {selectedEdgePlan?.name && (
-                  <p
-                    className="
-                      mt-1
-                      text-[10px]
-                      text-violet-600
-                    "
-                  >
-                    {selectedEdgePlan.name}
-                  </p>
-                )}
+
+<div className="mt-1 flex items-center justify-between gap-2">
+  <p className="text-[10px] text-violet-600 font-medium">
+    {selectedEdgePlan?.name || selectedEdgePlan?.title}
+  </p>
+
+  <button
+    type="button"
+    onClick={() => {
+      window.location.href = "/edge";
+    }}
+    className="
+      text-[10px]
+      font-semibold
+      text-gray-500
+      hover:text-violet-600
+      transition
+    "
+  >
+    Change Plan
+  </button>
+</div>
               </div>
 
+
               {!selectedEdgePlan ? (
+
                 <div
                   className="
                     min-h-[115px]
@@ -2149,6 +2604,7 @@ const ruleViolation = useMemo(() => {
                     text-center
                   "
                 >
+
                   <ClipboardList
                     size={20}
                     className="
@@ -2165,38 +2621,71 @@ const ruleViolation = useMemo(() => {
                   >
                     Select a plan from Edge
                   </p>
+
                 </div>
+
               ) : (
+
                 <div className="space-y-1">
+
                   <TradePlanSection
+
                     title="Charting Process"
-                    items={getChecklistItems(
-                      selectedEdgePlan.chartingProcess
-                    )}
+
+                    items={
+                      getChecklistItems(
+                        selectedEdgePlan.chartingProcess
+                      )
+                    }
+
                     sectionKey="charting"
+
                   />
 
+
                   <TradePlanSection
+
                     title="Entry Criteria"
-                    items={getChecklistItems(
-                      selectedEdgePlan.entryCriteria
-                    )}
+
+                    items={
+                      getChecklistItems(
+                        selectedEdgePlan.entryCriteria
+                      )
+                    }
+
                     sectionKey="entry"
+
                   />
 
+
                   <TradePlanSection
+
                     title="Exit Criteria"
-                    items={getChecklistItems(
-                      selectedEdgePlan.exitCriteria
-                    )}
+
+                    items={
+                      getChecklistItems(
+                        selectedEdgePlan.exitCriteria
+                      )
+                    }
+
                     sectionKey="exit"
+
                   />
+
                 </div>
+
               )}
+
             </div>
+
           )}
+
         </div>
+
       </div>
+
     </div>
+
   );
+
 }

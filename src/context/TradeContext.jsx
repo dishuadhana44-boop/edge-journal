@@ -7,6 +7,9 @@ import {
   useEffect,
   useRef,
 } from "react";
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:4000";
 
 import { useJournal } from "./JournalContext";
 import { useMarket } from "./MarketContext";
@@ -229,6 +232,80 @@ function timestampToMs(value) {
 }
 
 // ============================================================
+// FORMAT TRADE DURATION
+// Example:
+// 45 seconds     -> 45s
+// 4 minutes      -> 4m 20s
+// 4 hours 20m    -> 4h 20m
+// 1 day 3h 20m   -> 1d 3h 20m
+// ============================================================
+
+function formatTradeDuration(
+  durationMs
+) {
+  if (
+    durationMs === undefined ||
+    durationMs === null ||
+    !Number.isFinite(
+      Number(durationMs)
+    ) ||
+    Number(durationMs) < 0
+  ) {
+    return "0s";
+  }
+
+  const totalSeconds = Math.floor(
+    Number(durationMs) / 1000
+  );
+
+  if (totalSeconds <= 0) {
+    return "0s";
+  }
+
+  const days = Math.floor(
+    totalSeconds / 86400
+  );
+
+  const hours = Math.floor(
+    (totalSeconds % 86400) / 3600
+  );
+
+  const minutes = Math.floor(
+    (totalSeconds % 3600) / 60
+  );
+
+  const seconds =
+    totalSeconds % 60;
+
+  const parts = [];
+
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
+
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+
+  if (minutes > 0) {
+    parts.push(`${minutes}m`);
+  }
+
+  // Seconds only show when:
+  // - duration is less than 1 minute, OR
+  // - there are no days/hours and seconds exist
+  if (
+    seconds > 0 &&
+    days === 0 &&
+    hours === 0
+  ) {
+    parts.push(`${seconds}s`);
+  }
+
+  return parts.join(" ");
+}
+
+// ============================================================
 // FORMAT TIME FOR JOURNAL DETAILS
 // ============================================================
 
@@ -236,24 +313,23 @@ function formatTradeTime(value) {
   const timestamp =
     timestampToMs(value);
 
-  if (
-    timestamp === null
-  ) {
+  if (timestamp === null) {
     return null;
   }
 
-  return new Date(
-    timestamp
-  ).toLocaleTimeString(
+  return new Date(timestamp).toLocaleTimeString(
     "en-IN",
     {
-      hour: "2-digit",
+      hour: "numeric",
       minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
+      hour12: true,
     }
   );
 }
+
+// ============================================================
+// NORMALIZE OPEN TIMESTAMP
+// ============================================================
 
 // ============================================================
 // NORMALIZE OPEN TIMESTAMP
@@ -268,37 +344,42 @@ function normalizeOpenedAt(position) {
   }
 
   const timestampCandidates = [
-    // --------------------------------------------------------
-    // MT5 millisecond timestamps
-    // --------------------------------------------------------
+    // ========================================================
+    // PRIMARY MT5 OPEN TIME
+    // ========================================================
+
     position.time_msc,
     position.timeMsc,
     position.openTimeMsc,
     position.openedAtMsc,
 
-    // --------------------------------------------------------
-    // MT5 seconds timestamp
-    // --------------------------------------------------------
+    // ========================================================
+    // MT5 SECONDS
+    // ========================================================
+
     position.time,
 
-    // --------------------------------------------------------
-    // Other possible date fields
-    // --------------------------------------------------------
+    // ========================================================
+    // OTHER DATE FIELDS
+    // ========================================================
+
     position.openedAt,
     position.openTime,
     position.createdAt,
     position.executionTimestamp,
     position.timestamp,
 
-    // --------------------------------------------------------
-    // Nested fields
-    // --------------------------------------------------------
+    // ========================================================
+    // NESTED FIELDS
+    // ========================================================
+
     position.tradeData?.openedAt,
     position.tradeData?.openTime,
-
     position.data?.openedAt,
     position.data?.openTime,
   ];
+
+  const validTimestamps = [];
 
   for (
     const candidate of timestampCandidates
@@ -308,16 +389,32 @@ function normalizeOpenedAt(position) {
 
     if (
       timestamp !== null &&
+      Number.isFinite(timestamp) &&
       timestamp > 0
     ) {
-      return new Date(
-        timestamp
-      ).toISOString();
+      validTimestamps.push(timestamp);
     }
   }
 
-  return null;
+  if (validTimestamps.length === 0) {
+    return null;
+  }
+
+  // ========================================================
+  // USE THE EARLIEST VALID OPEN TIMESTAMP
+  //
+  // Important:
+  // We do NOT simply use the first field.
+  // ========================================================
+
+  const openedAtMs =
+    Math.min(...validTimestamps);
+
+  return new Date(
+    openedAtMs
+  ).toISOString();
 }
+
 
 // ============================================================
 // NORMALIZE OPEN TIMESTAMP TO MILLISECONDS
@@ -332,29 +429,42 @@ function normalizeOpenedAtMsc(position) {
   }
 
   const timestampCandidates = [
-    // MT5 milliseconds
+    // ========================================================
+    // PRIMARY MT5 OPEN TIME
+    // ========================================================
+
     position.time_msc,
     position.timeMsc,
     position.openTimeMsc,
     position.openedAtMsc,
 
-    // MT5 seconds
+    // ========================================================
+    // MT5 SECONDS
+    // ========================================================
+
     position.time,
 
-    // Other fields
+    // ========================================================
+    // OTHER DATE FIELDS
+    // ========================================================
+
     position.openedAt,
     position.openTime,
     position.createdAt,
     position.executionTimestamp,
     position.timestamp,
 
-    // Nested
+    // ========================================================
+    // NESTED FIELDS
+    // ========================================================
+
     position.tradeData?.openedAt,
     position.tradeData?.openTime,
-
     position.data?.openedAt,
     position.data?.openTime,
   ];
+
+  const validTimestamps = [];
 
   for (
     const candidate of timestampCandidates
@@ -364,13 +474,24 @@ function normalizeOpenedAtMsc(position) {
 
     if (
       timestamp !== null &&
+      Number.isFinite(timestamp) &&
       timestamp > 0
     ) {
-      return timestamp;
+      validTimestamps.push(timestamp);
     }
   }
 
-  return 0;
+  if (validTimestamps.length === 0) {
+    return 0;
+  }
+
+  // ========================================================
+  // USE EARLIEST VALID OPEN TIMESTAMP
+  // ========================================================
+
+  return Math.min(
+    ...validTimestamps
+  );
 }
 
 // ============================================================
@@ -1194,26 +1315,22 @@ function buildClosedTradeData(
     safeTrade.data?.openTime,
   ];
 
-  let openedTimeMs = null;
+  const validOpenTimes =
+  timestampCandidates
+    .map((candidate) =>
+      timestampToMs(candidate)
+    )
+    .filter(
+      (timestamp) =>
+        timestamp !== null &&
+        Number.isFinite(timestamp) &&
+        timestamp > 0
+    );
 
-  for (
-    const candidate of timestampCandidates
-  ) {
-    const timestamp =
-      timestampToMs(
-        candidate
-      );
-
-    if (
-      timestamp !== null &&
-      timestamp > 0
-    ) {
-      openedTimeMs =
-        timestamp;
-
-      break;
-    }
-  }
+const openedTimeMs =
+  validOpenTimes.length > 0
+    ? Math.min(...validOpenTimes)
+    : null;
 
   const openedTime =
     openedTimeMs !== null
@@ -1297,83 +1414,69 @@ function buildClosedTradeData(
   );
 
   // ==========================================================
-  // DURATION
-  // ==========================================================
+// DURATION
+// ==========================================================
 
-  let durationSeconds = 0;
+let durationSeconds = 0;
 
-  if (
-    openedTimeMs !== null &&
-    Number.isFinite(
-      openedTimeMs
-    ) &&
-    Number.isFinite(
-      resolvedClosedTime.getTime()
-    )
-  ) {
-    const durationMilliseconds =
-      resolvedClosedTime.getTime() -
-      openedTimeMs;
+const openedTimestamp =
+  Number(openedTimeMs);
 
-    if (
-      durationMilliseconds >= 0
-    ) {
-      durationSeconds =
-        Math.floor(
-          durationMilliseconds /
-            1000
-        );
-    }
-  }
+const closedTimestamp =
+  Number(
+    resolvedClosedTime?.getTime()
+  );
 
-  // ==========================================================
-  // DURATION TEXT
-  // ==========================================================
-
-  let durationText =
-    "0s";
+if (
+  Number.isFinite(openedTimestamp) &&
+  openedTimestamp > 0 &&
+  Number.isFinite(closedTimestamp) &&
+  closedTimestamp > 0
+) {
+  const durationMilliseconds =
+    closedTimestamp -
+    openedTimestamp;
 
   if (
-    durationSeconds > 0
+    durationMilliseconds >= 0
   ) {
-    const hours =
+    durationSeconds =
       Math.floor(
-        durationSeconds /
-          3600
+        durationMilliseconds /
+          1000
       );
+  } else {
+    console.warn(
+      "⚠️ Invalid trade duration: close time is before open time",
+      {
+        openedTimeMs:
+          openedTimestamp,
+        openedTime:
+          new Date(
+            openedTimestamp
+          ).toISOString(),
 
-    const minutes =
-      Math.floor(
-        (
-          durationSeconds %
-          3600
-        ) /
-        60
-      );
+        closedTimeMs:
+          closedTimestamp,
+        closedTime:
+          new Date(
+            closedTimestamp
+          ).toISOString(),
 
-    const seconds =
-      durationSeconds %
-      60;
-
-    if (
-      hours > 0
-    ) {
-      durationText =
-        minutes > 0
-          ? `${hours}h ${minutes}m`
-          : `${hours}h`;
-    } else if (
-      minutes > 0
-    ) {
-      durationText =
-        seconds > 0
-          ? `${minutes}m ${seconds}s`
-          : `${minutes}m`;
-    } else {
-      durationText =
-        `${seconds}s`;
-    }
+        durationMilliseconds,
+      }
+    );
   }
+}
+
+// ==========================================================
+// FORMAT DURATION
+// ==========================================================
+
+const durationText =
+  formatTradeDuration(
+    durationSeconds * 1000
+  );
 
   console.log(
     "⏱️ FINAL MT5 JOURNAL DURATION:",
@@ -1529,19 +1632,32 @@ function buildClosedTradeData(
   // ==========================================================
 
   const formattedEntryTime =
-    openedTime
-      ? formatTradeTime(
-          openedTime
-        )
-      : safeTrade.entryTime ??
-        null;
+  openedTime
+    ? openedTime.toLocaleTimeString(
+        "en-IN",
+        {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }
+      )
+    : safeTrade.entryTime
+      ? safeTrade.entryTime
+      : null;
 
-  const formattedExitTime =
-    formatTradeTime(
-      resolvedClosedTime
-    ) ??
-    safeTrade.exitTime ??
-    null;
+const formattedExitTime =
+  resolvedClosedTime
+    ? resolvedClosedTime.toLocaleTimeString(
+        "en-IN",
+        {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }
+      )
+    : safeTrade.exitTime
+      ? safeTrade.exitTime
+      : null;
 
   // ==========================================================
   // FINAL JOURNAL DATA
@@ -1586,13 +1702,18 @@ function buildClosedTradeData(
       formattedExitTime,
 
     // --------------------------------------------------------
-    // DURATION
-    // --------------------------------------------------------
+// DURATION
+// --------------------------------------------------------
 
-    durationSeconds,
+durationSeconds:
+Number.isFinite(Number(durationSeconds))
+  ? Number(durationSeconds)
+  : 0,
 
-    duration:
-      durationText,
+duration:
+formatTradeDuration(
+  Number(durationSeconds) * 1000
+),
 
     // --------------------------------------------------------
     // DATE
@@ -1714,15 +1835,32 @@ export function TradeProvider({
     )
   );
 
-  const [
-    closedTrades,
-    setClosedTrades,
-  ] = useState(() =>
-    loadFromStorage(
-      STORAGE_KEYS.CLOSED_TRADES,
+ const [
+  closedTrades,
+  setClosedTrades,
+] = useState(() => {
+  try {
+    const accountId = localStorage.getItem(
+      "edgeflo_active_mt5_account"
+    );
+
+    if (!accountId) {
+      return [];
+    }
+
+    return loadFromStorage(
+      `closed_trades_${accountId}`,
       []
-    )
-  );
+    );
+  } catch (error) {
+    console.error(
+      "Failed to load account closed trades:",
+      error
+    );
+
+    return [];
+  }
+});
 
   const [
     tradeNotification,
@@ -1919,17 +2057,31 @@ useEffect(() => {
 
 useEffect(() => {
   try {
+    const accountId =
+      account?.login ??
+      account?.accountId ??
+      account?.id;
+
+    if (!accountId) {
+      return;
+    }
+
     localStorage.setItem(
-      STORAGE_KEYS.CLOSED_TRADES,
+      "edgeflo_active_mt5_account",
+      String(accountId)
+    );
+
+    localStorage.setItem(
+      `closed_trades_${accountId}`,
       JSON.stringify(closedTrades)
     );
   } catch (error) {
     console.error(
-      "Failed to save closed trades:",
+      "Failed to save account closed trades:",
       error
     );
   }
-}, [closedTrades]);
+}, [account, closedTrades]);
 
 useEffect(() => {
   try {
@@ -1971,7 +2123,7 @@ useEffect(() => {
         try {
           const response =
             await fetch(
-              "http://localhost:4000/api/mt5/account",
+              `${API_URL}/api/mt5/account`,
               {
                 method: "GET",
                 cache: "no-store",
@@ -2175,7 +2327,7 @@ useEffect(() => {
         try {
           const response =
             await fetch(
-              "http://localhost:4000/api/mt5/positions",
+              `${API_URL}/api/mt5/positions`,
               {
                 method: "GET",
                 cache: "no-store",
@@ -2287,8 +2439,15 @@ useEffect(() => {
               // POSITION DISAPPEARED FROM MT5
               // --------------------------------------------------
 
-              const closedTime =
-                new Date();
+              const closedTimeMsc =
+  responseBrokerTimeMsc > 0
+    ? responseBrokerTimeMsc
+    : getCurrentBrokerTimeMsc();
+
+const closedTime =
+  closedTimeMsc > 0
+    ? new Date(closedTimeMsc)
+    : new Date();
 
               console.log(
                 "🔴 MT5 POSITION DISAPPEARED — BUILDING JOURNAL TRADE:",
@@ -3398,7 +3557,7 @@ useEffect(() => {
         try {
           const response =
             await fetch(
-              "http://localhost:4000/api/mt5/cancel-order",
+              `${API_URL}/api/mt5/order`,
               {
                 method:
                   "POST",
@@ -3615,7 +3774,7 @@ useEffect(() => {
         try {
           const response =
             await fetch(
-              "http://localhost:4000/api/mt5/modify-order",
+              `${API_URL}/api/mt5/modify-order`,
               {
                 method:
                   "POST",
@@ -3883,12 +4042,149 @@ useEffect(() => {
       ]
     );
 
+    const getDailyGuardrailStatus = useCallback(
+      (guardrailsOverride = null) => {
+        let guardrails = guardrailsOverride;
+    
+        // Always try to read the latest saved guardrails
+        // so executeTrade cannot bypass the latest settings.
+        if (!guardrails) {
+          try {
+            const saved = localStorage.getItem("tradingGuardrails");
+            guardrails = saved ? JSON.parse(saved) : {};
+          } catch (error) {
+            console.error("Failed to read trading guardrails:", error);
+            guardrails = {};
+          }
+        }
+    
+        if (guardrails?.enabled === false) {
+          return {
+            locked: false,
+            reason: "",
+            dailyPnL: 0,
+            dailyTradeCount: 0,
+          };
+        }
+    
+        const maxDailyLoss = Number(guardrails?.maxDailyLoss || 0);
+        const maxDailyProfit = Number(guardrails?.maxDailyProfit || 0);
+        const maxTradesPerDay = Number(guardrails?.maxTradesPerDay || 0);
+    
+        const today = new Date().toISOString().slice(0, 10);
+    
+        const getTradeDate = (trade) => {
+          const rawDate =
+            trade?.closedAt ??
+            trade?.closedTime ??
+            trade?.openedAt ??
+            trade?.openTime ??
+            trade?.createdAt ??
+            trade?.timestamp ??
+            trade?.time;
+    
+          if (!rawDate) return null;
+    
+          const date = new Date(rawDate);
+    
+          if (Number.isNaN(date.getTime())) return null;
+    
+          return date.toISOString().slice(0, 10);
+        };
+    
+        // Realized P&L for today
+        const dailyPnL = closedTrades
+          .filter((trade) => getTradeDate(trade) === today)
+          .reduce((total, trade) => {
+            const pnl = Number(
+              trade?.netProfit ??
+              trade?.pnl ??
+              trade?.profit ??
+              0
+            );
+    
+            return total + (Number.isFinite(pnl) ? pnl : 0);
+          }, 0);
+    
+        // Actual trades opened/executed today
+        const todayOpenTrades = openTrades.filter(
+          (trade) => getTradeDate(trade) === today
+        );
+    
+        const todayClosedTrades = closedTrades.filter(
+          (trade) => getTradeDate(trade) === today
+        );
+    
+        const dailyTradeCount =
+          todayOpenTrades.length + todayClosedTrades.length;
+    
+        if (maxDailyLoss > 0 && dailyPnL <= -Math.abs(maxDailyLoss)) {
+          return {
+            locked: true,
+            reason: `Maximum daily loss reached. Your P&L is ${
+              dailyPnL < 0
+                ? `-$${Math.abs(dailyPnL).toFixed(2)}`
+                : `$${dailyPnL.toFixed(2)}`
+            } and your limit is -$${Math.abs(maxDailyLoss).toFixed(2)}.`,
+            dailyPnL,
+            dailyTradeCount,
+          };
+        }
+    
+        if (maxDailyProfit > 0 && dailyPnL >= Math.abs(maxDailyProfit)) {
+          return {
+            locked: true,
+            reason: `Daily profit target reached. Your P&L is ${
+              dailyPnL >= 0
+                ? `+$${dailyPnL.toFixed(2)}`
+                : `-$${Math.abs(dailyPnL).toFixed(2)}`
+            } and your target is +$${Math.abs(maxDailyProfit).toFixed(2)}.`,
+            dailyPnL,
+            dailyTradeCount,
+          };
+        }
+    
+        if (
+          maxTradesPerDay > 0 &&
+          dailyTradeCount >= maxTradesPerDay
+        ) {
+          return {
+            locked: true,
+            reason: `Daily trade limit reached. You have taken ${dailyTradeCount} of ${maxTradesPerDay} allowed trades today.`,
+            dailyPnL,
+            dailyTradeCount,
+          };
+        }
+    
+        return {
+          locked: false,
+          reason: "",
+          dailyPnL,
+          dailyTradeCount,
+        };
+      },
+      [closedTrades, openTrades]
+    );
+
  // ==========================================================
 // EXECUTE REAL MT5 TRADE
 // ==========================================================
 
 const executeTrade = useCallback(
   async (trade = {}) => {
+    const dailyGuardrailStatus = getDailyGuardrailStatus(
+      trade?.guardrails ?? null
+    );
+    
+    if (dailyGuardrailStatus.locked) {
+      return {
+        success: false,
+        error: dailyGuardrailStatus.reason,
+        code: "DAILY_GUARDRAIL_LOCK",
+        dailyPnL: dailyGuardrailStatus.dailyPnL,
+        dailyTradeCount: dailyGuardrailStatus.dailyTradeCount,
+      };
+    }
     const side = normalizeSide(trade.side);
 
     const lots = normalizeNumber(
@@ -3955,7 +4251,7 @@ const executeTrade = useCallback(
 
     try {
       const response = await fetch(
-        "http://localhost:4000/api/mt5/order",
+        `${API_URL}/api/mt5/order`,
         {
           method: "POST",
 
@@ -4041,85 +4337,228 @@ const executeTrade = useCallback(
     currentSymbol,
     showTradeNotification,
     syncMT5Positions,
+    getDailyGuardrailStatus,
   ]
 );
 
-  // ==========================================================
-  // CLOSE TRADE
-  // ==========================================================
 
-  const closeTrade =
-    useCallback(
-      (id) => {
-        const trade =
-          openTrades.find(
-            (item) =>
-              String(
-                item.id
-              ) ===
-              String(
-                id
-              )
-          );
+ // ==========================================================
+// CLOSE TRADE
+// ==========================================================
 
-        if (!trade) {
-          return null;
+const closeTrade = useCallback(
+  async (id) => {
+    try {
+      const trade = openTrades.find(
+        (item) =>
+          String(item.id) === String(id)
+      );
+
+      if (!trade) {
+        console.error("Trade not found:", id);
+        return null;
+      }
+
+      // MT5 position ticket
+      const ticket = Number(
+        trade.ticket ??
+          trade.positionId ??
+          trade.brokerPositionId
+      );
+
+      // Trade volume
+      const volume = Number(
+        trade.volume ??
+          trade.quantity ??
+          trade.lots
+      );
+
+      if (
+        !Number.isInteger(ticket) ||
+        ticket <= 0
+      ) {
+        console.error(
+          "Invalid MT5 position ticket:",
+          ticket
+        );
+
+        return null;
+      }
+
+      if (
+        !Number.isFinite(volume) ||
+        volume <= 0
+      ) {
+        console.error(
+          "Invalid trade volume:",
+          volume
+        );
+
+        return null;
+      }
+
+      console.log(
+        "🔄 Closing MT5 position:",
+        {
+          ticket,
+          volume,
         }
+      );
 
-        const closedTime =
-          new Date();
+      // Close position in real MT5
+      const response = await fetch(
+        `${API_URL}/api/mt5/close-position`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ticket,
+            volume,
+          }),
+        }
+      );
 
-        const journalData =
-          buildClosedTradeData(
-            trade,
-            closedTime
-          );
+      const result = await response.json();
 
-        const closedTrade = {
-          ...trade,
-
-          ...journalData,
-
-          id:
-            trade.id,
-        };
-
-        setOpenTrades(
-          (prev) =>
-            prev.filter(
-              (item) =>
-                String(
-                  item.id
-                ) !==
-                String(
-                  id
-                )
-            )
+      if (
+        !response.ok ||
+        result.success === false
+      ) {
+        throw new Error(
+          result.message ||
+            "Unable to close MT5 position."
         );
+      }
 
-        setClosedTrades(
-          (prev) => [
-            ...prev,
-            closedTrade,
-          ]
-        );
+// ==========================================================
+// USE ACTUAL MT5 CLOSE DEAL P&L
+// ==========================================================
 
-        addTrade?.(
-          closedTrade
-        );
+const closeDeal = result?.closeDeal || null;
 
-        console.log(
-          "📔 TRADE CLOSED AND ADDED TO JOURNAL:",
-          closedTrade
-        );
+const mt5RealizedProfit = Number(
+  closeDeal?.profit
+);
 
-        return closedTrade;
-      },
-      [
-        openTrades,
-        addTrade,
-      ]
-    );
+const mt5Commission = Number(
+  closeDeal?.commission ?? 0
+);
+
+const mt5Swap = Number(
+  closeDeal?.swap ?? 0
+);
+
+const hasValidMT5Profit =
+  Number.isFinite(mt5RealizedProfit);
+
+const actualMT5NetPnL =
+  hasValidMT5Profit
+    ? mt5RealizedProfit +
+      (Number.isFinite(mt5Commission)
+        ? mt5Commission
+        : 0) +
+      (Number.isFinite(mt5Swap)
+        ? mt5Swap
+        : 0)
+    : null;
+
+console.log(
+  "💰 ACTUAL MT5 CLOSED P&L:",
+  {
+    ticket,
+    closeDeal,
+    mt5RealizedProfit,
+    mt5Commission,
+    mt5Swap,
+    actualMT5NetPnL,
+  }
+);
+
+      console.log(
+        "✅ MT5 position closed successfully:",
+        result
+      );
+
+      // Create journal data only after MT5 success
+      const closedTime = new Date();
+
+      const tradeForJournal = {
+        ...trade,
+      
+        ...(actualMT5NetPnL !== null
+          ? {
+              pnl: actualMT5NetPnL,
+              netProfit: actualMT5NetPnL,
+              netPnL: actualMT5NetPnL,
+              realizedPnL: actualMT5NetPnL,
+            }
+          : {}),
+      };
+
+      const journalData = buildClosedTradeData(
+        tradeForJournal,
+        closedTime
+      );
+      
+      const closedTrade = {
+        ...tradeForJournal,
+        ...journalData,
+        id: trade.id,
+      
+        // ========================================================
+        // ALWAYS KEEP ACTUAL MT5 REALIZED P&L
+        // ========================================================
+        ...(actualMT5NetPnL !== null
+          ? {
+              pnl: actualMT5NetPnL,
+              netProfit: actualMT5NetPnL,
+              netPnL: actualMT5NetPnL,
+              realizedPnL: actualMT5NetPnL,
+            }
+          : {}),
+      };
+      // Remove from open trades
+      setOpenTrades((prev) =>
+        prev.filter(
+          (item) =>
+            String(item.id) !==
+            String(id)
+        )
+      );
+
+      // Add to closed trades
+      setClosedTrades((prev) => [
+        ...prev,
+        closedTrade,
+      ]);
+
+      // Add to journal
+      addTrade?.(closedTrade);
+
+      console.log(
+        "📔 TRADE CLOSED AND ADDED TO JOURNAL:",
+        closedTrade
+      );
+
+      return closedTrade;
+    } catch (error) {
+      console.error(
+        "❌ Close trade error:",
+        error
+      );
+
+      return null;
+    }
+  },
+  [
+    openTrades,
+    addTrade,
+    buildClosedTradeData,
+    API_URL,
+  ]
+);
 
   // ==========================================================
   // PARTIAL CLOSE
@@ -4329,9 +4768,9 @@ const executeTrade = useCallback(
           );
 
           const response =
-            await fetch(
-              "http://localhost:4000/api/mt5/modify-position",
-              {
+          await fetch(
+            `${API_URL}/api/mt5/modify-position`,
+            {
                 method:
                   "POST",
 
@@ -4561,9 +5000,9 @@ const executeTrade = useCallback(
           );
 
           const response =
-            await fetch(
-              "http://localhost:4000/api/mt5/modify-position",
-              {
+          await fetch(
+            `${API_URL}/api/mt5/modify-position`,
+            {
                 method:
                   "POST",
 
@@ -4757,6 +5196,7 @@ const executeTrade = useCallback(
 
     // Trade actions
     executeTrade,
+    getDailyGuardrailStatus,
     addPendingOrder,
     closeTrade,
     partialCloseTrade,

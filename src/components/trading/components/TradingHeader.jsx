@@ -19,50 +19,47 @@ export default function TradingHeader() {
   // STATE
   // ============================================================
 
+  const getTodayDate = () => {
+    const today = new Date();
+
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  };
+
+  const PRE_MARKET_STORAGE_KEY =
+    "edgeflo_pre_market_completed_date";
+
   const [preMarketCompleted, setPreMarketCompleted] =
-  useState(() => {
-    try {
-      return (
-        localStorage.getItem(
-          "edgeflo_pre_market_completed"
-        ) === "true"
-      );
-    } catch (error) {
-      console.error(
-        "Failed to load pre-market status:",
-        error
-      );
+    useState(() => {
+      try {
+        const savedDate = localStorage.getItem(
+          PRE_MARKET_STORAGE_KEY
+        );
 
-      return false;
-    }
-  });
-  // ============================================================
-// PERSIST PRE-MARKET ROUTINE STATUS
-// ============================================================
+        return savedDate === getTodayDate();
+      } catch (error) {
+        console.error(
+          "Failed to load pre-market status:",
+          error
+        );
 
-useEffect(() => {
-  try {
-    localStorage.setItem(
-      "edgeflo_pre_market_completed",
-      String(preMarketCompleted)
-    );
-  } catch (error) {
-    console.error(
-      "Failed to save pre-market status:",
-      error
-    );
-  }
-}, [preMarketCompleted]);
+        return false;
+      }
+    });
 
-  const [tradeLocked, setTradeLocked] = useState(false);
-  const [lockReason, setLockReason] = useState("");
   const [guardrails, setGuardrails] = useState(null);
-  const [showLockModal, setShowLockModal] = useState(false);
+
+  const [showLockModal, setShowLockModal] =
+    useState(false);
 
   const [preMarketOpen, setPreMarketOpen] =
-  useState(false);
+    useState(false);
 
-  const [preMarketWarning, setPreMarketWarning] = useState(false);
+  const [preMarketWarning, setPreMarketWarning] =
+    useState(false);
 
   const [tradingWindowWarning, setTradingWindowWarning] =
     useState(false);
@@ -73,27 +70,49 @@ useEffect(() => {
   );
 
   // ============================================================
+  // PERSIST PRE-MARKET ROUTINE STATUS
+  // ============================================================
+
+  useEffect(() => {
+    try {
+      if (preMarketCompleted) {
+        localStorage.setItem(
+          PRE_MARKET_STORAGE_KEY,
+          getTodayDate()
+        );
+      } else {
+        localStorage.removeItem(
+          PRE_MARKET_STORAGE_KEY
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Failed to save pre-market status:",
+        error
+      );
+    }
+  }, [preMarketCompleted]);
+
+  // ============================================================
   // UI CONTEXT
   // ============================================================
 
   const {
-    orderOpen,
     setOrderOpen,
-    quickOrderOpen,
     setQuickOrderOpen,
     rightPanel,
     setRightPanel,
   } = useUI();
 
   // ============================================================
-  // LIVE ACCOUNT DATA
+  // TRADE CONTEXT
   // ============================================================
 
   const {
     balance,
     floatingPnL,
     equity,
-    trades = [],
+    getDailyGuardrailStatus,
   } = useTrade();
 
   // ============================================================
@@ -205,59 +224,36 @@ useEffect(() => {
   };
 
   // ============================================================
-  // TODAY'S TRADES
+  // DAILY GUARDRAIL STATUS
   // ============================================================
 
-  const today = new Date();
+  const dailyGuardrailStatus =
+    typeof getDailyGuardrailStatus === "function"
+      ? getDailyGuardrailStatus(guardrails)
+      : {
+          locked: false,
+          reason: "",
+          dailyPnL: 0,
+          dailyTradeCount: 0,
+        };
 
-  const isToday = (date) => {
-    if (!date) {
-      return false;
-    }
+  const tradeLocked =
+    dailyGuardrailStatus?.locked === true;
 
-    const d = new Date(date);
-
-    if (Number.isNaN(d.getTime())) {
-      return false;
-    }
-
-    return (
-      d.getDate() === today.getDate() &&
-      d.getMonth() === today.getMonth() &&
-      d.getFullYear() === today.getFullYear()
-    );
-  };
-
-  const todaysTrades = trades.filter((trade) =>
-    isToday(
-      trade.date ||
-        trade.createdAt ||
-        trade.openedAt ||
-        trade.timestamp
-    )
-  );
-
-  const todaysTradeCount = todaysTrades.length;
-
-  const todaysNetPnL = todaysTrades.reduce(
-    (total, trade) =>
-      total +
-      Number(
-        trade.pnl ??
-          trade.profit ??
-          trade.realizedPnL ??
-          0
-      ),
-    0
-  );
+  const lockReason =
+    dailyGuardrailStatus?.reason || "";
 
   // ============================================================
   // TRADING WINDOW
   // ============================================================
 
   const isTradingWindowOpen = () => {
-    // If guardrails are disabled, trading window is not enforced.
-    if (!guardrails || guardrails.enabled === false) {
+    // If guardrails are disabled,
+    // trading window is not enforced.
+    if (
+      !guardrails ||
+      guardrails.enabled === false
+    ) {
       return true;
     }
 
@@ -267,11 +263,15 @@ useEffect(() => {
     const endTime =
       guardrails.tradingWindowEnd || "19:30";
 
-    const [startHour, startMinute] = String(startTime)
+    const [startHour, startMinute] = String(
+      startTime
+    )
       .split(":")
       .map(Number);
 
-    const [endHour, endMinute] = String(endTime)
+    const [endHour, endMinute] = String(
+      endTime
+    )
       .split(":")
       .map(Number);
 
@@ -316,7 +316,8 @@ useEffect(() => {
     );
   };
 
-  const tradingWindowOpen = isTradingWindowOpen();
+  const tradingWindowOpen =
+    isTradingWindowOpen();
 
   // ============================================================
   // FORMAT TRADING WINDOW
@@ -346,7 +347,12 @@ useEffect(() => {
 
     const date = new Date();
 
-    date.setHours(hour, minute, 0, 0);
+    date.setHours(
+      hour,
+      minute,
+      0,
+      0
+    );
 
     return date.toLocaleTimeString([], {
       hour: "numeric",
@@ -356,100 +362,12 @@ useEffect(() => {
   };
 
   const tradingStart =
-    guardrails?.tradingWindowStart || "11:30";
+    guardrails?.tradingWindowStart ||
+    "11:30";
 
   const tradingEnd =
-    guardrails?.tradingWindowEnd || "19:30";
-
-  // ============================================================
-  // GUARDRAIL CHECK
-  // ============================================================
-
-  useEffect(() => {
-    if (!guardrails || guardrails.enabled === false) {
-      setTradeLocked(false);
-      setLockReason("");
-      return;
-    }
-
-    const maxTrades = Number(
-      guardrails.maxTradesPerDay || 0
-    );
-
-    const maxDailyLoss = Number(
-      guardrails.maxDailyLoss || 0
-    );
-
-    const maxDailyProfit = Number(
-      guardrails.maxDailyProfit || 0
-    );
-
-    // ----------------------------------------------------------
-    // MAX TRADES
-    // ----------------------------------------------------------
-
-    if (
-      maxTrades > 0 &&
-      todaysTradeCount >= maxTrades
-    ) {
-      setTradeLocked(true);
-
-      setLockReason(
-        `Daily trade limit reached. You have taken ${todaysTradeCount} of ${maxTrades} allowed trades today.`
-      );
-
-      return;
-    }
-
-    // ----------------------------------------------------------
-    // MAX DAILY LOSS
-    // ----------------------------------------------------------
-
-    if (
-      maxDailyLoss > 0 &&
-      todaysNetPnL <= -maxDailyLoss
-    ) {
-      setTradeLocked(true);
-
-      setLockReason(
-        `Maximum daily loss reached. Your P&L is ${formatPnL(
-          todaysNetPnL
-        )} and your limit is -$${maxDailyLoss.toFixed(2)}.`
-      );
-
-      return;
-    }
-
-    // ----------------------------------------------------------
-    // MAX DAILY PROFIT
-    // ----------------------------------------------------------
-
-    if (
-      maxDailyProfit > 0 &&
-      todaysNetPnL >= maxDailyProfit
-    ) {
-      setTradeLocked(true);
-
-      setLockReason(
-        `Daily profit target reached. Your P&L is ${formatPnL(
-          todaysNetPnL
-        )} and your target is +$${maxDailyProfit.toFixed(2)}.`
-      );
-
-      return;
-    }
-
-    // ----------------------------------------------------------
-    // NO GUARDRAIL BREACH
-    // ----------------------------------------------------------
-
-    setTradeLocked(false);
-    setLockReason("");
-  }, [
-    guardrails,
-    todaysTradeCount,
-    todaysNetPnL,
-  ]);
+    guardrails?.tradingWindowEnd ||
+    "19:30";
 
   // ============================================================
   // PRE-MARKET WARNING
@@ -503,7 +421,8 @@ useEffect(() => {
     // ----------------------------------------------------------
 
     if (!preMarketCompleted) {
-      showPreMarketWarning();
+      setPreMarketOpen(true);
+      setPreMarketWarning(true);
       return;
     }
 
@@ -520,25 +439,37 @@ useEffect(() => {
   // ============================================================
 
   const handleQuickOrderClick = () => {
-    // Guardrail lock
+    // ----------------------------------------------------------
+    // 1. GUARDRAIL LOCK
+    // ----------------------------------------------------------
+
     if (tradeLocked) {
       setShowLockModal(true);
       return;
     }
 
-    // Trading window lock
+    // ----------------------------------------------------------
+    // 2. TRADING WINDOW LOCK
+    // ----------------------------------------------------------
+
     if (!isTradingWindowOpen()) {
       showTradingWindowWarning();
       return;
     }
 
-    // Pre-market lock
+    // ----------------------------------------------------------
+    // 3. PRE-MARKET LOCK
+    // ----------------------------------------------------------
+
     if (!preMarketCompleted) {
       showPreMarketWarning();
       return;
     }
 
-    // Allowed
+    // ----------------------------------------------------------
+    // 4. ALLOWED
+    // ----------------------------------------------------------
+
     setQuickOrderOpen(true);
   };
 
@@ -643,12 +574,12 @@ useEffect(() => {
             type="button"
             onClick={handleQuickOrderClick}
             title={
-              !tradingWindowOpen
+              tradeLocked
+                ? "Trading is locked"
+                : !tradingWindowOpen
                 ? "Trading window is closed"
                 : !preMarketCompleted
                 ? "Complete Pre-Market Routine first"
-                : tradeLocked
-                ? "Trading is locked"
                 : "Quick Order"
             }
             className={`
@@ -672,15 +603,23 @@ useEffect(() => {
                   `
                   : `
                     bg-gray-400
-                    hover:bg-gray-500
+                    cursor-not-allowed
+                    opacity-80
                   `
               }
             `}
           >
-            <Zap
-              className="w-4 h-4 text-white"
-              strokeWidth={2}
-            />
+            {tradeLocked ? (
+              <Lock
+                className="w-4 h-4 text-white"
+                strokeWidth={2}
+              />
+            ) : (
+              <Zap
+                className="w-4 h-4 text-white"
+                strokeWidth={2}
+              />
+            )}
           </button>
 
           {/* ==================================================
@@ -692,7 +631,7 @@ useEffect(() => {
             onClick={handleTradeClick}
             title={
               tradeLocked
-                ? "Trading is locked"
+                ? lockReason || "Trading is locked"
                 : !tradingWindowOpen
                 ? "Trading window is closed"
                 : !preMarketCompleted
@@ -712,21 +651,19 @@ useEffect(() => {
               transition-all
               duration-200
               ${
-                tradeLocked
-                  ? "bg-gray-400 hover:bg-gray-500 cursor-pointer"
-                  : !tradingWindowOpen
-                  ? "bg-gray-400 hover:bg-gray-500 cursor-pointer"
-                  : !preMarketCompleted
-                  ? "bg-gray-400 hover:bg-gray-500 cursor-pointer"
-                  : "bg-emerald-500 hover:bg-emerald-600"
+                tradeLocked ||
+                !tradingWindowOpen ||
+                !preMarketCompleted
+                  ? "bg-gray-400 cursor-pointer opacity-80 hover:bg-gray-500"
+                  : "bg-emerald-500 hover:bg-emerald-600 hover:-translate-y-[1px] hover:shadow-md"
               }
             `}
           >
-            {(tradeLocked ||
+            {(
+              tradeLocked ||
               !tradingWindowOpen ||
-              !preMarketCompleted) && (
-              <Lock size={14} />
-            )}
+              !preMarketCompleted
+            ) && <Lock size={14} />}
 
             Trade
           </button>
@@ -914,7 +851,8 @@ useEffect(() => {
               </p>
 
               <p className="mt-1 text-[13px] font-medium text-red-700">
-                {lockReason}
+                {lockReason ||
+                  "One of your daily trading guardrails has been reached."}
               </p>
             </div>
 

@@ -21,6 +21,18 @@ function TradeDetails() {
   }
 
   // ============================================================
+  // SAFE NUMBER HELPER
+  // ============================================================
+
+  const toNumber = (value) => {
+    const number = Number(value);
+
+    return Number.isFinite(number)
+      ? number
+      : null;
+  };
+
+  // ============================================================
   // DURATION
   // ============================================================
 
@@ -91,8 +103,12 @@ function TradeDetails() {
     const totalSeconds =
       Math.floor(seconds);
 
+    const days = Math.floor(
+      totalSeconds / 86400
+    );
+
     const hours = Math.floor(
-      totalSeconds / 3600
+      (totalSeconds % 86400) / 3600
     );
 
     const minutes = Math.floor(
@@ -102,15 +118,33 @@ function TradeDetails() {
     const secs =
       totalSeconds % 60;
 
+    const parts = [];
+
+    if (days > 0) {
+      parts.push(`${days}d`);
+    }
+
     if (hours > 0) {
-      return `${hours}h ${minutes}min ${secs}s`;
+      parts.push(`${hours}h`);
     }
 
     if (minutes > 0) {
-      return `${minutes}min ${secs}s`;
+      parts.push(`${minutes}min`);
     }
 
-    return `${secs}s`;
+    if (
+      secs > 0 &&
+      days === 0 &&
+      hours === 0
+    ) {
+      parts.push(`${secs}s`);
+    }
+
+    if (parts.length === 0) {
+      return "0s";
+    }
+
+    return parts.join(" ");
   };
 
   const durationText =
@@ -126,6 +160,7 @@ function TradeDetails() {
     trade.pnl ??
       trade.netProfit ??
       trade.netPnL ??
+      trade.realizedPnL ??
       0
   );
 
@@ -137,6 +172,7 @@ function TradeDetails() {
     trade.lotSize ??
     trade.quantity ??
     trade.volume ??
+    trade.lots ??
     "-";
 
   // ============================================================
@@ -152,70 +188,95 @@ function TradeDetails() {
   // DATE
   // ============================================================
 
-  const formattedDate = trade.date
-    ? new Date(
-        trade.date
-      ).toLocaleDateString(
-        "en-IN",
-        {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        }
-      )
-    : "-";
+  const formattedDate =
+    trade.date ||
+    trade.openedAt ||
+    trade.openTime
+      ? new Date(
+          trade.date ||
+            trade.openedAt ||
+            trade.openTime
+        ).toLocaleDateString(
+          "en-IN",
+          {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            timeZone: "Asia/Kolkata",
+          }
+        )
+      : "-";
 
   // ============================================================
   // ENTRY / EXIT TIME
   // ============================================================
+
+  const timestampToMs = (value) => {
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      const ms = value.getTime();
+
+      return Number.isFinite(ms) &&
+        ms > 0
+        ? ms
+        : null;
+    }
+
+    const numeric = Number(value);
+
+    if (
+      Number.isFinite(numeric) &&
+      numeric > 0
+    ) {
+      return numeric < 100000000000
+        ? numeric * 1000
+        : numeric;
+    }
+
+    const parsed =
+      new Date(value).getTime();
+
+    return Number.isFinite(parsed) &&
+      parsed > 0
+      ? parsed
+      : null;
+  };
 
   const formatTime = (time) => {
     if (!time) {
       return "-";
     }
 
-    let timestamp;
-
-    // Numeric timestamp
-    const numericTime = Number(time);
+    const timestamp =
+      timestampToMs(time);
 
     if (
-      Number.isFinite(numericTime) &&
-      numericTime > 0
-    ) {
-      timestamp =
-        numericTime < 100000000000
-          ? numericTime * 1000
-          : numericTime;
-    } else {
-      // ISO / date string
-      timestamp =
-        new Date(time).getTime();
-    }
-
-    if (
-      !Number.isFinite(timestamp) ||
-      timestamp <= 0
+      timestamp === null
     ) {
       return String(time);
     }
 
-    return new Date(
-      timestamp
-    ).toLocaleTimeString(
-      "en-IN",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-        timeZone: "Asia/Kolkata",
-      }
-    );
+    const localTimestamp =
+    timestamp - (3 * 60 * 60 * 1000);
+  
+  return new Date(
+    localTimestamp
+  ).toLocaleTimeString(
+    "en-IN",
+    {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }
+  );
   };
-
-  // Prefer actual saved entry/exit timestamps.
-  // openedAt/closedAt are fallback values.
 
   const entryTime =
     trade.entryTime ||
@@ -229,37 +290,185 @@ function TradeDetails() {
     trade.closeTime;
 
   // ============================================================
-  // RISK / RETURN
-  // ============================================================
-
-  const riskR =
-    trade.riskR ??
-    trade.risk ??
-    "-";
-
-  const returnR =
-    trade.returnR ??
-    trade.realizedR ??
-    trade.rr ??
-    trade.riskReward ??
-    "-";
-
-  // ============================================================
   // PRICE VALUES
   // ============================================================
 
-  const entryPrice =
+  const entryPrice = toNumber(
     trade.entryPrice ??
-    trade.entry ??
-    "-";
+      trade.entry ??
+      trade.openPrice
+  );
 
-  const stopLoss =
+  const stopLoss = toNumber(
     trade.stopLoss ??
-    "-";
+      trade.sl
+  );
 
-  const takeProfit =
+  const takeProfit = toNumber(
     trade.takeProfit ??
-    "-";
+      trade.tp
+  );
+
+  const exitPrice = toNumber(
+    trade.exitPrice ??
+      trade.exit ??
+      trade.closePrice ??
+      trade.close
+  );
+
+  // ============================================================
+  // DIRECTION
+  // ============================================================
+
+  const rawDirection =
+    trade.direction ??
+    trade.side ??
+    trade.type ??
+    "";
+
+  const direction =
+    String(rawDirection)
+      .toLowerCase();
+
+  const isBuy =
+    direction === "buy" ||
+    direction === "long";
+
+  const isSell =
+    direction === "sell" ||
+    direction === "short";
+
+  // ============================================================
+  // RISK / REWARD CALCULATION
+  // ============================================================
+
+  let riskDistance = null;
+  let plannedRewardDistance = null;
+  let plannedRiskReward = null;
+
+  if (
+    entryPrice !== null &&
+    stopLoss !== null &&
+    takeProfit !== null
+  ) {
+    riskDistance =
+      Math.abs(
+        entryPrice -
+          stopLoss
+      );
+
+    plannedRewardDistance =
+      Math.abs(
+        takeProfit -
+          entryPrice
+      );
+
+    if (
+      riskDistance > 0 &&
+      plannedRewardDistance >= 0
+    ) {
+      plannedRiskReward =
+        plannedRewardDistance /
+        riskDistance;
+    }
+  }
+
+  // ============================================================
+  // REALIZED R
+  // ============================================================
+
+  let realizedR = null;
+
+  if (
+    entryPrice !== null &&
+    stopLoss !== null &&
+    exitPrice !== null
+  ) {
+    riskDistance =
+      Math.abs(
+        entryPrice -
+          stopLoss
+      );
+
+    if (riskDistance > 0) {
+      let realizedMove;
+
+      if (isBuy) {
+        realizedMove =
+          exitPrice -
+          entryPrice;
+      } else if (isSell) {
+        realizedMove =
+          entryPrice -
+          exitPrice;
+      } else {
+        // Fallback based on P&L sign
+        realizedMove =
+          pnl >= 0
+            ? Math.abs(
+                exitPrice -
+                  entryPrice
+              )
+            : -Math.abs(
+                exitPrice -
+                  entryPrice
+              );
+      }
+
+      realizedR =
+        realizedMove /
+        riskDistance;
+    }
+  }
+
+  // ============================================================
+  // DISPLAY RISK / REWARD
+  // ============================================================
+
+  const savedRiskR =
+    toNumber(
+      trade.riskR ??
+        trade.risk
+    );
+
+  const savedReturnR =
+    toNumber(
+      trade.returnR ??
+        trade.realizedR
+    );
+
+  const riskRText =
+    savedRiskR !== null
+      ? `${savedRiskR.toFixed(2)}R`
+      : riskDistance !== null
+        ? "1.00R"
+        : "-";
+
+  const returnRValue =
+    realizedR !== null
+      ? realizedR
+      : savedReturnR !== null
+        ? savedReturnR
+        : null;
+
+  const returnRText =
+    returnRValue !== null
+      ? `${returnRValue >= 0 ? "+" : ""}${returnRValue.toFixed(2)}R`
+      : "-";
+
+  const riskRewardValue =
+    plannedRiskReward !== null
+      ? plannedRiskReward
+      : toNumber(
+          trade.riskRewardRatio ??
+            trade.riskReward ??
+            trade.rr
+        );
+
+  const riskRewardText =
+    riskRewardValue !== null
+      ? `1:${riskRewardValue.toFixed(2)}`
+      : "-";
 
   // ============================================================
   // TRADE TYPE / TIMEFRAME
@@ -286,11 +495,13 @@ function TradeDetails() {
       ===================================================== */}
 
       <div className="px-5 py-5 border-b border-gray-200">
+
         <h2 className="text-lg font-semibold">
           Trade Details
         </h2>
 
         <div className="mt-5">
+
           <h1
             className={`text-4xl font-bold ${
               pnl < 0
@@ -304,6 +515,7 @@ function TradeDetails() {
           <p className="text-xs text-gray-400 mt-1">
             NET P&L
           </p>
+
         </div>
 
         <div className="grid grid-cols-3 gap-4 mt-7">
@@ -389,17 +601,29 @@ function TradeDetails() {
 
           <Row
             label="Entry Price"
-            value={entryPrice}
+            value={
+              entryPrice !== null
+                ? entryPrice
+                : "-"
+            }
           />
 
           <Row
             label="Stop Loss"
-            value={stopLoss}
+            value={
+              stopLoss !== null
+                ? stopLoss
+                : "-"
+            }
           />
 
           <Row
             label="Take Profit"
-            value={takeProfit}
+            value={
+              takeProfit !== null
+                ? takeProfit
+                : "-"
+            }
           />
 
         </div>
@@ -444,12 +668,17 @@ function TradeDetails() {
 
           <Row
             label="Risk (R)"
-            value={riskR}
+            value={riskRText}
           />
 
           <Row
             label="Return (R)"
-            value={returnR}
+            value={returnRText}
+          />
+
+          <Row
+            label="Risk / Reward"
+            value={riskRewardText}
           />
 
         </div>
@@ -494,6 +723,7 @@ function Row({
 }) {
   return (
     <div className="flex justify-between text-sm">
+
       <span className="text-gray-500">
         {label}
       </span>
@@ -501,6 +731,7 @@ function Row({
       <span className="font-medium text-gray-900 text-right">
         {value}
       </span>
+
     </div>
   );
 }

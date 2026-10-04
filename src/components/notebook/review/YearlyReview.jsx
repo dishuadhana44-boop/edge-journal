@@ -5,15 +5,15 @@ import { calculateReviewStats } from "./reviewStats";
 
 import {
   ArrowLeft,
-  CalendarRange,
+  CalendarDays,
   Save,
-  CheckCircle2,
+  BarChart3,
+  ShieldCheck,
   Brain,
   Target,
-  BarChart3,
 } from "lucide-react";
 
-function WeeklyReview({
+function YearlyReview({
   onBack,
   initialData = null,
   reviewKey = null,
@@ -21,11 +21,9 @@ function WeeklyReview({
   const { filteredTrades } = useJournal();
 
   const defaultData = {
-    week: "",
-    startDate: "",
-    endDate: "",
-    sessions: "",
-    marketCondition: "",
+    year: "",
+    tradingPeriod: "",
+    marketsTraded: "",
     totalTrades: "",
     wins: "",
     losses: "",
@@ -38,31 +36,48 @@ function WeeklyReview({
     profitFactor: "",
     ruleBreaks: "",
     aPlusSetups: "",
-    bestDay: "",
-    worstDay: "",
+    bestMonth: "",
+    worstMonth: "",
+    bestQuarter: "",
+    worstQuarter: "",
     bestSetup: "",
     worstSetup: "",
     bestSession: "",
     worstSession: "",
-    commonTradeType: "",
-    commonMistake: "",
-    followedPlan: "",
-    correctAPlus: "",
-    missedSetups: "",
-    impulseTrades: "",
-    riskRules: "",
-    executionImprovement: "",
-    biggestMistake: "",
-    didWell: "",
-    tradingPattern: "",
+    bestMarketCondition: "",
+    worstMarketCondition: "",
+    bestInstrument: "",
+    profitableSetup: "",
+    leastProfitableSetup: "",
+    bestConditions: "",
+    difficultConditions: "",
+    strategyEvolution: "",
+    riskLimits: "",
+    drawdownControl: "",
+    revengeTrading: "",
+    overtrading: "",
+    positionSizing: "",
+    biggestRiskMistake: "",
+    biggestRiskImprovement: "",
+    psychologicalWeakness: "",
     emotionalPattern: "",
+    disciplineChange: "",
+    ruleBreakingSituations: "",
+    psychologicalImprovement: "",
+    biggestMistake: "",
+    biggestAchievement: "",
     biggestLesson: "",
-    differently: "",
-    repeat: "",
-    stop: "",
-    skill: "",
-    setup: "",
-    rule: "",
+    biggestChange: "",
+    selfLearning: "",
+    stopDoing: "",
+    startDoing: "",
+    continueDoing: "",
+    tradingSkill: "",
+    setupToMaster: "",
+    psychologyHabit: "",
+    riskRule: "",
+    majorGoal: "",
+    finalRule: "",
   };
 
   const [formData, setFormData] = useState({
@@ -71,11 +86,34 @@ function WeeklyReview({
   });
 
   // ============================================================
-  // WEEKLY JOURNAL TRADES
+  // YEAR RANGE
   // ============================================================
 
-  const weeklyTrades = useMemo(() => {
-    if (!formData.startDate || !formData.endDate) {
+  const yearRange = useMemo(() => {
+    const year = Number(formData.year);
+
+    if (!year) {
+      return {
+        startDate: "",
+        endDate: "",
+      };
+    }
+
+    return {
+      startDate: `${year}-01-01`,
+      endDate: `${year}-12-31`,
+    };
+  }, [formData.year]);
+
+  // ============================================================
+  // YEARLY JOURNAL TRADES
+  // ============================================================
+
+  const yearlyTrades = useMemo(() => {
+    if (
+      !yearRange.startDate ||
+      !yearRange.endDate
+    ) {
       return [];
     }
 
@@ -85,23 +123,23 @@ function WeeklyReview({
       }
 
       return (
-        trade.date >= formData.startDate &&
-        trade.date <= formData.endDate
+        trade.date >= yearRange.startDate &&
+        trade.date <= yearRange.endDate
       );
     });
   }, [
     filteredTrades,
-    formData.startDate,
-    formData.endDate,
+    yearRange.startDate,
+    yearRange.endDate,
   ]);
 
   // ============================================================
-  // WEEKLY STATISTICS
+  // YEARLY STATISTICS
   // ============================================================
 
   const calculatedStats = useMemo(() => {
-    return calculateReviewStats(weeklyTrades);
-  }, [weeklyTrades]);
+    return calculateReviewStats(yearlyTrades);
+  }, [yearlyTrades]);
 
   // ============================================================
   // UPDATE FIELD
@@ -121,23 +159,48 @@ function WeeklyReview({
   const handleSave = () => {
     const key =
       reviewKey ||
-      `edgefinder-weekly-review-${
-        formData.startDate || Date.now()
+      `edgefinder-yearly-review-${
+        formData.year || Date.now()
       }`;
 
     const dataToSave = {
       ...formData,
 
-      totalTrades: calculatedStats.totalTrades,
-      wins: calculatedStats.wins,
-      losses: calculatedStats.losses,
-      breakeven: calculatedStats.breakeven,
-      winRate: calculatedStats.winRate,
-      netPL: calculatedStats.netPL,
-      netR: calculatedStats.netR,
-      averageR: calculatedStats.averageR,
-      maxDrawdown: calculatedStats.maxDrawdown,
-      profitFactor: calculatedStats.profitFactor,
+      totalTrades:
+        calculatedStats.totalTrades,
+
+      wins:
+        calculatedStats.wins,
+
+      losses:
+        calculatedStats.losses,
+
+      breakeven:
+        calculatedStats.breakeven,
+
+      winRate:
+        calculatedStats.winRate,
+
+      netPL:
+        calculatedStats.netPL,
+
+      netR:
+        calculatedStats.netR,
+
+      averageR:
+        calculatedStats.averageR,
+
+      maxDrawdown:
+        calculatedStats.maxDrawdown,
+
+      profitFactor:
+        calculatedStats.profitFactor,
+
+      startDate:
+        yearRange.startDate,
+
+      endDate:
+        yearRange.endDate,
     };
 
     localStorage.setItem(
@@ -149,8 +212,8 @@ function WeeklyReview({
 
     alert(
       reviewKey
-        ? "Weekly review updated successfully."
-        : "Weekly review saved successfully."
+        ? "Yearly review updated successfully."
+        : "Yearly review saved successfully."
     );
   };
 
@@ -173,14 +236,12 @@ function WeeklyReview({
   const sectionClass =
     "rounded-xl border border-gray-200 bg-white p-5 shadow-sm";
 
-  // ============================================================
-  // UI
-  // ============================================================
-
   return (
     <div className="min-h-full pb-10">
 
+      {/* ================================================== */}
       {/* HEADER */}
+      {/* ================================================== */}
 
       <div className="mb-5 flex items-center justify-between">
 
@@ -195,12 +256,12 @@ function WeeklyReview({
 
           <div>
             <h1 className="text-xl font-semibold text-gray-900">
-              Weekly Review
+              Yearly Review
             </h1>
 
             <p className="text-sm text-gray-500">
-              Review your weekly trading performance,
-              execution and psychology.
+              Review your complete yearly
+              trading performance and development.
             </p>
           </div>
 
@@ -222,143 +283,108 @@ function WeeklyReview({
       <div className="space-y-5">
 
         {/* ================================================== */}
-        {/* WEEKLY OVERVIEW */}
+        {/* YEAR OVERVIEW */}
         {/* ================================================== */}
 
         <section className={sectionClass}>
 
           <div className="mb-5 flex items-center gap-2">
 
-            <CalendarRange
+            <CalendarDays
               size={19}
               className="text-purple-600"
             />
 
             <h2 className="text-base font-semibold text-gray-900">
-              Weekly Overview
+              Year Overview
             </h2>
 
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 
             <div>
+
               <label className={labelClass}>
-                Week
+                Year
+              </label>
+
+              <input
+                type="number"
+                value={formData.year}
+                onChange={(e) =>
+                  updateField(
+                    "year",
+                    e.target.value
+                  )
+                }
+                className={inputClass}
+                placeholder="2026"
+              />
+
+            </div>
+
+            <div>
+
+              <label className={labelClass}>
+                Trading Period
               </label>
 
               <input
                 type="text"
-                value={formData.week}
+                value={
+                  formData.tradingPeriod
+                }
                 onChange={(e) =>
                   updateField(
-                    "week",
+                    "tradingPeriod",
                     e.target.value
                   )
                 }
                 className={inputClass}
-                placeholder="Week 1"
+                placeholder="January - December"
               />
+
             </div>
 
             <div>
+
               <label className={labelClass}>
-                Start Date
-              </label>
-
-              <input
-                type="date"
-                value={formData.startDate}
-                onChange={(e) =>
-                  updateField(
-                    "startDate",
-                    e.target.value
-                  )
-                }
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label className={labelClass}>
-                End Date
-              </label>
-
-              <input
-                type="date"
-                value={formData.endDate}
-                onChange={(e) =>
-                  updateField(
-                    "endDate",
-                    e.target.value
-                  )
-                }
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label className={labelClass}>
-                Sessions
+                Markets Traded
               </label>
 
               <input
                 type="text"
-                value={formData.sessions}
+                value={
+                  formData.marketsTraded
+                }
                 onChange={(e) =>
                   updateField(
-                    "sessions",
+                    "marketsTraded",
                     e.target.value
                   )
                 }
                 className={inputClass}
-                placeholder="London, NY"
+                placeholder="Forex, Gold, Indices..."
               />
-            </div>
 
-            <div>
-              <label className={labelClass}>
-                Market Condition
-              </label>
-
-              <select
-                value={formData.marketCondition}
-                onChange={(e) =>
-                  updateField(
-                    "marketCondition",
-                    e.target.value
-                  )
-                }
-                className={inputClass}
-              >
-                <option value="">
-                  Select condition
-                </option>
-
-                <option value="Trending">
-                  Trending
-                </option>
-
-                <option value="Ranging">
-                  Ranging
-                </option>
-
-                <option value="Choppy">
-                  Choppy
-                </option>
-
-                <option value="News-driven">
-                  News-driven
-                </option>
-              </select>
             </div>
 
           </div>
 
+          {yearRange.startDate && (
+            <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+              Trading period automatically tracked:{" "}
+              {yearRange.startDate}
+              {" → "}
+              {yearRange.endDate}
+            </div>
+          )}
+
         </section>
 
         {/* ================================================== */}
-        {/* STATISTICS */}
+        {/* ANNUAL STATISTICS */}
         {/* ================================================== */}
 
         <section className={sectionClass}>
@@ -371,13 +397,15 @@ function WeeklyReview({
             />
 
             <div>
+
               <h2 className="text-base font-semibold text-gray-900">
-                Weekly Summary Statistics
+                Annual Statistics
               </h2>
 
               <p className="mt-0.5 text-xs text-gray-400">
                 Automatically calculated from Journal trades
               </p>
+
             </div>
 
           </div>
@@ -447,7 +475,9 @@ function WeeklyReview({
                     type="text"
                     value={value}
                     readOnly
-                    className={calculatedInputClass}
+                    className={
+                      calculatedInputClass
+                    }
                   />
 
                 </div>
@@ -462,7 +492,9 @@ function WeeklyReview({
 
               <input
                 type="text"
-                value={formData.ruleBreaks}
+                value={
+                  formData.ruleBreaks
+                }
                 onChange={(e) =>
                   updateField(
                     "ruleBreaks",
@@ -483,7 +515,9 @@ function WeeklyReview({
 
               <input
                 type="text"
-                value={formData.aPlusSetups}
+                value={
+                  formData.aPlusSetups
+                }
                 onChange={(e) =>
                   updateField(
                     "aPlusSetups",
@@ -500,24 +534,22 @@ function WeeklyReview({
 
           <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
 
-            {weeklyTrades.length > 0
-              ? `${weeklyTrades.length} journal trade${
-                  weeklyTrades.length === 1
+            {yearlyTrades.length > 0
+              ? `${yearlyTrades.length} journal trade${
+                  yearlyTrades.length === 1
                     ? ""
                     : "s"
-                } found between ${
-                  formData.startDate
-                } and ${
-                  formData.endDate
+                } found for ${
+                  formData.year
                 }.`
-              : "Select a valid start and end date to calculate weekly statistics."}
+              : "Enter a year to calculate annual statistics."}
 
           </div>
 
         </section>
 
         {/* ================================================== */}
-        {/* PERFORMANCE BREAKDOWN */}
+        {/* YEARLY PERFORMANCE */}
         {/* ================================================== */}
 
         <section className={sectionClass}>
@@ -525,7 +557,7 @@ function WeeklyReview({
           <div className="mb-5">
 
             <h2 className="text-base font-semibold text-gray-900">
-              Performance Breakdown
+              Yearly Performance Breakdown
             </h2>
 
           </div>
@@ -533,19 +565,49 @@ function WeeklyReview({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
             {[
-              ["bestDay", "Best Day"],
-              ["worstDay", "Worst Day"],
-              ["bestSetup", "Best Setup"],
-              ["worstSetup", "Worst Setup"],
-              ["bestSession", "Best Session"],
-              ["worstSession", "Worst Session"],
               [
-                "commonTradeType",
-                "Most Common Trade Type",
+                "bestMonth",
+                "Best Month",
               ],
               [
-                "commonMistake",
-                "Most Common Mistake",
+                "worstMonth",
+                "Worst Month",
+              ],
+              [
+                "bestQuarter",
+                "Best Quarter",
+              ],
+              [
+                "worstQuarter",
+                "Worst Quarter",
+              ],
+              [
+                "bestSetup",
+                "Best Setup",
+              ],
+              [
+                "worstSetup",
+                "Worst Setup",
+              ],
+              [
+                "bestSession",
+                "Best Session",
+              ],
+              [
+                "worstSession",
+                "Worst Session",
+              ],
+              [
+                "bestMarketCondition",
+                "Best Market Condition",
+              ],
+              [
+                "worstMarketCondition",
+                "Worst Market Condition",
+              ],
+              [
+                "bestInstrument",
+                "Best Instrument",
               ],
             ].map(
               ([field, label]) => (
@@ -557,7 +619,9 @@ function WeeklyReview({
 
                   <input
                     type="text"
-                    value={formData[field]}
+                    value={
+                      formData[field]
+                    }
                     onChange={(e) =>
                       updateField(
                         field,
@@ -576,247 +640,7 @@ function WeeklyReview({
         </section>
 
         {/* ================================================== */}
-        {/* EXECUTION */}
-        {/* ================================================== */}
-
-        <section className={sectionClass}>
-
-          <div className="mb-5 flex items-center gap-2">
-
-            <CheckCircle2
-              size={19}
-              className="text-purple-600"
-            />
-
-            <h2 className="text-base font-semibold text-gray-900">
-              Execution Check
-            </h2>
-
-          </div>
-
-          <div className="space-y-4">
-
-            <div>
-
-              <label className={labelClass}>
-                Did I follow my trading plan?
-              </label>
-
-              <div className="flex gap-3">
-
-                {[
-                  "Yes",
-                  "Partially",
-                  "No",
-                ].map((option) => (
-
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() =>
-                      updateField(
-                        "followedPlan",
-                        option
-                      )
-                    }
-                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
-                      formData.followedPlan === option
-                        ? "border-purple-600 bg-purple-50 text-purple-700"
-                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {option}
-                  </button>
-
-                ))}
-
-              </div>
-
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-
-              <div>
-
-                <label className={labelClass}>
-                  A+ Setups Executed
-                </label>
-
-                <input
-                  type="text"
-                  value={formData.correctAPlus}
-                  onChange={(e) =>
-                    updateField(
-                      "correctAPlus",
-                      e.target.value
-                    )
-                  }
-                  className={inputClass}
-                />
-
-              </div>
-
-              <div>
-
-                <label className={labelClass}>
-                  Missed Setups
-                </label>
-
-                <input
-                  type="text"
-                  value={formData.missedSetups}
-                  onChange={(e) =>
-                    updateField(
-                      "missedSetups",
-                      e.target.value
-                    )
-                  }
-                  className={inputClass}
-                />
-
-              </div>
-
-              <div>
-
-                <label className={labelClass}>
-                  Impulse / FOMO Trades
-                </label>
-
-                <input
-                  type="text"
-                  value={formData.impulseTrades}
-                  onChange={(e) =>
-                    updateField(
-                      "impulseTrades",
-                      e.target.value
-                    )
-                  }
-                  className={inputClass}
-                />
-
-              </div>
-
-            </div>
-
-            <div>
-
-              <label className={labelClass}>
-                Risk Rules Followed
-              </label>
-
-              <textarea
-                value={formData.riskRules}
-                onChange={(e) =>
-                  updateField(
-                    "riskRules",
-                    e.target.value
-                  )
-                }
-                className={textareaClass}
-              />
-
-            </div>
-
-            <div>
-
-              <label className={labelClass}>
-                Execution Improvement
-              </label>
-
-              <textarea
-                value={formData.executionImprovement}
-                onChange={(e) =>
-                  updateField(
-                    "executionImprovement",
-                    e.target.value
-                  )
-                }
-                className={textareaClass}
-              />
-
-            </div>
-
-          </div>
-
-        </section>
-
-        {/* ================================================== */}
-        {/* REFLECTION */}
-        {/* ================================================== */}
-
-        <section className={sectionClass}>
-
-          <div className="mb-5 flex items-center gap-2">
-
-            <Brain
-              size={19}
-              className="text-purple-600"
-            />
-
-            <h2 className="text-base font-semibold text-gray-900">
-              Weekly Reflection
-            </h2>
-
-          </div>
-
-          <div className="space-y-4">
-
-            {[
-              [
-                "biggestMistake",
-                "Biggest mistake this week",
-              ],
-              [
-                "didWell",
-                "What did I do well?",
-              ],
-              [
-                "tradingPattern",
-                "Trading pattern I noticed",
-              ],
-              [
-                "emotionalPattern",
-                "Emotional pattern I noticed",
-              ],
-              [
-                "biggestLesson",
-                "Biggest lesson",
-              ],
-              [
-                "differently",
-                "What would I do differently?",
-              ],
-            ].map(
-              ([field, label]) => (
-
-                <div key={field}>
-
-                  <label className={labelClass}>
-                    {label}
-                  </label>
-
-                  <textarea
-                    value={formData[field]}
-                    onChange={(e) =>
-                      updateField(
-                        field,
-                        e.target.value
-                      )
-                    }
-                    className={textareaClass}
-                  />
-
-                </div>
-
-              )
-            )}
-
-          </div>
-
-        </section>
-
-        {/* ================================================== */}
-        {/* NEXT WEEK */}
+        {/* STRATEGY REVIEW */}
         {/* ================================================== */}
 
         <section className={sectionClass}>
@@ -829,7 +653,7 @@ function WeeklyReview({
             />
 
             <h2 className="text-base font-semibold text-gray-900">
-              Next Week&apos;s Focus
+              Strategy Review
             </h2>
 
           </div>
@@ -838,28 +662,27 @@ function WeeklyReview({
 
             {[
               [
-                "repeat",
-                "One thing I will repeat",
+                "profitableSetup",
+                "Most Profitable Setup",
               ],
               [
-                "stop",
-                "One thing I will stop doing",
+                "leastProfitableSetup",
+                "Least Profitable Setup",
               ],
               [
-                "skill",
-                "Skill I will improve",
+                "bestConditions",
+                "Best Trading Conditions",
               ],
               [
-                "setup",
-                "Setup I will focus on",
+                "difficultConditions",
+                "Difficult Conditions",
               ],
               [
-                "rule",
-                "One rule I will follow",
+                "strategyEvolution",
+                "How Did My Strategy Evolve?",
               ],
             ].map(
               ([field, label]) => (
-
                 <div key={field}>
 
                   <label className={labelClass}>
@@ -867,7 +690,9 @@ function WeeklyReview({
                   </label>
 
                   <textarea
-                    value={formData[field]}
+                    value={
+                      formData[field]
+                    }
                     onChange={(e) =>
                       updateField(
                         field,
@@ -878,7 +703,309 @@ function WeeklyReview({
                   />
 
                 </div>
+              )
+            )}
 
+          </div>
+
+        </section>
+
+        {/* ================================================== */}
+        {/* RISK MANAGEMENT */}
+        {/* ================================================== */}
+
+        <section className={sectionClass}>
+
+          <div className="mb-5 flex items-center gap-2">
+
+            <ShieldCheck
+              size={19}
+              className="text-purple-600"
+            />
+
+            <h2 className="text-base font-semibold text-gray-900">
+              Risk Management
+            </h2>
+
+          </div>
+
+          <div className="space-y-4">
+
+            {[
+              [
+                "riskLimits",
+                "Risk Limits",
+              ],
+              [
+                "drawdownControl",
+                "Drawdown Control",
+              ],
+              [
+                "revengeTrading",
+                "Revenge Trading",
+              ],
+              [
+                "overtrading",
+                "Overtrading",
+              ],
+              [
+                "positionSizing",
+                "Position Sizing",
+              ],
+              [
+                "biggestRiskMistake",
+                "Biggest Risk Mistake",
+              ],
+              [
+                "biggestRiskImprovement",
+                "Biggest Risk Improvement",
+              ],
+            ].map(
+              ([field, label]) => (
+                <div key={field}>
+
+                  <label className={labelClass}>
+                    {label}
+                  </label>
+
+                  <textarea
+                    value={
+                      formData[field]
+                    }
+                    onChange={(e) =>
+                      updateField(
+                        field,
+                        e.target.value
+                      )
+                    }
+                    className={textareaClass}
+                  />
+
+                </div>
+              )
+            )}
+
+          </div>
+
+        </section>
+
+        {/* ================================================== */}
+        {/* PSYCHOLOGY */}
+        {/* ================================================== */}
+
+        <section className={sectionClass}>
+
+          <div className="mb-5 flex items-center gap-2">
+
+            <Brain
+              size={19}
+              className="text-purple-600"
+            />
+
+            <h2 className="text-base font-semibold text-gray-900">
+              Psychology Review
+            </h2>
+
+          </div>
+
+          <div className="space-y-4">
+
+            {[
+              [
+                "psychologicalWeakness",
+                "Biggest Psychological Weakness",
+              ],
+              [
+                "emotionalPattern",
+                "Emotional Pattern",
+              ],
+              [
+                "disciplineChange",
+                "How Did Discipline Change?",
+              ],
+              [
+                "ruleBreakingSituations",
+                "Rule-Breaking Situations",
+              ],
+              [
+                "psychologicalImprovement",
+                "Psychological Improvement",
+              ],
+            ].map(
+              ([field, label]) => (
+                <div key={field}>
+
+                  <label className={labelClass}>
+                    {label}
+                  </label>
+
+                  <textarea
+                    value={
+                      formData[field]
+                    }
+                    onChange={(e) =>
+                      updateField(
+                        field,
+                        e.target.value
+                      )
+                    }
+                    className={textareaClass}
+                  />
+
+                </div>
+              )
+            )}
+
+          </div>
+
+        </section>
+
+        {/* ================================================== */}
+        {/* YEARLY REFLECTION */}
+        {/* ================================================== */}
+
+        <section className={sectionClass}>
+
+          <div className="mb-5">
+
+            <h2 className="text-base font-semibold text-gray-900">
+              Yearly Reflection
+            </h2>
+
+          </div>
+
+          <div className="space-y-4">
+
+            {[
+              [
+                "biggestMistake",
+                "Biggest Mistake",
+              ],
+              [
+                "biggestAchievement",
+                "Biggest Achievement",
+              ],
+              [
+                "biggestLesson",
+                "Biggest Lesson",
+              ],
+              [
+                "biggestChange",
+                "Biggest Change",
+              ],
+              [
+                "selfLearning",
+                "What Did I Learn About Myself?",
+              ],
+              [
+                "stopDoing",
+                "What Should I Stop Doing?",
+              ],
+              [
+                "startDoing",
+                "What Should I Start Doing?",
+              ],
+              [
+                "continueDoing",
+                "What Should I Continue Doing?",
+              ],
+            ].map(
+              ([field, label]) => (
+                <div key={field}>
+
+                  <label className={labelClass}>
+                    {label}
+                  </label>
+
+                  <textarea
+                    value={
+                      formData[field]
+                    }
+                    onChange={(e) =>
+                      updateField(
+                        field,
+                        e.target.value
+                      )
+                    }
+                    className={textareaClass}
+                  />
+
+                </div>
+              )
+            )}
+
+          </div>
+
+        </section>
+
+        {/* ================================================== */}
+        {/* NEXT YEAR */}
+        {/* ================================================== */}
+
+        <section className={sectionClass}>
+
+          <div className="mb-5 flex items-center gap-2">
+
+            <Target
+              size={19}
+              className="text-purple-600"
+            />
+
+            <h2 className="text-base font-semibold text-gray-900">
+              Next Year Focus
+            </h2>
+
+          </div>
+
+          <div className="space-y-4">
+
+            {[
+              [
+                "tradingSkill",
+                "Trading Skill to Improve",
+              ],
+              [
+                "setupToMaster",
+                "Setup to Master",
+              ],
+              [
+                "psychologyHabit",
+                "Psychology Habit",
+              ],
+              [
+                "riskRule",
+                "Risk Rule",
+              ],
+              [
+                "majorGoal",
+                "Major Trading Goal",
+              ],
+              [
+                "finalRule",
+                "One Rule I Will Follow",
+              ],
+            ].map(
+              ([field, label]) => (
+                <div key={field}>
+
+                  <label className={labelClass}>
+                    {label}
+                  </label>
+
+                  <textarea
+                    value={
+                      formData[field]
+                    }
+                    onChange={(e) =>
+                      updateField(
+                        field,
+                        e.target.value
+                      )
+                    }
+                    className={textareaClass}
+                  />
+
+                </div>
               )
             )}
 
@@ -896,18 +1023,21 @@ function WeeklyReview({
             onClick={handleSave}
             className="flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-purple-700"
           >
+
             <Save size={16} />
 
             {reviewKey
-              ? "Update Weekly Review"
-              : "Save Weekly Review"}
+              ? "Update Yearly Review"
+              : "Save Yearly Review"}
+
           </button>
 
         </div>
 
       </div>
+
     </div>
   );
 }
 
-export default WeeklyReview;
+export default YearlyReview;

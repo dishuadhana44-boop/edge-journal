@@ -1,4 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 
 import AppLayout from "./layouts/AppLayout";
 
@@ -18,12 +23,13 @@ import Profile from "./pages/Profile";
 import TradeJournal from "./pages/TradeJournal";
 import NoteEditor from "./pages/NoteEditor";
 import BrokerCallback from "./pages/BrokerCallback";
-
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 
 import { JournalProvider } from "./context/JournalContext";
 import { DashboardFilterProvider } from "./context/DashboardFilterContext";
+import { MarketProvider } from "./context/MarketContext";
+import { TradeProvider } from "./context/TradeContext";
 
 /* =========================================================
    AUTH CHECK
@@ -67,150 +73,175 @@ function App() {
   return (
     <BrowserRouter>
       <JournalProvider>
-        <DashboardFilterProvider>
 
-          <Routes>
+        <MarketProvider>
 
-            {/* =================================================
-                PUBLIC WEBSITE
-            ================================================= */}
+          <TradeProvider>
 
-            <Route
-              path="/"
-              element={<LandingPage />}
-            />
+            <DashboardFilterProvider>
 
-            <Route
-              path="/login"
-              element={<LoginPage />}
-            />
+              <Routes>
 
-            {/* =================================================
-                cTrader OAuth CALLBACK
-                Must remain public
-            ================================================= */}
+                {/* =================================================
+                    PUBLIC WEBSITE
+                ================================================= */}
 
-            <Route
-              path="/broker/callback"
-              element={<BrokerCallback />}
-            />
+                <Route
+                  path="/"
+                  element={<LandingPage />}
+                />
 
-            {/* =================================================
-                PROTECTED MAIN APP
-            ================================================= */}
+                <Route
+                  path="/login"
+                  element={<LoginPage />}
+                />
 
-            <Route
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
+                {/* =================================================
+                    cTrader OAuth CALLBACK
+                    Must remain public
+                ================================================= */}
 
-              {/* Dashboard */}
-              <Route
-                path="/dashboard"
-                element={<Dashboard />}
-              />
+                <Route
+                  path="/broker/callback"
+                  element={<BrokerCallback />}
+                />
 
-              {/* Trade Log */}
-              <Route
-                path="/tradelog"
-                element={<TradeLog />}
-              />
+                {/* =================================================
+                    PROTECTED MAIN APP
+                ================================================= */}
 
-              {/* Trading */}
-              <Route
-                path="/trading"
-                element={<Trading />}
-              />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout />
+                    </ProtectedRoute>
+                  }
+                >
 
-              {/* Backtesting */}
-              <Route
-                path="/backtesting"
-                element={<Backtesting />}
-              />
+                  {/* Dashboard */}
 
-              {/* Edge */}
-              <Route
-                path="/edge"
-                element={<Edge />}
-              />
+                  <Route
+                    path="/dashboard"
+                    element={<Dashboard />}
+                  />
 
-              {/* Journal */}
-              <Route
-                path="/journal"
-                element={<Journal />}
-              />
+                  {/* Trade Log */}
 
-              {/* Reports */}
-              <Route
-                path="/reports"
-                element={<Reports />}
-              />
+                  <Route
+                    path="/tradelog"
+                    element={<TradeLog />}
+                  />
 
-              {/* Notebook */}
-              <Route
-                path="/notebook"
-                element={<Notebook />}
-              />
+                  {/* Trading */}
 
-              {/* Notebook Editor */}
-              <Route
-                path="/notebook/editor/:id"
-                element={<NoteEditor />}
-              />
+                  <Route
+                    path="/trading"
+                    element={<Trading />}
+                  />
 
-              {/* EdgeOS */}
-              <Route
-                path="/edgeos"
-                element={<EdgeOS />}
-              />
+                  {/* Backtesting */}
 
-              {/* News */}
-              <Route
-                path="/news"
-                element={<News />}
-              />
+                  <Route
+                    path="/backtesting"
+                    element={<Backtesting />}
+                  />
 
-              {/* AI Insights */}
-              <Route
-                path="/ai"
-                element={<AIInsights />}
-              />
+                  {/* Edge */}
 
-              {/* Settings */}
-              <Route
-                path="/settings"
-                element={<Settings />}
-              />
+                  <Route
+                    path="/edge"
+                    element={<Edge />}
+                  />
 
-              {/* Profile */}
-              <Route
-                path="/profile"
-                element={<Profile />}
-              />
+                  {/* Journal */}
 
-              {/* Trade Journal */}
-              <Route
-                path="/trade/:id"
-                element={<TradeJournal />}
-              />
+                  <Route
+                    path="/journal"
+                    element={<Journal />}
+                  />
 
-            </Route>
+                  {/* Reports */}
 
-            {/* =================================================
-                FALLBACK
-            ================================================= */}
+                  <Route
+                    path="/reports"
+                    element={<Reports />}
+                  />
 
-            <Route
-              path="*"
-              element={<Navigate to="/" replace />}
-            />
+                  {/* Notebook */}
 
-          </Routes>
+                  <Route
+                    path="/notebook"
+                    element={<Notebook />}
+                  />
 
-        </DashboardFilterProvider>
+                  {/* Notebook Editor */}
+
+                  <Route
+                    path="/notebook/editor/:id"
+                    element={<NoteEditor />}
+                  />
+
+                  {/* EdgeOS */}
+
+                  <Route
+                    path="/edgeos"
+                    element={<EdgeOS />}
+                  />
+
+                  {/* News */}
+
+                  <Route
+                    path="/news"
+                    element={<News />}
+                  />
+
+                  {/* AI Insights */}
+
+                  <Route
+                    path="/ai"
+                    element={<AIInsights />}
+                  />
+
+                  {/* Settings */}
+
+                  <Route
+                    path="/settings"
+                    element={<Settings />}
+                  />
+
+                  {/* Profile */}
+
+                  <Route
+                    path="/profile"
+                    element={<Profile />}
+                  />
+
+                  {/* Trade Journal */}
+
+                  <Route
+                    path="/trade/:id"
+                    element={<TradeJournal />}
+                  />
+
+                </Route>
+
+                {/* =================================================
+                    FALLBACK
+                ================================================= */}
+
+                <Route
+                  path="*"
+                  element={<Navigate to="/" replace />}
+                />
+
+              </Routes>
+
+            </DashboardFilterProvider>
+
+          </TradeProvider>
+
+        </MarketProvider>
+
       </JournalProvider>
     </BrowserRouter>
   );
