@@ -18,7 +18,10 @@ function WeeklyReview({
   initialData = null,
   reviewKey = null,
 }) {
-  const { filteredTrades } = useJournal();
+  const {
+    filteredTrades,
+    selectedAccountId,
+  } = useJournal();
 
   const defaultData = {
     week: "",
@@ -119,16 +122,23 @@ function WeeklyReview({
   // ============================================================
 
   const handleSave = () => {
-    const key =
-      reviewKey ||
-      `edgefinder-weekly-review-${
-        formData.startDate || Date.now()
-      }`;
+    const accountKey =
+  selectedAccountId
+    ? String(selectedAccountId).trim()
+    : "no-account";
 
-    const dataToSave = {
-      ...formData,
+const key =
+  reviewKey ||
+  `edgefinder-weekly-review-${accountKey}-${
+    formData.startDate || Date.now()
+  }`;
 
-      totalTrades: calculatedStats.totalTrades,
+  const dataToSave = {
+    ...formData,
+    accountId: selectedAccountId
+      ? String(selectedAccountId).trim()
+      : null,
+    totalTrades: calculatedStats.totalTrades,
       wins: calculatedStats.wins,
       losses: calculatedStats.losses,
       breakeven: calculatedStats.breakeven,

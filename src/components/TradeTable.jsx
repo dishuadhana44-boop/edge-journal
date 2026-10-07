@@ -49,12 +49,14 @@ function TradeTable({ trades, onDelete, onEdit }) {
 
               <td
   className={`px-5 py-4 font-semibold ${
-    trade.pnl.toString().includes("-")
+    Number(trade.pnl) < 0
       ? "text-red-600"
       : "text-green-600"
   }`}
 >
-  {trade.pnl}
+  {Number(trade.pnl) < 0
+    ? `-$${Math.abs(Number(trade.pnl)).toFixed(2)}`
+    : `$${Number(trade.pnl).toFixed(2)}`}
 </td>
 
               <td className="px-5 py-4">{trade.day}</td>

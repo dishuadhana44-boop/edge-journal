@@ -7,12 +7,12 @@ import InstrumentSummary from "./InstrumentSummary";
 import InstrumentProfitChart from "./InstrumentProfitChart";
 
 export default function InstrumentAnalysisCard() {
-  const { trades = [] } = useJournal();
+  const { filteredTrades = [] } = useJournal();
 
   const instrumentData = useMemo(() => {
     const grouped = {};
 
-    trades.forEach((trade) => {
+    filteredTrades.forEach((trade) => {
       const instrument =
         trade?.pair ||
         trade?.symbol ||
@@ -33,18 +33,24 @@ export default function InstrumentAnalysisCard() {
 
       item.trades += 1;
 
-      const pnl = Number(trade?.pnl || 0);
+      const pnl = Number(
+        trade?.pnl ??
+          trade?.profitLoss ??
+          trade?.profit ??
+          trade?.netPnL ??
+          trade?.netProfit ??
+          0
+      );
 
-      item.pnl += pnl;
+      const safePnL = Number.isFinite(pnl) ? pnl : 0;
+
+      item.pnl += safePnL;
 
       const result = String(
-        trade?.result || ""
+        trade?.result ?? ""
       ).toLowerCase();
 
-      if (
-        result === "win" ||
-        pnl > 0
-      ) {
+      if (result === "win" || safePnL > 0) {
         item.winningTrades += 1;
       }
 
@@ -59,65 +65,79 @@ export default function InstrumentAnalysisCard() {
       .map((item) => {
         const winRate =
           item.trades > 0
-            ? (item.winningTrades / item.trades) *
-              100
+            ? (item.winningTrades / item.trades) * 100
             : 0;
 
         const avgRR =
           item.rrValues.length > 0
             ? item.rrValues.reduce(
-                (sum, value) =>
-                  sum + value,
+                (sum, value) => sum + value,
                 0
               ) / item.rrValues.length
             : 0;
 
-        const grossProfit = trades
-          .filter((trade) => {
+        const instrumentTrades = filteredTrades.filter(
+          (trade) => {
             const instrument =
               trade?.pair ||
               trade?.symbol ||
               trade?.instrument ||
               "Unknown";
 
-            return (
-              instrument ===
-              item.instrument
-            );
-          })
+            return instrument === item.instrument;
+          }
+        );
+
+        const grossProfit = instrumentTrades
           .filter(
             (trade) =>
-              Number(trade?.pnl || 0) > 0
+              Number(
+                trade?.pnl ??
+                  trade?.profitLoss ??
+                  trade?.profit ??
+                  trade?.netPnL ??
+                  trade?.netProfit ??
+                  0
+              ) > 0
           )
           .reduce(
             (sum, trade) =>
               sum +
-              Number(trade?.pnl || 0),
+              Number(
+                trade?.pnl ??
+                  trade?.profitLoss ??
+                  trade?.profit ??
+                  trade?.netPnL ??
+                  trade?.netProfit ??
+                  0
+              ),
             0
           );
 
         const grossLoss = Math.abs(
-          trades
-            .filter((trade) => {
-              const instrument =
-                trade?.pair ||
-                trade?.symbol ||
-                trade?.instrument ||
-                "Unknown";
-
-              return (
-                instrument ===
-                item.instrument
-              );
-            })
+          instrumentTrades
             .filter(
               (trade) =>
-                Number(trade?.pnl || 0) < 0
+                Number(
+                  trade?.pnl ??
+                    trade?.profitLoss ??
+                    trade?.profit ??
+                    trade?.netPnL ??
+                    trade?.netProfit ??
+                    0
+                ) < 0
             )
             .reduce(
               (sum, trade) =>
                 sum +
-                Number(trade?.pnl || 0),
+                Number(
+                  trade?.pnl ??
+                    trade?.profitLoss ??
+                    trade?.profit ??
+                    trade?.netPnL ??
+                    trade?.netProfit ??
+                    0
+                ),
               0
             )
         );
@@ -131,33 +151,20 @@ export default function InstrumentAnalysisCard() {
 
         return {
           instrument: item.instrument,
-
-          market: getMarket(
-            item.instrument
-          ),
-
+          market: getMarket(item.instrument),
           trades: item.trades,
-
           winRate,
-
           pnl: item.pnl,
-
           rr: avgRR,
-
           profitFactor,
         };
       })
-      .sort(
-        (a, b) =>
-          b.pnl - a.pnl
-      );
-  }, [trades]);
+      .sort((a, b) => b.pnl - a.pnl);
+  }, [filteredTrades]);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-
       {/* HEADER */}
-
       <div className="px-6 py-4 border-b border-gray-200">
         <h2 className="text-xl font-semibold text-gray-900">
           Instrument Analysis
@@ -165,39 +172,22 @@ export default function InstrumentAnalysisCard() {
       </div>
 
       {/* CONTENT */}
-
       <div className="grid grid-cols-12 gap-6 p-6">
-
         {/* LEFT */}
-
         <div className="col-span-9 space-y-6">
+          <InstrumentTable data={instrumentData} />
 
-          <InstrumentTable
-            data={instrumentData}
-          />
-
-          <InstrumentProfitChart
-            data={instrumentData}
-          />
-
+          <InstrumentProfitChart data={instrumentData} />
         </div>
 
         {/* RIGHT */}
-
         <div className="col-span-3">
-
-          <InstrumentSummary
-            data={instrumentData}
-          />
-
+          <InstrumentSummary data={instrumentData} />
         </div>
-
       </div>
-
     </div>
   );
 }
-
 
 /* =================================================
    MARKET CLASSIFICATION

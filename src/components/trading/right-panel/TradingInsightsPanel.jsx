@@ -9,15 +9,12 @@ import {
   ClipboardList,
   Plus,
   Trash2,
-  X,
 } from "lucide-react";
-
 import { useTrade } from "../../../context/TradeContext";
 
-
-/* ============================================================
-   DEFAULT GUARDRAILS
-============================================================ */
+// ============================================================
+// DEFAULT GUARDRAILS
+// ============================================================
 
 const DEFAULT_GUARDRAILS = {
   enabled: true,
@@ -28,110 +25,68 @@ const DEFAULT_GUARDRAILS = {
   tradingWindowEnd: "13:30",
 };
 
-
-/* ============================================================
-   DEFAULT WATCHLIST
-============================================================ */
+// ============================================================
+// DEFAULT WATCHLIST
+// ============================================================
 
 const DEFAULT_WATCHLIST = [];
 
-
-/* ============================================================
-   COMPONENT
-============================================================ */
+// ============================================================
+// COMPONENT
+// ============================================================
 
 export default function TradingInsightsPanel() {
-
   const {
     openTrades = [],
     closedTrades = [],
   } = useTrade();
 
   const [activeTab, setActiveTab] = useState("watchlist");
+  const [isGuardrailsOpen, setIsGuardrailsOpen] = useState(true);
 
-  const [isGuardrailsOpen, setIsGuardrailsOpen] =
-    useState(true);
-
-
-  /* ============================================================
-     WATCHLIST
-  ============================================================ */
+  // ============================================================
+  // WATCHLIST
+  // ============================================================
 
   const [watchlist, setWatchlist] = useState(() => {
-
     try {
-
-      const saved =
-        localStorage.getItem("edgefloWatchlist");
-
-      return saved
-        ? JSON.parse(saved)
-        : DEFAULT_WATCHLIST;
-
+      const saved = localStorage.getItem("edgefloWatchlist");
+      return saved ? JSON.parse(saved) : DEFAULT_WATCHLIST;
     } catch {
-
       return DEFAULT_WATCHLIST;
-
     }
-
   });
-
 
   const [showWatchlistInput, setShowWatchlistInput] =
     useState(false);
 
-  const [newSymbol, setNewSymbol] =
-    useState("");
+  const [newSymbol, setNewSymbol] = useState("");
 
-
-  /* ============================================================
-     ALERTS
-  ============================================================ */
+  // ============================================================
+  // ALERTS
+  // ============================================================
 
   const [alerts, setAlerts] = useState(() => {
-
     try {
-
-      const saved =
-        localStorage.getItem("edgefloAlerts");
-
-      return saved
-        ? JSON.parse(saved)
-        : [];
-
+      const saved = localStorage.getItem("edgefloAlerts");
+      return saved ? JSON.parse(saved) : [];
     } catch {
-
       return [];
-
     }
-
   });
 
+  const [showAlertForm, setShowAlertForm] = useState(false);
+  const [alertSymbol, setAlertSymbol] = useState("EURUSD");
+  const [alertCondition, setAlertCondition] = useState("above");
+  const [alertPrice, setAlertPrice] = useState("");
 
-  const [showAlertForm, setShowAlertForm] =
-    useState(false);
-
-
-  const [alertSymbol, setAlertSymbol] =
-    useState("EURUSD");
-
-  const [alertCondition, setAlertCondition] =
-    useState("above");
-
-  const [alertPrice, setAlertPrice] =
-    useState("");
-
-
-  /* ============================================================
-     GUARDRAILS
-  ============================================================ */
+  // ============================================================
+  // GUARDRAILS
+  // ============================================================
 
   const [guardrails, setGuardrails] = useState(() => {
-
     try {
-
-      const saved =
-        localStorage.getItem("tradingGuardrails");
+      const saved = localStorage.getItem("tradingGuardrails");
 
       return saved
         ? {
@@ -139,149 +94,112 @@ export default function TradingInsightsPanel() {
             ...JSON.parse(saved),
           }
         : DEFAULT_GUARDRAILS;
-
     } catch {
-
       return DEFAULT_GUARDRAILS;
-
     }
-
   });
 
+  // ============================================================
+  // SELECTED EDGE PLAN
+  // ============================================================
 
-  /* ============================================================
-     SELECTED EDGE PLAN
-  ============================================================ */
+  const [selectedEdgePlan, setSelectedEdgePlan] = useState(null);
 
-  const [selectedEdgePlan, setSelectedEdgePlan] =
-    useState(null);
+  // ============================================================
+  // TRADE PLAN CHECKLIST
+  // ============================================================
 
-
-  /* ============================================================
-     TRADE PLAN CHECKLIST STATE
-  ============================================================ */
-
-  const [checkedItems, setCheckedItems] =
-    useState({});
-
-    useEffect(() => {
-      setCheckedItems({});
-    }, [selectedEdgePlan?.id]);
-
-  /* ============================================================
-     SAVE WATCHLIST
-  ============================================================ */
+  const [checkedItems, setCheckedItems] = useState({});
 
   useEffect(() => {
+    setCheckedItems({});
+  }, [selectedEdgePlan?.id]);
 
+  // ============================================================
+  // SAVE WATCHLIST
+  // ============================================================
+
+  useEffect(() => {
     localStorage.setItem(
       "edgefloWatchlist",
       JSON.stringify(watchlist)
     );
-
   }, [watchlist]);
 
-
-  /* ============================================================
-     SAVE ALERTS
-  ============================================================ */
+  // ============================================================
+  // SAVE ALERTS
+  // ============================================================
 
   useEffect(() => {
-
     localStorage.setItem(
       "edgefloAlerts",
       JSON.stringify(alerts)
     );
-
   }, [alerts]);
 
-
-  /* ============================================================
-     LOAD CHECKLIST STATE
-  ============================================================ */
+  // ============================================================
+  // LOAD CHECKLIST STATE
+  // ============================================================
 
   useEffect(() => {
-
     try {
-
-      const saved =
-        localStorage.getItem("edgefloTradePlanChecklist");
-
-      setCheckedItems(
-        saved ? JSON.parse(saved) : {}
+      const saved = localStorage.getItem(
+        "edgefloTradePlanChecklist"
       );
 
+      setCheckedItems(saved ? JSON.parse(saved) : {});
     } catch {
-
       setCheckedItems({});
-
     }
-
   }, []);
 
-
-  /* ============================================================
-     SAVE CHECKLIST STATE
-  ============================================================ */
+  // ============================================================
+  // SAVE CHECKLIST STATE
+  // ============================================================
 
   useEffect(() => {
-
     localStorage.setItem(
       "edgefloTradePlanChecklist",
       JSON.stringify(checkedItems)
     );
-
   }, [checkedItems]);
 
-
-  /* ============================================================
-     LOAD SELECTED EDGE PLAN
-  ============================================================ */
+  // ============================================================
+  // LOAD SELECTED EDGE PLAN
+  // ============================================================
 
   useEffect(() => {
-
     const loadSelectedPlan = () => {
-
       try {
-
         const saved =
           localStorage.getItem("selectedEdgePlan");
 
         setSelectedEdgePlan(
           saved ? JSON.parse(saved) : null
         );
-
       } catch (error) {
-
         console.error(
           "Failed to load selected Edge plan:",
           error
         );
 
         setSelectedEdgePlan(null);
-
       }
-
     };
 
-
     loadSelectedPlan();
-
 
     window.addEventListener(
       "selectedEdgePlanUpdated",
       loadSelectedPlan
     );
 
-
     window.addEventListener(
       "storage",
       loadSelectedPlan
     );
 
-
     return () => {
-
       window.removeEventListener(
         "selectedEdgePlanUpdated",
         loadSelectedPlan
@@ -291,48 +209,34 @@ export default function TradingInsightsPanel() {
         "storage",
         loadSelectedPlan
       );
-
     };
-
   }, []);
 
-
-  /* ============================================================
-     LOAD GUARDRAILS
-  ============================================================ */
+  // ============================================================
+  // LOAD GUARDRAILS
+  // ============================================================
 
   useEffect(() => {
-
     const loadGuardrails = () => {
-
       try {
-
         const saved =
           localStorage.getItem("tradingGuardrails");
 
         if (saved) {
-
           setGuardrails({
             ...DEFAULT_GUARDRAILS,
             ...JSON.parse(saved),
           });
-
         }
-
       } catch (error) {
-
         console.error(
           "Failed to load guardrails:",
           error
         );
-
       }
-
     };
 
-
     loadGuardrails();
-
 
     window.addEventListener(
       "storage",
@@ -344,9 +248,7 @@ export default function TradingInsightsPanel() {
       loadGuardrails
     );
 
-
     return () => {
-
       window.removeEventListener(
         "storage",
         loadGuardrails
@@ -356,22 +258,12 @@ export default function TradingInsightsPanel() {
         "guardrailsUpdated",
         loadGuardrails
       );
-
     };
-
   }, []);
 
-
-  /* ============================================================
-     TODAY'S TRADES
-
-     IMPORTANT:
-     - Trade count is based on actual executed trades.
-     - Open + closed trades are used here.
-     - MT5 history is intentionally NOT merged here because the
-       same MT5 trade can exist in both journal state and MT5 history.
-     - Daily P&L is calculated separately from CLOSED trades only.
-  ============================================================ */
+  // ============================================================
+  // TODAY'S TRADES
+  // ============================================================
 
   const getTradeId = (trade, index = 0) => {
     return (
@@ -459,31 +351,20 @@ export default function TradingInsightsPanel() {
     );
   }, [closedTrades]);
 
-  /* ============================================================
-     TRADE COUNT
-  ============================================================ */
+  // ============================================================
+  // TRADE COUNT
+  // ============================================================
 
   const tradeCount = todayTrades.length;
 
-
   const maxTrades = Math.max(
-
-    Number(
-      guardrails.maxTradesPerDay
-    ) || 1,
-
+    Number(guardrails.maxTradesPerDay) || 1,
     1
-
   );
 
-
-  /* ============================================================
-     DAILY PNL
-
-     IMPORTANT:
-     Today's Net P&L is REALIZED P&L only.
-     Open/floating P&L must not be included here.
-  ============================================================ */
+  // ============================================================
+  // DAILY PNL
+  // ============================================================
 
   const dailyPnL = useMemo(() => {
     return todayClosedTrades.reduce((total, trade) => {
@@ -505,714 +386,450 @@ export default function TradingInsightsPanel() {
     }, 0);
   }, [todayClosedTrades]);
 
-  /* ============================================================
-     GUARDRAIL LIMITS
-  ============================================================ */
+  // ============================================================
+  // GUARDRAIL LIMITS
+  // ============================================================
 
   const maxDailyLoss = Math.max(
-
-    Number(
-      guardrails.maxDailyLoss
-    ) || 0,
-
+    Number(guardrails.maxDailyLoss) || 0,
     0
-
   );
-
 
   const maxDailyProfit = Math.max(
-
-    Number(
-      guardrails.maxDailyProfit
-    ) || 0,
-
+    Number(guardrails.maxDailyProfit) || 0,
     0
-
   );
 
-
-  /* ============================================================
-     PNL PROGRESS
-  ============================================================ */
+  // ============================================================
+  // PNL PROGRESS
+  // ============================================================
 
   const lossProgress =
-
     maxDailyLoss > 0
-
       ? Math.min(
-
-          Math.abs(
-            Math.min(dailyPnL, 0)
-          ) / maxDailyLoss,
-
+          Math.abs(Math.min(dailyPnL, 0)) /
+            maxDailyLoss,
           1
-
         )
-
       : 0;
-
 
   const profitProgress =
-
     maxDailyProfit > 0
-
       ? Math.min(
-
           Math.max(dailyPnL, 0) /
             maxDailyProfit,
-
           1
-
         )
-
       : 0;
 
-
-  /* ============================================================
-     FORMATTERS
-  ============================================================ */
+  // ============================================================
+  // FORMATTERS
+  // ============================================================
 
   const formatMoney = (value) => {
-
-    return Number(value || 0)
-      .toLocaleString(
-        "en-US",
-        {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }
-      );
-
+    return Number(value || 0).toLocaleString(
+      "en-US",
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }
+    );
   };
-
 
   const formatCompactMoney = (value) => {
-
-    const number =
-      Number(value || 0);
-
+    const number = Number(value || 0);
 
     if (number >= 1000000) {
-
-      return `$${(
-        number / 1000000
-      ).toFixed(1)}M`;
-
+      return `$${(number / 1000000).toFixed(1)}M`;
     }
-
 
     if (number >= 1000) {
-
-      return `$${(
-        number / 1000
-      ).toFixed(1)}K`;
-
+      return `$${(number / 1000).toFixed(1)}K`;
     }
-
 
     return `$${formatMoney(number)}`;
-
   };
-
 
   const formatPnL = (value) => {
-
-    const number =
-      Number(value || 0);
-
+    const number = Number(value || 0);
 
     if (number > 0) {
-
       return `+$${formatMoney(number)}`;
-
     }
-
 
     if (number < 0) {
-
-      return `-$${formatMoney(
-        Math.abs(number)
-      )}`;
-
+      return `-$${formatMoney(Math.abs(number))}`;
     }
-
 
     return "$0.00";
-
   };
 
+  // ============================================================
+  // TRADING WINDOW
+  // ============================================================
 
- // ============================================================
-// TRADING WINDOW
-// ============================================================
+  const isTradingWindowOpen = () => {
+    if (!guardrails.enabled) {
+      return true;
+    }
 
-const isTradingWindowOpen = () => {
-  if (!guardrails.enabled) {
-    return true;
-  }
+    const now = new Date();
 
-  const now = new Date();
+    const currentMinutes =
+      now.getHours() * 60 +
+      now.getMinutes();
 
-  // Use user's local time (IST on this machine)
-  const currentMinutes =
-    now.getHours() * 60 +
-    now.getMinutes();
+    const [startHour, startMinute] = (
+      guardrails.tradingWindowStart || "07:30"
+    )
+      .split(":")
+      .map(Number);
 
-  const [
-    startHour,
-    startMinute,
-  ] = (
-    guardrails.tradingWindowStart ||
-    "07:30"
-  )
-    .split(":")
-    .map(Number);
+    const [endHour, endMinute] = (
+      guardrails.tradingWindowEnd || "20:30"
+    )
+      .split(":")
+      .map(Number);
 
-  const [
-    endHour,
-    endMinute,
-  ] = (
-    guardrails.tradingWindowEnd ||
-    "20:30"
-  )
-    .split(":")
-    .map(Number);
+    const startMinutes =
+      startHour * 60 + startMinute;
 
-  const startMinutes =
-    startHour * 60 +
-    startMinute;
+    const endMinutes =
+      endHour * 60 + endMinute;
 
-  const endMinutes =
-    endHour * 60 +
-    endMinute;
+    if (startMinutes <= endMinutes) {
+      return (
+        currentMinutes >= startMinutes &&
+        currentMinutes <= endMinutes
+      );
+    }
 
-  // ==========================================================
-  // NORMAL WINDOW
-  // ==========================================================
-
-  if (startMinutes <= endMinutes) {
     return (
-      currentMinutes >= startMinutes &&
+      currentMinutes >= startMinutes ||
       currentMinutes <= endMinutes
     );
-  }
+  };
 
-  // ==========================================================
-  // OVERNIGHT WINDOW
-  // ==========================================================
+  const tradingWindowOpen =
+    isTradingWindowOpen();
 
-  return (
-    currentMinutes >= startMinutes ||
-    currentMinutes <= endMinutes
-  );
-};
-
-const tradingWindowOpen =
-  isTradingWindowOpen();
-
-  /* ============================================================
-     RULE VIOLATION
-  ============================================================ */
+  // ============================================================
+  // RULE VIOLATION
+  // ============================================================
 
   const ruleViolation = useMemo(() => {
-
     if (!guardrails.enabled) {
-
       return null;
-
     }
 
-
     if (
-
       maxTrades > 0 &&
-
       tradeCount >= maxTrades
-
     ) {
-
       return `Daily trade limit reached (${tradeCount}/${maxTrades}).`;
-
     }
 
-
     if (
-
       maxDailyLoss > 0 &&
-
       dailyPnL <= -maxDailyLoss
-
     ) {
-
       return `Maximum daily loss reached (${formatPnL(
         dailyPnL
       )}).`;
-
     }
 
-
     if (
-
       maxDailyProfit > 0 &&
-
       dailyPnL >= maxDailyProfit
-
     ) {
-
       return `Daily profit target reached (${formatPnL(
         dailyPnL
       )}).`;
-
     }
-
 
     if (!tradingWindowOpen) {
-
       return "Trading window is currently closed.";
-
     }
 
-
     return null;
-
   }, [
-
     guardrails.enabled,
-
     maxTrades,
-
     tradeCount,
-
     maxDailyLoss,
-
     maxDailyProfit,
-
     dailyPnL,
-
     tradingWindowOpen,
-
   ]);
 
-
   const tradingStart =
-    guardrails.tradingWindowStart ||
-    "10:30";
-
+    guardrails.tradingWindowStart || "10:30";
 
   const tradingEnd =
-    guardrails.tradingWindowEnd ||
-    "13:30";
+    guardrails.tradingWindowEnd || "13:30";
 
-const formatTradingTime = (time) => {
-  if (!time) return "-";
+  const formatTradingTime = (time) => {
+    if (!time) return "-";
 
-  const [hour, minute] = time
-    .split(":")
-    .map(Number);
+    const [hour, minute] = time
+      .split(":")
+      .map(Number);
 
-  if (
-    !Number.isFinite(hour) ||
-    !Number.isFinite(minute)
-  ) {
-    return time;
-  }
+    if (
+      !Number.isFinite(hour) ||
+      !Number.isFinite(minute)
+    ) {
+      return time;
+    }
 
-  const period =
-    hour >= 12 ? "PM" : "AM";
+    const period = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour % 12 || 12;
 
-  const displayHour =
-    hour % 12 || 12;
+    return `${displayHour}:${String(
+      minute
+    ).padStart(2, "0")} ${period}`;
+  };
 
-  return `${displayHour}:${String(minute).padStart(2, "0")} ${period}`;
-};
-
-  /* ============================================================
-     WATCHLIST FUNCTIONS
-  ============================================================ */
+  // ============================================================
+  // WATCHLIST FUNCTIONS
+  // ============================================================
 
   const addToWatchlist = () => {
-
-    const symbol =
-      newSymbol
-        .trim()
-        .toUpperCase();
-
+    const symbol = newSymbol
+      .trim()
+      .toUpperCase();
 
     if (!symbol) return;
 
-
-    const alreadyExists =
-      watchlist.some(
-
-        (item) =>
-          item.symbol === symbol
-
-      );
-
+    const alreadyExists = watchlist.some(
+      (item) => item.symbol === symbol
+    );
 
     if (alreadyExists) {
-
       setNewSymbol("");
       setShowWatchlistInput(false);
-
       return;
-
     }
 
-
     const item = {
-
       id: Date.now(),
-
       symbol,
-
-      createdAt:
-        new Date().toISOString(),
-
+      createdAt: new Date().toISOString(),
     };
 
-
     setWatchlist((previous) => [
-
       ...previous,
-
       item,
-
     ]);
 
-
     setNewSymbol("");
-
     setShowWatchlistInput(false);
-
   };
 
-
   const removeFromWatchlist = (id) => {
-
     setWatchlist((previous) =>
-
       previous.filter(
         (item) => item.id !== id
       )
-
     );
-
   };
 
-
-  const selectWatchlistSymbol = (
-    symbol
-  ) => {
-
+  const selectWatchlistSymbol = (symbol) => {
     localStorage.setItem(
       "selectedSymbol",
       symbol
     );
 
-
     window.dispatchEvent(
-
       new CustomEvent(
         "selectedSymbolUpdated",
         {
-          detail: {
-            symbol,
-          },
+          detail: { symbol },
         }
       )
-
     );
-
   };
 
-
-  /* ============================================================
-     ALERT FUNCTIONS
-  ============================================================ */
+  // ============================================================
+  // ALERT FUNCTIONS
+  // ============================================================
 
   const addAlert = () => {
+    const symbol = alertSymbol
+      .trim()
+      .toUpperCase();
 
-    const symbol =
-      alertSymbol
-        .trim()
-        .toUpperCase();
-
-
-    const price =
-      Number(alertPrice);
-
+    const price = Number(alertPrice);
 
     if (!symbol || !price) {
-
       return;
-
     }
 
-
     const alert = {
-
       id: Date.now(),
-
       symbol,
-
-      condition:
-        alertCondition,
-
+      condition: alertCondition,
       price,
-
       active: true,
-
-      createdAt:
-        new Date().toISOString(),
-
+      createdAt: new Date().toISOString(),
     };
 
-
     setAlerts((previous) => [
-
       ...previous,
-
       alert,
-
     ]);
 
-
     setAlertPrice("");
-
     setShowAlertForm(false);
-
   };
-
 
   const removeAlert = (id) => {
-
     setAlerts((previous) =>
-
       previous.filter(
-        (alert) =>
-          alert.id !== id
+        (alert) => alert.id !== id
       )
-
     );
-
   };
 
-
-  /* ============================================================
-     TRADE PLAN FUNCTIONS
-  ============================================================ */
+  // ============================================================
+  // TRADE PLAN FUNCTIONS
+  // ============================================================
 
   const getChecklistItems = (value) => {
-
     if (!value) return [];
 
-
     if (Array.isArray(value)) {
-
       return value
-
         .map((item) => {
-
-          if (
-            typeof item === "string"
-          ) {
+          if (typeof item === "string") {
             return item;
           }
 
-
-          if (
-            typeof item === "object"
-          ) {
-
+          if (typeof item === "object") {
             return (
-
               item.text ??
               item.title ??
               item.name ??
               item.description ??
               ""
-
             );
-
           }
 
-
           return "";
-
         })
-
         .filter(Boolean);
-
     }
 
-
-    if (
-      typeof value === "string"
-    ) {
-
+    if (typeof value === "string") {
       return value
-
         .split("\n")
-
         .map((item) =>
-
           item
             .replace(/^[-•*]\s*/, "")
             .trim()
-
         )
-
         .filter(Boolean);
-
     }
-
 
     return [];
-
   };
-
 
   const toggleChecklistItem = (key) => {
-
     setCheckedItems((previous) => ({
-
       ...previous,
-
-      [key]:
-        !previous[key],
-
+      [key]: !previous[key],
     }));
-
   };
 
-
-  /* ============================================================
-     TRADE PLAN SECTION
-  ============================================================ */
+  // ============================================================
+  // TRADE PLAN SECTION
+  // ============================================================
 
   const TradePlanSection = ({
-
     title,
-
     items,
-
     sectionKey,
-
   }) => {
-
     if (!items.length) {
-
       return null;
-
     }
 
-
     return (
-
       <div
         className="
           rounded-xl
           border
           border-gray-200
+          dark:border-gray-700
           bg-gray-50
+          dark:bg-gray-800/70
           p-3
         "
       >
-
         <p
           className="
             text-[11px]
             font-semibold
             text-gray-800
+            dark:text-gray-100
             mb-3
           "
         >
           {title}
         </p>
 
-
         <div className="space-y-2">
+          {items.map((item, index) => {
+            const key = `${sectionKey}-${index}`;
 
-          {items.map(
-            (item, index) => {
-
-              const key =
-                `${sectionKey}-${index}`;
-
-
-              return (
-
-                <label
-                  key={key}
+            return (
+              <label
+                key={key}
+                className="
+                  flex
+                  items-start
+                  gap-2
+                  cursor-pointer
+                "
+              >
+                <input
+                  type="checkbox"
+                  checked={!!checkedItems[key]}
+                  onChange={() =>
+                    toggleChecklistItem(key)
+                  }
                   className="
-                    flex
-                    items-start
-                    gap-2
-                    cursor-pointer
+                    mt-[2px]
+                    accent-violet-600
                   "
+                />
+
+                <span
+                  className={`
+                    text-[11px]
+                    leading-relaxed
+                    ${
+                      checkedItems[key]
+                        ? "text-gray-400 dark:text-gray-500 line-through"
+                        : "text-gray-700 dark:text-gray-300"
+                    }
+                  `}
                 >
-
-                  <input
-
-                    type="checkbox"
-
-                    checked={
-                      !!checkedItems[key]
-                    }
-
-                    onChange={() =>
-                      toggleChecklistItem(key)
-                    }
-
-                    className="
-                      mt-[2px]
-                      accent-violet-600
-                    "
-
-                  />
-
-
-                  <span
-                    className={`
-                      text-[11px]
-                      leading-relaxed
-                      ${
-                        checkedItems[key]
-
-                          ? "text-gray-400 line-through"
-
-                          : "text-gray-700"
-                      }
-                    `}
-                  >
-
-                    {item}
-
-                  </span>
-
-                </label>
-
-              );
-
-            }
-          )}
-
+                  {item}
+                </span>
+              </label>
+            );
+          })}
         </div>
-
       </div>
-
     );
-
   };
 
-
-  /* ============================================================
-     UI
-  ============================================================ */
+  // ============================================================
+  // UI
+  // ============================================================
 
   return (
-
     <div
       className="
         w-full
@@ -1220,10 +837,10 @@ const formatTradingTime = (time) => {
         flex
         flex-col
         gap-2
+        text-gray-900
+        dark:text-gray-100
       "
     >
-
-
       {/* ======================================================
           GUARDRAILS
       ====================================================== */}
@@ -1234,15 +851,16 @@ const formatTradingTime = (time) => {
           w-full
           rounded-2xl
           border
-          border-violet-100
-          bg-[#faf9ff]
+          border-violet-200
+          dark:border-violet-900/70
+          bg-violet-50/70
+          dark:bg-gray-900
           shadow-[0_2px_12px_rgba(0,0,0,0.05)]
+          dark:shadow-[0_2px_12px_rgba(0,0,0,0.25)]
           overflow-hidden
         "
       >
-
         <div className="px-4 py-4">
-
 
           {/* HEADER */}
 
@@ -1253,7 +871,6 @@ const formatTradingTime = (time) => {
               justify-between
             "
           >
-
             <div
               className="
                 flex
@@ -1262,84 +879,69 @@ const formatTradingTime = (time) => {
                 min-w-0
               "
             >
-
               <h3
                 className="
                   text-[13px]
                   font-semibold
                   text-gray-900
+                  dark:text-gray-100
                 "
               >
                 Trades Today
               </h3>
-
 
               <span
                 className="
                   text-[12px]
                   font-semibold
                   text-violet-600
+                  dark:text-violet-400
                 "
               >
                 {tradeCount}/{maxTrades}
               </span>
 
-
               <div className="flex gap-2">
-
                 {Array.from({
-
-                  length:
-                    Math.min(maxTrades, 8),
-
+                  length: Math.min(
+                    maxTrades,
+                    8
+                  ),
                 }).map((_, index) => (
-
                   <span
-
                     key={index}
-
                     className={`
                       w-[7px]
                       h-[7px]
                       rounded-full
                       ${
                         index < tradeCount
-
                           ? "bg-violet-500"
-
-                          : "bg-gray-200"
+                          : "bg-gray-200 dark:bg-gray-700"
                       }
                     `}
-
                   />
-
                 ))}
-
               </div>
-
 
               <span
                 className="
                   text-[10px]
                   text-gray-500
+                  dark:text-gray-400
                 "
               >
                 Daily limit
               </span>
-
             </div>
 
-
             <button
-
               type="button"
-
               onClick={() =>
                 setIsGuardrailsOpen(
                   !isGuardrailsOpen
                 )
               }
-
               className="
                 w-7
                 h-7
@@ -1348,38 +950,28 @@ const formatTradingTime = (time) => {
                 items-center
                 justify-center
                 text-gray-400
-                hover:bg-gray-100
+                dark:text-gray-500
+                hover:bg-violet-100
+                dark:hover:bg-gray-800
                 transition
               "
-
             >
-
               {isGuardrailsOpen ? (
-
                 <ChevronUp size={15} />
-
               ) : (
-
                 <ChevronDown size={15} />
-
               )}
-
             </button>
-
           </div>
-
 
           {/* CONTENT */}
 
           {isGuardrailsOpen && (
-
             <>
-
 
               {/* TRADING WINDOW */}
 
               <div className="mt-4">
-
                 <div
                   className="
                     flex
@@ -1387,7 +979,6 @@ const formatTradingTime = (time) => {
                     justify-between
                   "
                 >
-
                   <span
                     className="
                       text-[11px]
@@ -1395,11 +986,11 @@ const formatTradingTime = (time) => {
                       tracking-wide
                       font-medium
                       text-gray-800
+                      dark:text-gray-300
                     "
                   >
                     Trading Window
                   </span>
-
 
                   <span
                     className={`
@@ -1411,22 +1002,16 @@ const formatTradingTime = (time) => {
                       font-medium
                       ${
                         tradingWindowOpen
-
-                          ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-
-                          : "bg-red-50 border-red-100 text-red-600"
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-600 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-400"
+                          : "bg-red-50 border-red-200 text-red-600 dark:bg-red-950/40 dark:border-red-900 dark:text-red-400"
                       }
                     `}
                   >
-
                     {tradingWindowOpen
                       ? "Open"
                       : "Closed"}
-
                   </span>
-
                 </div>
-
 
                 <p
                   className="
@@ -1434,18 +1019,23 @@ const formatTradingTime = (time) => {
                     text-[12px]
                     font-medium
                     text-gray-900
+                    dark:text-gray-100
                   "
                 >
-                 {formatTradingTime(tradingStart)} - {formatTradingTime(tradingEnd)} IST
+                  {formatTradingTime(
+                    tradingStart
+                  )}{" "}
+                  -{" "}
+                  {formatTradingTime(
+                    tradingEnd
+                  )}{" "}
+                  IST
                 </p>
-
               </div>
-
 
               {/* PNL */}
 
               <div className="mt-5">
-
                 <div
                   className="
                     flex
@@ -1453,7 +1043,6 @@ const formatTradingTime = (time) => {
                     justify-between
                   "
                 >
-
                   <p
                     className="
                       text-[11px]
@@ -1461,11 +1050,11 @@ const formatTradingTime = (time) => {
                       tracking-wide
                       font-medium
                       text-gray-800
+                      dark:text-gray-300
                     "
                   >
                     Today's Net P&L
                   </p>
-
 
                   <p
                     className={`
@@ -1473,38 +1062,30 @@ const formatTradingTime = (time) => {
                       font-semibold
                       ${
                         dailyPnL < 0
-
-                          ? "text-red-500"
-
+                          ? "text-red-500 dark:text-red-400"
                           : dailyPnL > 0
-
-                          ? "text-emerald-500"
-
-                          : "text-gray-900"
+                          ? "text-emerald-500 dark:text-emerald-400"
+                          : "text-gray-900 dark:text-gray-100"
                       }
                     `}
                   >
                     {formatPnL(dailyPnL)}
                   </p>
-
                 </div>
 
-
                 <div className="mt-1">
-
                   <div
                     className="
                       relative
                       w-full
                       h-[8px]
                       rounded-full
-                      bg-gray-100
+                      bg-gray-200
+                      dark:bg-gray-700
                       overflow-visible
                     "
                   >
-
                     {dailyPnL < 0 && (
-
                       <div
                         className="
                           absolute
@@ -1512,21 +1093,16 @@ const formatTradingTime = (time) => {
                           top-0
                           h-full
                           bg-red-400
+                          dark:bg-red-500
                           rounded-l-full
                         "
                         style={{
-
-                          width:
-                            `${lossProgress * 50}%`,
-
+                          width: `${lossProgress * 50}%`,
                         }}
                       />
-
                     )}
 
-
                     {dailyPnL > 0 && (
-
                       <div
                         className="
                           absolute
@@ -1534,18 +1110,14 @@ const formatTradingTime = (time) => {
                           top-0
                           h-full
                           bg-emerald-400
+                          dark:bg-emerald-500
                           rounded-r-full
                         "
                         style={{
-
-                          width:
-                            `${profitProgress * 50}%`,
-
+                          width: `${profitProgress * 50}%`,
                         }}
                       />
-
                     )}
-
 
                     <div
                       className="
@@ -1557,11 +1129,10 @@ const formatTradingTime = (time) => {
                         w-[2px]
                         h-[13px]
                         bg-gray-400
+                        dark:bg-gray-500
                       "
                     />
-
                   </div>
-
 
                   <div
                     className="
@@ -1571,36 +1142,25 @@ const formatTradingTime = (time) => {
                       text-[9px]
                     "
                   >
-
-                    <span className="text-gray-500">
-
+                    <span className="text-gray-500 dark:text-gray-400">
                       -{formatCompactMoney(
                         maxDailyLoss
                       )}
-
                     </span>
 
-
-                    <span className="text-gray-400">
+                    <span className="text-gray-400 dark:text-gray-500">
                       $0
                     </span>
 
-
-                    <span className="text-gray-500">
-
+                    <span className="text-gray-500 dark:text-gray-400">
                       +
                       {formatCompactMoney(
                         maxDailyProfit
                       )}
-
                     </span>
-
                   </div>
-
                 </div>
-
               </div>
-
 
               {/* LIMITS */}
 
@@ -1612,9 +1172,7 @@ const formatTradingTime = (time) => {
                   mt-5
                 "
               >
-
                 <div>
-
                   <p
                     className="
                       text-[11px]
@@ -1622,11 +1180,11 @@ const formatTradingTime = (time) => {
                       tracking-wide
                       font-medium
                       text-gray-800
+                      dark:text-gray-300
                     "
                   >
                     Max Loss
                   </p>
-
 
                   <p
                     className="
@@ -1634,18 +1192,16 @@ const formatTradingTime = (time) => {
                       text-[12px]
                       font-semibold
                       text-gray-900
+                      dark:text-gray-100
                     "
                   >
                     {formatCompactMoney(
                       maxDailyLoss
                     )}
                   </p>
-
                 </div>
 
-
                 <div>
-
                   <p
                     className="
                       text-[11px]
@@ -1653,11 +1209,11 @@ const formatTradingTime = (time) => {
                       tracking-wide
                       font-medium
                       text-gray-800
+                      dark:text-gray-300
                     "
                   >
                     Daily Target
                   </p>
-
 
                   <p
                     className="
@@ -1665,17 +1221,15 @@ const formatTradingTime = (time) => {
                       text-[12px]
                       font-semibold
                       text-gray-900
+                      dark:text-gray-100
                     "
                   >
                     {formatCompactMoney(
                       maxDailyProfit
                     )}
                   </p>
-
                 </div>
-
               </div>
-
 
               {/* RULE STATUS */}
 
@@ -1691,22 +1245,18 @@ const formatTradingTime = (time) => {
                   py-2.5
                   ${
                     ruleViolation
-
-                      ? "bg-red-50 border-red-100"
-
-                      : "bg-emerald-50 border-emerald-100"
+                      ? "bg-red-50 border-red-200 dark:bg-red-950/40 dark:border-red-900"
+                      : "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-900"
                   }
                 `}
               >
-
                 {ruleViolation ? (
-
                   <>
-
                     <AlertTriangle
                       size={14}
                       className="
                         text-red-500
+                        dark:text-red-400
                         shrink-0
                       "
                     />
@@ -1716,21 +1266,19 @@ const formatTradingTime = (time) => {
                         text-[11px]
                         font-medium
                         text-red-600
+                        dark:text-red-400
                       "
                     >
                       {ruleViolation}
                     </span>
-
                   </>
-
                 ) : (
-
                   <>
-
                     <CircleCheck
                       size={14}
                       className="
                         text-emerald-500
+                        dark:text-emerald-400
                         shrink-0
                       "
                     />
@@ -1740,47 +1288,42 @@ const formatTradingTime = (time) => {
                         text-[11px]
                         font-medium
                         text-emerald-600
+                        dark:text-emerald-400
                       "
                     >
                       No rule violations today
                     </span>
-
                   </>
-
                 )}
-
               </div>
-
             </>
-
           )}
-
         </div>
-
       </div>
-
 
       {/* ======================================================
           BOTTOM PANEL
       ====================================================== */}
 
-<div
-  className="
-    flex-1
-    min-h-0
-    h-full
-    w-full
-    rounded-2xl
-    border
-    border-gray-200
-    bg-white
-    shadow-[0_2px_12px_rgba(0,0,0,0.05)]
-    overflow-hidden
-    flex
-    flex-col
-  "
->
-
+      <div
+        className="
+          flex-1
+          min-h-0
+          h-full
+          w-full
+          rounded-2xl
+          border
+          border-gray-200
+          dark:border-gray-700
+          bg-gray-50
+          dark:bg-gray-900
+          shadow-[0_2px_12px_rgba(0,0,0,0.05)]
+          dark:shadow-[0_2px_12px_rgba(0,0,0,0.25)]
+          overflow-hidden
+          flex
+          flex-col
+        "
+      >
 
         {/* TABS */}
 
@@ -1791,20 +1334,17 @@ const formatTradingTime = (time) => {
             grid-cols-3
             border-b
             border-gray-200
+            dark:border-gray-700
           "
         >
-
 
           {/* WATCHLIST TAB */}
 
           <button
-
             type="button"
-
             onClick={() =>
               setActiveTab("watchlist")
             }
-
             className={`
               relative
               h-12
@@ -1816,22 +1356,15 @@ const formatTradingTime = (time) => {
               font-medium
               ${
                 activeTab === "watchlist"
-
-                  ? "text-violet-600"
-
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "text-violet-600 dark:text-violet-400"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               }
             `}
-
           >
-
             <List size={15} />
-
             Watchlist
 
-
             {activeTab === "watchlist" && (
-
               <span
                 className="
                   absolute
@@ -1840,24 +1373,19 @@ const formatTradingTime = (time) => {
                   right-3
                   h-[2px]
                   bg-violet-600
+                  dark:bg-violet-400
                 "
               />
-
             )}
-
           </button>
-
 
           {/* ALERTS TAB */}
 
           <button
-
             type="button"
-
             onClick={() =>
               setActiveTab("alerts")
             }
-
             className={`
               relative
               h-12
@@ -1869,22 +1397,15 @@ const formatTradingTime = (time) => {
               font-medium
               ${
                 activeTab === "alerts"
-
-                  ? "text-violet-600"
-
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "text-violet-600 dark:text-violet-400"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               }
             `}
-
           >
-
             <Bell size={15} />
-
             Alerts
 
-
             {activeTab === "alerts" && (
-
               <span
                 className="
                   absolute
@@ -1893,24 +1414,19 @@ const formatTradingTime = (time) => {
                   right-3
                   h-[2px]
                   bg-violet-600
+                  dark:bg-violet-400
                 "
               />
-
             )}
-
           </button>
-
 
           {/* TRADE PLAN TAB */}
 
           <button
-
             type="button"
-
             onClick={() =>
               setActiveTab("tradeplan")
             }
-
             className={`
               relative
               h-12
@@ -1922,22 +1438,15 @@ const formatTradingTime = (time) => {
               font-medium
               ${
                 activeTab === "tradeplan"
-
-                  ? "text-violet-600"
-
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "text-violet-600 dark:text-violet-400"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               }
             `}
-
           >
-
             <ClipboardList size={15} />
-
             Trade Plan
 
-
             {activeTab === "tradeplan" && (
-
               <span
                 className="
                   absolute
@@ -1946,19 +1455,14 @@ const formatTradingTime = (time) => {
                   right-3
                   h-[2px]
                   bg-violet-600
+                  dark:bg-violet-400
                 "
               />
-
             )}
-
           </button>
-
         </div>
 
-
-        {/* ======================================================
-            TAB CONTENT
-        ====================================================== */}
+        {/* TAB CONTENT */}
 
         <div
           className="
@@ -1969,15 +1473,12 @@ const formatTradingTime = (time) => {
           "
         >
 
-
           {/* ==================================================
               WATCHLIST
           ================================================== */}
 
           {activeTab === "watchlist" && (
-
             <div>
-
               <div
                 className="
                   flex
@@ -1986,28 +1487,24 @@ const formatTradingTime = (time) => {
                   mb-3
                 "
               >
-
                 <h3
                   className="
                     text-[12px]
                     font-semibold
                     text-gray-900
+                    dark:text-gray-100
                   "
                 >
                   Watchlist
                 </h3>
 
-
                 <button
-
                   type="button"
-
                   onClick={() =>
                     setShowWatchlistInput(
                       !showWatchlistInput
                     )
                   }
-
                   className="
                     flex
                     items-center
@@ -2016,58 +1513,33 @@ const formatTradingTime = (time) => {
                     py-1.5
                     rounded-lg
                     bg-violet-50
+                    dark:bg-violet-950/40
                     text-violet-600
+                    dark:text-violet-400
                     text-[10px]
                     font-medium
                   "
-
                 >
-
                   <Plus size={12} />
-
                   Add
-
                 </button>
-
               </div>
 
-
-              {/* ADD SYMBOL */}
-
               {showWatchlistInput && (
-
-                <div
-                  className="
-                    flex
-                    gap-2
-                    mb-3
-                  "
-                >
-
+                <div className="flex gap-2 mb-3">
                   <input
-
                     value={newSymbol}
-
                     onChange={(event) =>
                       setNewSymbol(
                         event.target.value
                       )
                     }
-
                     onKeyDown={(event) => {
-
-                      if (
-                        event.key === "Enter"
-                      ) {
-
+                      if (event.key === "Enter") {
                         addToWatchlist();
-
                       }
-
                     }}
-
                     placeholder="EURUSD"
-
                     className="
                       flex-1
                       px-3
@@ -2075,41 +1547,36 @@ const formatTradingTime = (time) => {
                       rounded-lg
                       border
                       border-gray-200
+                      dark:border-gray-700
+                      bg-gray-50
+                      dark:bg-gray-800
+                      text-gray-900
+                      dark:text-gray-100
+                      placeholder:text-gray-400
                       text-[11px]
                       outline-none
                       focus:border-violet-400
                     "
-
                   />
 
-
                   <button
-
                     type="button"
-
                     onClick={addToWatchlist}
-
                     className="
                       px-3
                       rounded-lg
                       bg-violet-600
+                      hover:bg-violet-700
                       text-white
                       text-[11px]
                     "
-
                   >
                     Add
                   </button>
-
                 </div>
-
               )}
 
-
-              {/* EMPTY */}
-
               {watchlist.length === 0 && (
-
                 <div
                   className="
                     min-h-[115px]
@@ -2117,17 +1584,18 @@ const formatTradingTime = (time) => {
                     border
                     border-dashed
                     border-gray-200
+                    dark:border-gray-700
                     flex
                     flex-col
                     items-center
                     justify-center
                   "
                 >
-
                   <List
                     size={20}
                     className="
                       text-gray-300
+                      dark:text-gray-600
                       mb-2
                     "
                   />
@@ -2136,26 +1604,18 @@ const formatTradingTime = (time) => {
                     className="
                       text-[11px]
                       text-gray-500
+                      dark:text-gray-400
                     "
                   >
                     No instruments in your watchlist
                   </p>
-
                 </div>
-
               )}
 
-
-              {/* WATCHLIST ITEMS */}
-
               <div className="space-y-2">
-
                 {watchlist.map((item) => (
-
                   <div
-
                     key={item.id}
-
                     className="
                       flex
                       items-center
@@ -2164,77 +1624,62 @@ const formatTradingTime = (time) => {
                       py-2.5
                       rounded-xl
                       border
-                      border-gray-100
-                      hover:border-violet-200
+                      border-gray-200
+                      dark:border-gray-700
+                      bg-gray-50/50
+                      dark:bg-gray-800/50
+                      hover:border-violet-300
+                      dark:hover:border-violet-700
                       transition
                     "
-
                   >
-
                     <button
-
                       type="button"
-
                       onClick={() =>
                         selectWatchlistSymbol(
                           item.symbol
                         )
                       }
-
                       className="
                         text-[12px]
                         font-semibold
                         text-gray-800
+                        dark:text-gray-200
                         hover:text-violet-600
+                        dark:hover:text-violet-400
                       "
-
                     >
-
                       {item.symbol}
-
                     </button>
 
-
                     <button
-
                       type="button"
-
                       onClick={() =>
                         removeFromWatchlist(
                           item.id
                         )
                       }
-
                       className="
                         text-gray-400
+                        dark:text-gray-500
                         hover:text-red-500
+                        dark:hover:text-red-400
                       "
-
                     >
-
                       <Trash2 size={14} />
-
                     </button>
-
                   </div>
-
                 ))}
-
               </div>
-
             </div>
-
           )}
-
 
           {/* ==================================================
               ALERTS
           ================================================== */}
 
           {activeTab === "alerts" && (
-
             <div>
-
               <div
                 className="
                   flex
@@ -2243,28 +1688,24 @@ const formatTradingTime = (time) => {
                   mb-3
                 "
               >
-
                 <h3
                   className="
                     text-[12px]
                     font-semibold
                     text-gray-900
+                    dark:text-gray-100
                   "
                 >
                   Alerts
                 </h3>
 
-
                 <button
-
                   type="button"
-
                   onClick={() =>
                     setShowAlertForm(
                       !showAlertForm
                     )
                   }
-
                   className="
                     flex
                     items-center
@@ -2273,50 +1714,40 @@ const formatTradingTime = (time) => {
                     py-1.5
                     rounded-lg
                     bg-violet-50
+                    dark:bg-violet-950/40
                     text-violet-600
+                    dark:text-violet-400
                     text-[10px]
                     font-medium
                   "
-
                 >
-
                   <Plus size={12} />
-
                   Add
-
                 </button>
-
               </div>
 
-
-              {/* ALERT FORM */}
-
               {showAlertForm && (
-
                 <div
                   className="
                     mb-4
                     p-3
                     rounded-xl
-                    bg-gray-50
+                    bg-gray-100
+                    dark:bg-gray-800
                     border
                     border-gray-200
+                    dark:border-gray-700
                     space-y-2
                   "
                 >
-
                   <input
-
                     value={alertSymbol}
-
                     onChange={(event) =>
                       setAlertSymbol(
                         event.target.value
                       )
                     }
-
                     placeholder="Symbol"
-
                     className="
                       w-full
                       px-3
@@ -2324,24 +1755,24 @@ const formatTradingTime = (time) => {
                       rounded-lg
                       border
                       border-gray-200
+                      dark:border-gray-700
+                      bg-gray-50
+                      dark:bg-gray-900
+                      text-gray-900
+                      dark:text-gray-100
+                      placeholder:text-gray-400
                       text-[11px]
                     "
-
                   />
 
-
                   <div className="flex gap-2">
-
                     <select
-
                       value={alertCondition}
-
                       onChange={(event) =>
                         setAlertCondition(
                           event.target.value
                         )
                       }
-
                       className="
                         flex-1
                         px-2
@@ -2349,11 +1780,14 @@ const formatTradingTime = (time) => {
                         rounded-lg
                         border
                         border-gray-200
+                        dark:border-gray-700
+                        bg-gray-50
+                        dark:bg-gray-900
+                        text-gray-900
+                        dark:text-gray-100
                         text-[11px]
                       "
-
                     >
-
                       <option value="above">
                         Above
                       </option>
@@ -2361,24 +1795,17 @@ const formatTradingTime = (time) => {
                       <option value="below">
                         Below
                       </option>
-
                     </select>
 
-
                     <input
-
                       type="number"
-
                       value={alertPrice}
-
                       onChange={(event) =>
                         setAlertPrice(
                           event.target.value
                         )
                       }
-
                       placeholder="Price"
-
                       className="
                         flex-1
                         px-3
@@ -2386,43 +1813,37 @@ const formatTradingTime = (time) => {
                         rounded-lg
                         border
                         border-gray-200
+                        dark:border-gray-700
+                        bg-gray-50
+                        dark:bg-gray-900
+                        text-gray-900
+                        dark:text-gray-100
+                        placeholder:text-gray-400
                         text-[11px]
                       "
-
                     />
-
                   </div>
 
-
                   <button
-
                     type="button"
-
                     onClick={addAlert}
-
                     className="
                       w-full
                       py-2
                       rounded-lg
                       bg-violet-600
+                      hover:bg-violet-700
                       text-white
                       text-[11px]
                       font-medium
                     "
-
                   >
                     Create Alert
                   </button>
-
                 </div>
-
               )}
 
-
-              {/* EMPTY */}
-
               {alerts.length === 0 && (
-
                 <div
                   className="
                     min-h-[115px]
@@ -2430,17 +1851,18 @@ const formatTradingTime = (time) => {
                     border
                     border-dashed
                     border-gray-200
+                    dark:border-gray-700
                     flex
                     flex-col
                     items-center
                     justify-center
                   "
                 >
-
                   <Bell
                     size={20}
                     className="
                       text-gray-300
+                      dark:text-gray-600
                       mb-2
                     "
                   />
@@ -2449,26 +1871,18 @@ const formatTradingTime = (time) => {
                     className="
                       text-[11px]
                       text-gray-500
+                      dark:text-gray-400
                     "
                   >
                     No active alerts
                   </p>
-
                 </div>
-
               )}
 
-
-              {/* ALERT LIST */}
-
               <div className="space-y-2">
-
                 {alerts.map((alert) => (
-
                   <div
-
                     key={alert.id}
-
                     className="
                       flex
                       items-center
@@ -2476,120 +1890,112 @@ const formatTradingTime = (time) => {
                       p-3
                       rounded-xl
                       border
-                      border-gray-100
+                      border-gray-200
+                      dark:border-gray-700
+                      bg-gray-50/50
+                      dark:bg-gray-800/50
                     "
-
                   >
-
                     <div>
-
                       <p
                         className="
                           text-[12px]
                           font-semibold
                           text-gray-800
+                          dark:text-gray-200
                         "
                       >
                         {alert.symbol}
                       </p>
-
 
                       <p
                         className="
                           mt-1
                           text-[10px]
                           text-gray-500
+                          dark:text-gray-400
                         "
                       >
-                        {alertCondition === "above"
-                          ? "Above"
-                          : alert.condition === "above"
+                        {alert.condition === "above"
                           ? "Above"
                           : "Below"}{" "}
                         {alert.price}
-
                       </p>
-
                     </div>
 
-
                     <button
-
                       type="button"
-
                       onClick={() =>
                         removeAlert(alert.id)
                       }
-
                       className="
                         text-gray-400
+                        dark:text-gray-500
                         hover:text-red-500
+                        dark:hover:text-red-400
                       "
-
                     >
-
                       <Trash2 size={14} />
-
                     </button>
-
                   </div>
-
                 ))}
-
               </div>
-
             </div>
-
           )}
-
 
           {/* ==================================================
               TRADE PLAN
           ================================================== */}
 
           {activeTab === "tradeplan" && (
-
             <div>
-
               <div className="mb-0">
-
                 <h3
                   className="
                     text-[12px]
                     font-semibold
                     text-gray-900
+                    dark:text-gray-100
                   "
                 >
                   Trade Plan
                 </h3>
 
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <p
+                    className="
+                      text-[10px]
+                      text-violet-600
+                      dark:text-violet-400
+                      font-medium
+                    "
+                  >
+                    {selectedEdgePlan?.name ||
+                      selectedEdgePlan?.title}
+                  </p>
 
-<div className="mt-1 flex items-center justify-between gap-2">
-  <p className="text-[10px] text-violet-600 font-medium">
-    {selectedEdgePlan?.name || selectedEdgePlan?.title}
-  </p>
-
-  <button
-    type="button"
-    onClick={() => {
-      window.location.href = "/edge";
-    }}
-    className="
-      text-[10px]
-      font-semibold
-      text-gray-500
-      hover:text-violet-600
-      transition
-    "
-  >
-    Change Plan
-  </button>
-</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href =
+                        "/edge";
+                    }}
+                    className="
+                      text-[10px]
+                      font-semibold
+                      text-gray-500
+                      dark:text-gray-400
+                      hover:text-violet-600
+                      dark:hover:text-violet-400
+                      transition
+                    "
+                  >
+                    Change Plan
+                  </button>
+                </div>
               </div>
 
-
               {!selectedEdgePlan ? (
-
                 <div
                   className="
                     min-h-[115px]
@@ -2597,6 +2003,7 @@ const formatTradingTime = (time) => {
                     border
                     border-dashed
                     border-gray-200
+                    dark:border-gray-700
                     flex
                     flex-col
                     items-center
@@ -2604,11 +2011,11 @@ const formatTradingTime = (time) => {
                     text-center
                   "
                 >
-
                   <ClipboardList
                     size={20}
                     className="
                       text-gray-300
+                      dark:text-gray-600
                       mb-2
                     "
                   />
@@ -2617,75 +2024,43 @@ const formatTradingTime = (time) => {
                     className="
                       text-[11px]
                       text-gray-500
+                      dark:text-gray-400
                     "
                   >
                     Select a plan from Edge
                   </p>
-
                 </div>
-
               ) : (
-
                 <div className="space-y-1">
-
                   <TradePlanSection
-
                     title="Charting Process"
-
-                    items={
-                      getChecklistItems(
-                        selectedEdgePlan.chartingProcess
-                      )
-                    }
-
+                    items={getChecklistItems(
+                      selectedEdgePlan.chartingProcess
+                    )}
                     sectionKey="charting"
-
                   />
 
-
                   <TradePlanSection
-
                     title="Entry Criteria"
-
-                    items={
-                      getChecklistItems(
-                        selectedEdgePlan.entryCriteria
-                      )
-                    }
-
+                    items={getChecklistItems(
+                      selectedEdgePlan.entryCriteria
+                    )}
                     sectionKey="entry"
-
                   />
-
 
                   <TradePlanSection
-
                     title="Exit Criteria"
-
-                    items={
-                      getChecklistItems(
-                        selectedEdgePlan.exitCriteria
-                      )
-                    }
-
+                    items={getChecklistItems(
+                      selectedEdgePlan.exitCriteria
+                    )}
                     sectionKey="exit"
-
                   />
-
                 </div>
-
               )}
-
             </div>
-
           )}
-
         </div>
-
       </div>
-
     </div>
-
   );
-
 }

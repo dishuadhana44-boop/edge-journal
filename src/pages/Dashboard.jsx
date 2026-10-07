@@ -13,6 +13,10 @@ import {
 
 import { EquityCurveFilterProvider } from "../context/EquityCurveFilterContext";
 
+// ============================================================
+// DASHBOARD CONTENT
+// ============================================================
+
 function DashboardContent() {
   const {
     filteredTrades: accountTrades,
@@ -21,24 +25,70 @@ function DashboardContent() {
 
   useDashboardFilter();
 
+  // ==========================================================
+  // ACCOUNT-SCOPED TRADES
+  // ==========================================================
+
   const filteredTrades = accountTrades;
 
-  const accounts =
-    JSON.parse(localStorage.getItem("tradingAccounts")) || [];
+  // ==========================================================
+  // LOAD TRADING ACCOUNTS
+  // ==========================================================
+
+  let accounts = [];
+
+  try {
+    const savedAccounts =
+      localStorage.getItem("tradingAccounts");
+
+    const parsedAccounts =
+      savedAccounts
+        ? JSON.parse(savedAccounts)
+        : [];
+
+    accounts = Array.isArray(parsedAccounts)
+      ? parsedAccounts
+      : [];
+  } catch (error) {
+    console.error(
+      "❌ Failed to load trading accounts:",
+      error
+    );
+
+    accounts = [];
+  }
+
+  // ==========================================================
+  // CURRENT SELECTED ACCOUNT
+  // ==========================================================
 
   const currentAccount =
     accounts.find(
       (account) =>
-        Number(account.id) === Number(selectedAccountId)
-    ) ||
-    accounts.find((account) => account.isDefault) ||
-    accounts[0];
+        String(
+          account?.id ??
+            account?.accountId
+        ) ===
+        String(selectedAccountId)
+    ) ?? null;
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <div className="w-full min-h-screen bg-gray-50 px-1 py-2">
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
       <div className="mb-1">
         <DashboardHeader />
       </div>
+
+      {/* ======================================================
+          STAT CARDS
+      ====================================================== */}
 
       <div className="mb-1">
         <StatCards
@@ -47,9 +97,15 @@ function DashboardContent() {
         />
       </div>
 
-      {/* TOP SECTION */}
+      {/* ======================================================
+          TOP SECTION
+      ====================================================== */}
+
       <div className="grid grid-cols-12 gap-x-2">
-        {/* EQUITY CURVE */}
+        {/* ====================================================
+            EQUITY CURVE
+        ==================================================== */}
+
         <div className="col-span-12 xl:col-span-8 min-w-0">
           <EquityCurveFilterProvider>
             <EquityCurve
@@ -59,7 +115,10 @@ function DashboardContent() {
           </EquityCurveFilterProvider>
         </div>
 
-        {/* DISCIPLINE */}
+        {/* ====================================================
+            DISCIPLINE
+        ==================================================== */}
+
         <div className="col-span-12 xl:col-span-4 min-w-0">
           <DisciplineCard
             trades={filteredTrades}
@@ -67,7 +126,10 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* RECENT TRADES — SEPARATE FROM TOP GRID */}
+      {/* ======================================================
+          RECENT TRADES
+      ====================================================== */}
+
       <div className="mt-2 w-full">
         <RecentTradesCard
           trades={filteredTrades}
@@ -76,6 +138,10 @@ function DashboardContent() {
     </div>
   );
 }
+
+// ============================================================
+// DASHBOARD
+// ============================================================
 
 export default function Dashboard() {
   return (

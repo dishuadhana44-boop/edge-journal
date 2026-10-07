@@ -6,7 +6,7 @@ import TradeDistributionStats from "./TradeDistributionStats";
 import { useJournal } from "../../../context/JournalContext";
 
 export default function TradeDistributionCard() {
-  const { trades = [] } = useJournal();
+  const { filteredTrades = [] } = useJournal();
 
   // =========================================
   // CALCULATE TRADE DISTRIBUTION
@@ -17,7 +17,7 @@ export default function TradeDistributionCard() {
     let losingTrades = 0;
     let breakevenTrades = 0;
 
-    trades.forEach((trade) => {
+    filteredTrades.forEach((trade) => {
       const pnlValue =
         trade?.pnl ??
         trade?.profitLoss ??
@@ -85,7 +85,7 @@ export default function TradeDistributionCard() {
         scratchRate,
       },
     };
-  }, [trades]);
+  }, [filteredTrades]);
 
   // =========================================
   // UI
@@ -93,9 +93,7 @@ export default function TradeDistributionCard() {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-
       {/* HEADER */}
-
       <div className="px-6 py-4 border-b border-gray-200">
         <h2 className="text-xl font-semibold text-gray-900">
           Trade Distribution
@@ -103,24 +101,18 @@ export default function TradeDistributionCard() {
       </div>
 
       {/* CONTENT */}
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
-
         {/* CHART */}
-
         <TradeDistributionChart
           data={tradeDistribution}
           totalTrades={tradeSummary.totalTrades}
         />
 
         {/* STATS */}
-
         <TradeDistributionStats
           summary={tradeSummary}
         />
-
       </div>
-
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   Sparkles,
   ChartBar,
   Notebook,
+  Wrench,
   Rocket,
   Newspaper,
   Brain,
@@ -347,6 +348,30 @@ function Sidebar({ collapsed, setCollapsed }) {
           >
             <Notebook size={18} />
             {!collapsed && "Notebook"}
+          </div>
+
+                    {/* TOOLS */}
+                    <div
+            onClick={() => navigate("/tools")}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <Wrench size={18} />
+            {!collapsed && "Tools"}
           </div>
 
           {/* EDGE OS */}

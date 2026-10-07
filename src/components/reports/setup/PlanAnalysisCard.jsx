@@ -6,23 +6,23 @@ import PlanSummary from "./PlanSummary";
 import PlanProfitChart from "./PlanProfitChart";
 
 export default function PlanAnalysisCard() {
-  const { trades = [] } = useJournal();
+  const { filteredTrades = [] } = useJournal();
 
   const planData = useMemo(() => {
     const plans = {};
-  
-    trades.forEach((trade) => {
+
+    filteredTrades.forEach((trade) => {
       const planTitle =
         trade?.reflection?.selectedPlanTitle;
-  
+
       const planId =
         trade?.reflection?.selectedPlanId;
-  
+
       if (!planTitle && !planId) return;
-  
+
       const planName =
         planTitle || `Plan ${planId}`;
-  
+
       if (!plans[planName]) {
         plans[planName] = {
           id: planId || planName,
@@ -35,47 +35,56 @@ export default function PlanAnalysisCard() {
           grossLoss: 0,
         };
       }
-  
+
       const item = plans[planName];
-  
-      const pnl = Number(trade?.pnl || 0);
-  
+
+      const pnl = Number(
+        trade?.pnl ??
+          trade?.profitLoss ??
+          trade?.profit ??
+          trade?.netPnL ??
+          trade?.netProfit ??
+          0
+      );
+
+      const safePnL = Number.isFinite(pnl) ? pnl : 0;
+
       const result = String(
-        trade?.result || ""
+        trade?.result ?? ""
       ).toLowerCase();
-  
+
       item.trades += 1;
-  
+
       if (
         result === "win" ||
-        (result !== "loss" && pnl > 0)
+        (result !== "loss" && safePnL > 0)
       ) {
         item.winningTrades += 1;
       }
-  
-      item.netPnL += pnl;
-  
-      if (pnl > 0) {
-        item.grossProfit += pnl;
+
+      item.netPnL += safePnL;
+
+      if (safePnL > 0) {
+        item.grossProfit += safePnL;
       }
-  
-      if (pnl < 0) {
-        item.grossLoss += Math.abs(pnl);
+
+      if (safePnL < 0) {
+        item.grossLoss += Math.abs(safePnL);
       }
-  
+
       const rr = Number(trade?.rr);
-  
+
       if (Number.isFinite(rr)) {
         item.rrValues.push(rr);
       }
     });
-  
+
     return Object.values(plans).map((item) => {
       const winRate =
         item.trades > 0
           ? (item.winningTrades / item.trades) * 100
           : 0;
-  
+
       const averageRR =
         item.rrValues.length > 0
           ? item.rrValues.reduce(
@@ -83,14 +92,14 @@ export default function PlanAnalysisCard() {
               0
             ) / item.rrValues.length
           : 0;
-  
+
       const profitFactor =
         item.grossLoss > 0
           ? item.grossProfit / item.grossLoss
           : item.grossProfit > 0
             ? Infinity
             : 0;
-  
+
       return {
         id: item.id,
         plan: item.plan,
@@ -101,11 +110,10 @@ export default function PlanAnalysisCard() {
         profitFactor,
       };
     });
-  }, [trades]);
+  }, [filteredTrades]);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-
       <div className="px-6 py-4 border-b border-gray-200">
         <h2 className="text-xl font-semibold text-gray-900">
           Plan Analysis
@@ -113,29 +121,16 @@ export default function PlanAnalysisCard() {
       </div>
 
       <div className="grid grid-cols-12 gap-6 p-6">
-
         <div className="col-span-9 space-y-6">
+          <PlanTable data={planData} />
 
-          <PlanTable
-            data={planData}
-          />
-
-          <PlanProfitChart
-            data={planData}
-          />
-
+          <PlanProfitChart data={planData} />
         </div>
 
         <div className="col-span-3">
-
-          <PlanSummary
-            data={planData}
-          />
-
+          <PlanSummary data={planData} />
         </div>
-
       </div>
-
     </div>
   );
 }

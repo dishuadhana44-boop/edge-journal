@@ -1,28 +1,298 @@
 @import "tailwindcss";
+
+/* ==========================================================
+   EDGEFLO — GLOBAL THEME
+   Black + Purple Dark Mode
+========================================================== */
+
+:root {
+  --edge-bg: #ffffff;
+  --edge-surface: #ffffff;
+  --edge-surface-soft: #f8f8f8;
+  --edge-border: #e5e7eb;
+  --edge-text: #111827;
+  --edge-text-muted: #6b7280;
+
+  --edge-purple: #9333ea;
+  --edge-purple-light: #a855f7;
+  --edge-purple-dark: #7e22ce;
+}
+
+/* ==========================================================
+   DARK THEME VARIABLES
+========================================================== */
+
+html.dark {
+  --edge-bg: #050505;
+  --edge-surface: #0b0b0f;
+  --edge-surface-soft: #111116;
+  --edge-border: #25202f;
+  --edge-text: #f5f3ff;
+  --edge-text-muted: #a1a1aa;
+
+  --edge-purple: #9333ea;
+  --edge-purple-light: #a855f7;
+  --edge-purple-dark: #7e22ce;
+}
+
+/* ==========================================================
+   GLOBAL BACKGROUND
+========================================================== */
+
+html {
+  background-color: var(--edge-bg);
+  transition: background-color 0.3s ease;
+}
+
+body {
+  margin: 0;
+  background-color: var(--edge-bg);
+  color: var(--edge-text);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+#root {
+  min-height: 100vh;
+  background-color: var(--edge-bg);
+  color: var(--edge-text);
+}
+
+/* ==========================================================
+   DARK MODE — MAIN SURFACES
+========================================================== */
+
+html.dark .bg-white {
+  background-color: var(--edge-surface) !important;
+}
+
+html.dark .bg-gray-50 {
+  background-color: #0f0f14 !important;
+}
+
+html.dark .bg-gray-100 {
+  background-color: #15151c !important;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #09090d !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #121218 !important;
+}
+
+/* ==========================================================
+   DARK MODE — BORDERS
+========================================================== */
+
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300,
+html.dark .border-slate-100,
+html.dark .border-slate-200 {
+  border-color: var(--edge-border) !important;
+}
+
+/* ==========================================================
+   DARK MODE — TEXT
+========================================================== */
+
+html.dark .text-black {
+  color: #ffffff !important;
+}
+
+html.dark .text-gray-900,
+html.dark .text-slate-900 {
+  color: #f5f3ff !important;
+}
+
+html.dark .text-gray-800,
+html.dark .text-slate-800 {
+  color: #e9e7ef !important;
+}
+
+html.dark .text-gray-700,
+html.dark .text-slate-700 {
+  color: #d4d4d8 !important;
+}
+
+html.dark .text-gray-600,
+html.dark .text-slate-600 {
+  color: #a1a1aa !important;
+}
+
+html.dark .text-gray-500,
+html.dark .text-slate-500 {
+  color: #8b8b94 !important;
+}
+
+html.dark .text-gray-400,
+html.dark .text-slate-400 {
+  color: #71717a !important;
+}
+
+/* ==========================================================
+   PURPLE ACCENTS
+========================================================== */
+
+html.dark .text-purple-600 {
+  color: #a855f7 !important;
+}
+
+html.dark .text-purple-500 {
+  color: #a855f7 !important;
+}
+
+html.dark .bg-purple-600 {
+  background-color: #9333ea !important;
+}
+
+html.dark .bg-purple-700 {
+  background-color: #7e22ce !important;
+}
+
+html.dark .bg-purple-500 {
+  background-color: #a855f7 !important;
+}
+
+html.dark .border-purple-500,
+html.dark .border-purple-600 {
+  border-color: #9333ea !important;
+}
+
+html.dark .ring-purple-500 {
+  --tw-ring-color: #9333ea !important;
+}
+
+/* Purple hover */
+
+html.dark .hover\:bg-purple-700:hover {
+  background-color: #7e22ce !important;
+}
+
+html.dark .hover\:bg-purple-600:hover {
+  background-color: #9333ea !important;
+}
+
+html.dark .hover\:text-purple-600:hover {
+  color: #c084fc !important;
+}
+
+html.dark .hover\:text-purple-500:hover {
+  color: #c084fc !important;
+}
+
+/* ==========================================================
+   DARK MODE — INPUTS
+========================================================== */
+
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: #0d0d12 !important;
+  color: #f5f3ff !important;
+  border-color: #292332 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #71717a !important;
+}
+
+html.dark input:focus,
+html.dark textarea:focus,
+html.dark select:focus {
+  border-color: #9333ea !important;
+  outline-color: #9333ea;
+}
+
+/* ==========================================================
+   DARK MODE — TABLES
+========================================================== */
+
+html.dark thead {
+  background-color: #0f0f14 !important;
+}
+
+html.dark tbody tr {
+  border-color: #25202f !important;
+}
+
+html.dark tbody tr:hover {
+  background-color: #111116 !important;
+}
+
+/* ==========================================================
+   DARK MODE — BUTTONS
+========================================================== */
+
+html.dark button {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* Purple glow */
+
+html.dark .bg-purple-600:hover {
+  box-shadow:
+    0 0 12px rgba(147, 51, 234, 0.35),
+    0 0 25px rgba(147, 51, 234, 0.15);
+}
+
+/* ==========================================================
+   SCROLLBAR
+========================================================== */
+
+html.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #30223d;
+  border-radius: 999px;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #9333ea;
+}
+
+/* ==========================================================
+   FINDER GLOW
+========================================================== */
+
 .finder-glow {
   animation: glow 2s infinite ease-in-out;
 }
 
-
 @keyframes glow {
+  0% {
+    text-shadow: 0 0 2px #9333ea;
+  }
 
-0% {
-  text-shadow: 0 0 2px #9333ea;
+  50% {
+    text-shadow:
+      0 0 8px #a855f7,
+      0 0 15px #9333ea;
+  }
+
+  100% {
+    text-shadow: 0 0 2px #9333ea;
+  }
 }
 
-50% {
-  text-shadow:
-  0 0 8px #a855f7,
-  0 0 15px #9333ea;
-}
-
-100% {
-  text-shadow: 0 0 2px #9333ea;
-}
-
-}
-
-/* ---------- Toast Animation ---------- */
+/* ==========================================================
+   TOAST ANIMATION
+========================================================== */
 
 @keyframes toastSlideIn {
   from {
@@ -40,8 +310,6 @@
   animation: toastSlideIn 0.35s ease-out;
 }
 
-/* ---------- Progress Bar ---------- */
-
 @keyframes toastProgress {
   from {
     width: 100%;
@@ -56,6 +324,10 @@
   animation: toastProgress 2.5s linear forwards;
 }
 
+/* ==========================================================
+   TIPTAP / PROSEMIRROR
+========================================================== */
+
 .ProseMirror {
   min-height: 220px;
   outline: none;
@@ -65,6 +337,7 @@
 
 .ProseMirror p {
   margin: 0;
+  position: relative;
 }
 
 .ProseMirror ul {
@@ -85,18 +358,19 @@
   font-style: italic;
 }
 
-/* ---------- Notion Hover ---------- */
-
-.ProseMirror p {
-  position: relative;
-}
-
 .ProseMirror p.notion-hover {
   background: rgba(55, 53, 47, 0.03);
   border-radius: 6px;
-  transition: .15s;
+  transition: 0.15s;
 }
 
+html.dark .ProseMirror p.notion-hover {
+  background: rgba(147, 51, 234, 0.08);
+}
+
+/* ==========================================================
+   HIDE SCROLLBAR
+========================================================== */
 
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
@@ -108,110 +382,25 @@
 }
 
 /* ==========================================================
-   EDGEFLO DARK MODE
+   GLOBAL TRANSITIONS
 ========================================================== */
 
-html {
-  background-color: #ffffff;
-  transition: background-color 0.3s ease;
-}
-
-html.dark {
-  background-color: #000000;
-}
-
-html.dark body {
-  background-color: #000000;
-  color: #ffffff;
-}
-
-html.dark #root {
-  background-color: #000000;
-  color: #ffffff;
-}
-
-/* Cards */
-
-html.dark .bg-white {
-  background-color: #111111 !important;
-}
-
-/* Light backgrounds */
-
-html.dark .bg-slate-50 {
-  background-color: #080808 !important;
-}
-
-html.dark .bg-slate-100 {
-  background-color: #181818 !important;
-}
-
-/* Text */
-
-html.dark .text-black {
-  color: #ffffff !important;
-}
-
-html.dark .text-slate-900 {
-  color: #ffffff !important;
-}
-
-html.dark .text-slate-800 {
-  color: #eeeeee !important;
-}
-
-html.dark .text-slate-700 {
-  color: #dddddd !important;
-}
-
-html.dark .text-slate-600 {
-  color: #bbbbbb !important;
-}
-
-html.dark .text-slate-500 {
-  color: #999999 !important;
-}
-
-html.dark .text-slate-400 {
-  color: #777777 !important;
-}
-
-/* Borders */
-
-html.dark .border-slate-100,
-html.dark .border-slate-200,
-html.dark .border-gray-100,
-html.dark .border-gray-200 {
-  border-color: #292929 !important;
-}
-
-/* Inputs */
-
-html.dark input,
-html.dark textarea,
-html.dark select {
-  background-color: #111111 !important;
-  color: #ffffff !important;
-  border-color: #292929 !important;
-}
-
-/* Smooth transition */
-
-body,
-#root,
 .bg-white,
+.bg-gray-50,
+.bg-gray-100,
 .bg-slate-50,
-.bg-slate-100 {
+.bg-slate-100,
+body,
+#root {
   transition:
     background-color 0.3s ease,
     color 0.3s ease,
     border-color 0.3s ease;
 }
 
-
-
-
-/* Clean Center Popup Animation */
+/* ==========================================================
+   TRADE POPUP ANIMATIONS
+========================================================== */
 
 @keyframes tradeBackdropIn {
   from {
@@ -234,7 +423,7 @@ body,
 }
 
 @keyframes tradePopupIn {
- 0% {
+  0% {
     opacity: 0;
     transform: scale(0.88);
   }
@@ -271,7 +460,8 @@ body,
 }
 
 .animate-trade-popup-in {
-  animation: tradePopupIn 380ms cubic-bezier(0.16, 1, 0.3, 1)
+  animation:
+    tradePopupIn 380ms cubic-bezier(0.16, 1, 0.3, 1)
     forwards;
 }
 

@@ -78,6 +78,7 @@ export default function RiskSection() {
 
   const {
     executeTrade,
+    placePendingOrder,
     addPendingOrder,
     showTradeNotification,
     getDailyGuardrailStatus,
@@ -309,33 +310,21 @@ export default function RiskSection() {
       // LIMIT / STOP → LOCAL PENDING ORDER
       // ========================================================
 
-      addPendingOrder(trade);
+      const result = await placePendingOrder(trade);
 
-      if (showTradeNotification) {
-        showTradeNotification({
-          id: `pending-${Date.now()}`,
-
-          symbol: trade.symbol,
-
-          side: trade.side,
-
-          entry: trade.entry,
-
-          quantity: trade.quantity,
-
-          stopLoss: trade.stopLoss,
-
-          takeProfit: trade.takeProfit,
-
-          status: "PENDING",
-
-          broker: "EdgeFlo",
+      if (!result?.success) {
+        setOrderMessage({
+          type: "error",
+          text:
+            result?.error ||
+            "Failed to place pending order.",
         });
+        return;
       }
-
+      
       setOrderMessage({
         type: "success",
-        text: `${orderType} order added successfully.`,
+        text: `${orderType} order placed successfully on MT5.`,
       });
     } catch (error) {
       // ========================================================

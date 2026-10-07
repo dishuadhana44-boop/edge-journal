@@ -201,6 +201,236 @@ def initialize_mt5():
 
         return False
 
+# ==========================================================
+# MT5 ACCOUNT SWITCH
+# ==========================================================
+
+def switch_mt5_account(
+    login,
+    password=None,
+    server=None,
+):
+    """
+    Switch the MT5 bridge to a specific trading account.
+
+    login:
+        MT5 account/login number
+
+    password:
+        MT5 account password
+
+    server:
+        MT5 broker server name
+    """
+
+    global MT5_CONNECTED
+
+    try:
+        login = int(login)
+
+        if login <= 0:
+            print(
+                "❌ INVALID MT5 LOGIN:",
+                login
+            )
+            return False
+
+        server = (
+            str(server).strip()
+            if server
+            else None
+        )
+
+        password = (
+            str(password)
+            if password is not None
+            else None
+        )
+
+        print("")
+        print(
+            "===================================="
+        )
+        print(
+            "🔄 MT5 ACCOUNT SWITCH REQUEST"
+        )
+        print(
+            "===================================="
+        )
+        print(
+            "Login:",
+            login
+        )
+        print(
+            "Server:",
+            server
+        )
+
+        # --------------------------------------------------
+        # CURRENT ACCOUNT
+        # --------------------------------------------------
+
+        current_account = (
+            mt5.account_info()
+        )
+
+        current_login = None
+
+        if current_account is not None:
+            current_login = getattr(
+                current_account,
+                "login",
+                None
+            )
+
+        # Already connected to requested account.
+        if (
+            current_login is not None
+            and int(current_login) == login
+        ):
+            print(
+                "✅ MT5 ALREADY CONNECTED TO ACCOUNT:",
+                login
+            )
+
+            MT5_CONNECTED = True
+
+            return True
+
+        # --------------------------------------------------
+        # INITIALIZE / REINITIALIZE
+        # --------------------------------------------------
+
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
+
+        initialized = False
+
+        # --------------------------------------------------
+        # LOGIN + SERVER + PASSWORD
+        # --------------------------------------------------
+
+        if (
+            password is not None
+            and server
+        ):
+            initialized = mt5.initialize(
+                login=login,
+                password=password,
+                server=server
+            )
+
+        elif server:
+            initialized = mt5.initialize(
+                login=login,
+                server=server
+            )
+
+        else:
+            initialized = mt5.initialize(
+                login=login
+            )
+
+        if not initialized:
+            MT5_CONNECTED = False
+
+            print(
+                "❌ MT5 ACCOUNT SWITCH FAILED"
+            )
+
+            print(
+                "MT5 ERROR:",
+                mt5_error()
+            )
+
+            return False
+
+        # --------------------------------------------------
+        # VERIFY ACCOUNT
+        # --------------------------------------------------
+
+        connected_account = (
+            mt5.account_info()
+        )
+
+        if connected_account is None:
+            MT5_CONNECTED = False
+
+            print(
+                "❌ MT5 ACCOUNT INFO UNAVAILABLE AFTER SWITCH"
+            )
+
+            print(
+                "MT5 ERROR:",
+                mt5_error()
+            )
+
+            return False
+
+        connected_login = getattr(
+            connected_account,
+            "login",
+            None
+        )
+
+        if (
+            connected_login is None
+            or int(connected_login) != login
+        ):
+            MT5_CONNECTED = False
+
+            print(
+                "❌ MT5 ACCOUNT VERIFICATION FAILED"
+            )
+
+            print(
+                "Requested:",
+                login
+            )
+
+            print(
+                "Connected:",
+                connected_login
+            )
+
+            return False
+
+        MT5_CONNECTED = True
+
+        print(
+            "✅ MT5 ACCOUNT SWITCHED SUCCESSFULLY"
+        )
+
+        print(
+            "Connected Login:",
+            connected_login
+        )
+
+        print(
+            "Connected Server:",
+            getattr(
+                connected_account,
+                "server",
+                None
+            )
+        )
+
+        return True
+
+    except Exception as error:
+
+        print(
+            "❌ MT5 ACCOUNT SWITCH ERROR:",
+            error
+        )
+
+        traceback.print_exc()
+
+        MT5_CONNECTED = False
+
+        return False
 
 # ==========================================================
 # CONNECTION CHECK
@@ -1155,6 +1385,235 @@ def health():
             datetime.now().isoformat()
     })
 
+# ==========================================================
+# CONNECT / SWITCH MT5 ACCOUNT
+# POST /mt5/connect
+# ==========================================================
+
+@app.route(
+    "/mt5/connect",
+    methods=["POST"]
+)
+def mt5_connect():
+    try:
+        data = request.get_json(
+            silent=True
+        ) or {}
+
+        account_id = data.get(
+            "accountId"
+        )
+
+        login = data.get(
+            "login"
+        )
+
+        password = data.get(
+            "password"
+        )
+
+        server = data.get(
+            "server"
+        )
+
+        print("")
+        print("====================================")
+        print("🔵 EDGEFLO MT5 ACCOUNT CONNECT")
+        print("====================================")
+        print("EdgeFlo Account ID:", account_id)
+        print("MT5 Login:", login)
+        print("MT5 Server:", server)
+        print(
+            "Password Provided:",
+            bool(password)
+        )
+
+        # --------------------------------------------------
+        # VALIDATION
+        # --------------------------------------------------
+
+        if (
+            account_id is None
+            or str(account_id).strip() == ""
+        ):
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "EdgeFlo account ID is required."
+            }), 400
+
+        try:
+            login = int(login)
+        except (
+            TypeError,
+            ValueError
+        ):
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "Valid MT5 login is required."
+            }), 400
+
+        if login <= 0:
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "Valid MT5 login is required."
+            }), 400
+
+        if (
+            server is None
+            or str(server).strip() == ""
+        ):
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "MT5 server is required."
+            }), 400
+
+        server = str(server).strip()
+
+        # --------------------------------------------------
+        # SWITCH MT5 ACCOUNT
+        # --------------------------------------------------
+
+        connected = switch_mt5_account(
+            login=login,
+            password=password,
+            server=server,
+        )
+
+        if not connected:
+            print("")
+            print(
+                "❌ EDGEFLO MT5 ACCOUNT CONNECTION FAILED"
+            )
+            print(
+                "MT5 ERROR:",
+                mt5_error()
+            )
+
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "Unable to connect to the requested MT5 account.",
+                "error":
+                    mt5_error(),
+                "account": {
+                    "login": login,
+                    "server": server,
+                }
+            }), 503
+
+        # --------------------------------------------------
+        # VERIFY CONNECTED ACCOUNT
+        # --------------------------------------------------
+
+        account = mt5.account_info()
+
+        if account is None:
+            print(
+                "❌ MT5 ACCOUNT INFO UNAVAILABLE"
+            )
+
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "MT5 connected but account information is unavailable.",
+                "error":
+                    mt5_error()
+            }), 503
+
+        connected_login = getattr(
+            account,
+            "login",
+            None
+        )
+
+        connected_server = getattr(
+            account,
+            "server",
+            None
+        )
+
+        print("")
+        print("====================================")
+        print("✅ EDGEFLO MT5 ACCOUNT CONNECTED")
+        print("====================================")
+        print(
+            "EdgeFlo Account ID:",
+            account_id
+        )
+        print(
+            "MT5 Login:",
+            connected_login
+        )
+        print(
+            "MT5 Server:",
+            connected_server
+        )
+
+        return jsonify({            
+            "success": True,
+            "connected": True,
+            "accountId": str(account_id),
+            "account": {
+                "login": connected_login,
+                "server": connected_server,
+                "balance": float(getattr(account, "balance", 0) or 0),
+                "equity": float(getattr(account, "equity", 0) or 0),
+                "margin": float(getattr(account, "margin", 0) or 0),
+                "margin_free": float(
+                    getattr(account, "margin_free", 0) or 0
+                ),
+                "freeMargin": float(
+                    getattr(account, "margin_free", 0) or 0
+                ),
+                "currency": getattr(
+                    account, "currency", "USD"
+                ),
+                "leverage": int(
+                    getattr(account, "leverage", 0) or 0
+                ),
+                "profit": float(
+                    getattr(account, "profit", 0) or 0
+                ),
+                "margin_level": float(
+                    getattr(account, "margin_level", 0) or 0
+                ),
+                "name": getattr(
+                    account, "name", None
+                ),
+                "company": getattr(
+                    account, "company", None
+                ),
+            },
+            "message":
+                "MetaTrader 5 connected successfully."
+        }), 200
+
+    except Exception as error:
+        print(
+            "❌ MT5 CONNECT ERROR:",
+            error
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "connected": False,
+            "message":
+                "MT5 connection failed.",
+            "error":
+                str(error)
+        }), 500
 
 # ==========================================================
 # STATUS
@@ -1396,6 +1855,33 @@ def mt5_positions():
         if positions is None:
             positions = []
 
+        account_info = mt5.account_info()
+
+        if account_info is None:
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "positions": [],
+                "message":
+                    "Unable to read the connected MT5 account."
+            }), 503
+
+        connected_mt5_login = int(
+            getattr(
+                account_info,
+                "login",
+                0
+            ) or 0
+        )
+
+        connected_mt5_server = str(
+            getattr(
+                account_info,
+                "server",
+                ""
+            ) or ""
+        )
+
         broker_time_msc = (
             get_broker_time_msc(
                 positions
@@ -1411,10 +1897,19 @@ def mt5_positions():
             broker_time_msc
         )
 
+        print(
+            "👤 MT5 CONNECTED ACCOUNT:",
+            {
+                "login":
+                    connected_mt5_login,
+                "server":
+                    connected_mt5_server
+            }
+        )
+
         result = []
 
         for position in positions:
-
             try:
                 raw = serialize_value(
                     position
@@ -1434,6 +1929,18 @@ def mt5_positions():
                 )
 
                 position_data = {
+                    "login":
+                        connected_mt5_login,
+
+                    "mt5Login":
+                        connected_mt5_login,
+
+                    "server":
+                        connected_mt5_server,
+
+                    "mt5Server":
+                        connected_mt5_server,
+
                     "ticket":
                         int(
                             getattr(
@@ -1618,11 +2125,27 @@ def mt5_positions():
 
         return jsonify({
             "success": True,
+
             "connected": True,
+
+            "login":
+                connected_mt5_login,
+
+            "mt5Login":
+                connected_mt5_login,
+
+            "server":
+                connected_mt5_server,
+
+            "mt5Server":
+                connected_mt5_server,
+
             "count":
                 len(result),
+
             "positions":
                 result,
+
             "broker_time_msc":
                 broker_time_msc
         })

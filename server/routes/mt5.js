@@ -41,6 +41,123 @@ router.get("/connect", async (req, res) => {
 });
 
 // ==========================================================
+// CONNECT SPECIFIC MT5 ACCOUNT
+// POST /api/mt5/connect
+// ==========================================================
+
+router.post("/connect", async (req, res) => {
+  try {
+    const {
+      accountId,
+      login,
+      password,
+      server,
+    } = req.body;
+
+    console.log(
+      "🔵 MT5 ACCOUNT CONNECT REQUEST:",
+      {
+        accountId,
+        login,
+        server,
+        hasPassword: Boolean(password),
+      }
+    );
+
+    // ------------------------------------------------------
+    // VALIDATION
+    // ------------------------------------------------------
+
+    if (
+      accountId === undefined ||
+      accountId === null ||
+      String(accountId).trim() === ""
+    ) {
+      return res.status(400).json({
+        success: false,
+        connected: false,
+        message: "EdgeFlo account ID is required.",
+      });
+    }
+
+    const normalizedLogin = Number(login);
+
+    if (
+      !Number.isInteger(normalizedLogin) ||
+      normalizedLogin <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        connected: false,
+        message: "Valid MT5 login is required.",
+      });
+    }
+
+    if (
+      !server ||
+      String(server).trim() === ""
+    ) {
+      return res.status(400).json({
+        success: false,
+        connected: false,
+        message: "MT5 server is required.",
+      });
+    }
+
+    // ------------------------------------------------------
+    // SEND ACCOUNT SWITCH REQUEST TO MT5 BRIDGE
+    // ------------------------------------------------------
+
+    const response = await axios.post(
+      `${MT5_BRIDGE_URL}/mt5/connect`,
+      {
+        accountId: String(accountId),
+
+        login: normalizedLogin,
+
+        server: String(server).trim(),
+
+        ...(password
+          ? {
+              password,
+            }
+          : {}),
+      },
+      {
+        timeout: 15000,
+      }
+    );
+
+    console.log(
+      "🟢 MT5 BRIDGE CONNECT RESPONSE:",
+      response.data
+    );
+
+    return res
+      .status(response.status)
+      .json(response.data);
+  } catch (error) {
+    console.error(
+      "❌ MT5 account connect error:",
+      error.response?.data ||
+        error.message
+    );
+
+    return res.status(
+      error.response?.status || 503
+    ).json(
+      error.response?.data || {
+        success: false,
+        connected: false,
+        message:
+          "Unable to connect to the MT5 account.",
+        error: error.message,
+      }
+    );
+  }
+});
+
+// ==========================================================
 // STATUS
 // GET /api/mt5/status
 // ==========================================================
@@ -75,6 +192,18 @@ router.get("/status", async (req, res) => {
 
 router.get("/account", async (req, res) => {
   try {
+    const accountId =
+  req.query.accountId
+    ? String(req.query.accountId)
+    : null;
+
+console.log(
+  "🟣 MT5 ACCOUNT REQUEST:",
+  {
+    accountId,
+  }
+);
+
     const response = await axios.get(
       `${MT5_BRIDGE_URL}/mt5/account`,
       { timeout: 5000 }
@@ -147,22 +276,39 @@ router.get("/price", async (req, res) => {
 
 router.get("/positions", async (req, res) => {
   try {
-    const response = await axios.get(
-      `${MT5_BRIDGE_URL}/mt5/positions`,
-      { timeout: 5000 }
+    const accountId = req.query.accountId
+      ? String(req.query.accountId)
+      : null;
+
+    console.log(
+      "🟣 MT5 POSITIONS REQUEST:",
+      { accountId }
     );
 
-    return res.json(response.data);
+    const response = await axios.get(
+      `${MT5_BRIDGE_URL}/mt5/positions`,
+      {
+        params: accountId
+          ? { accountId }
+          : {},
+        timeout: 5000,
+      }
+    );
+
+    return res
+      .status(response.status)
+      .json(response.data);
   } catch (error) {
     console.error(
-      "âŒ MT5 positions error:",
+      "❌ MT5 positions error:",
       error.response?.data || error.message
     );
 
     return res.status(503).json({
       success: false,
       positions: [],
-      message: "Unable to fetch MT5 positions.",
+      message:
+        "Unable to fetch MT5 positions.",
       error: error.message,
     });
   }

@@ -1,6 +1,7 @@
-{/* FILE: src/components/notebook/TemplateGrid.jsx */}
-
 import { useState } from "react";
+
+import { useJournal } from "../../context/JournalContext";
+
 import TemplateCard from "./TemplateCard";
 
 import DailyReview from "./review/DailyReview";
@@ -10,7 +11,17 @@ import YearlyReview from "./review/YearlyReview";
 import ReviewHistory from "./review/ReviewHistory";
 import ReviewAnalytics from "./review/ReviewAnalytics";
 
+import MorningRoutine from "./MorningRoutine";
+import DailyPlanner from "./DailyPlanner";
+import GoalTracker from "./GoalTracker";
+import HabitTracker from "./HabitTracker";
+
+import NotebookActivity from "./NotebookActivity";
+import NotesManager from "./NotesManager";
+
 function TemplateGrid() {
+  const { selectedAccountId } = useJournal();
+
   const [activeTemplate, setActiveTemplate] = useState(null);
   const [editingReview, setEditingReview] = useState(null);
   const [reviews, setReviews] = useState([]);
@@ -56,6 +67,26 @@ function TemplateGrid() {
 
         const data = JSON.parse(raw);
 
+        const currentAccountId =
+        selectedAccountId !== undefined &&
+        selectedAccountId !== null
+          ? String(selectedAccountId).trim()
+          : "";
+      
+      const reviewAccountId =
+        data?.accountId !== undefined &&
+        data?.accountId !== null
+          ? String(data.accountId).trim()
+          : "";
+      
+      if (
+        !currentAccountId ||
+        !reviewAccountId ||
+        reviewAccountId !== currentAccountId
+      ) {
+        continue;
+      }
+
         if (!data || typeof data !== "object") {
           continue;
         }
@@ -100,6 +131,54 @@ function TemplateGrid() {
     setEditingReview(null);
     setActiveTemplate("analytics");
   };
+
+  if (activeTemplate === "morning") {
+    return (
+      <MorningRoutine
+        onBack={handleBack}
+      />
+    );
+  }
+
+  if (activeTemplate === "notes") {
+    return (
+      <NotesManager
+        onBack={handleBack}
+      />
+    );
+  }
+
+  if (activeTemplate === "planner") {
+    return (
+      <DailyPlanner
+        onBack={handleBack}
+      />
+    );
+  }
+
+  if (activeTemplate === "goals") {
+    return (
+      <GoalTracker
+        onBack={handleBack}
+      />
+    );
+  }
+
+  if (activeTemplate === "habits") {
+    return (
+      <HabitTracker
+        onBack={handleBack}
+      />
+    );
+  }
+
+  if (activeTemplate === "activity") {
+    return (
+      <NotebookActivity
+        onBack={handleBack}
+      />
+    );
+  }
 
   if (activeTemplate === "daily") {
     return (
@@ -196,21 +275,60 @@ function TemplateGrid() {
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
 
-        <TemplateCard
-          title="Morning Routine"
-        />
+      <TemplateCard
+  title="Morning Routine"
+  description="Start your day with a focused morning routine."
+  badge="Routine"
+  icon="☀️"
+  onClick={() => {
+    setEditingReview(null);
+    setActiveTemplate("morning");
+  }}
+/>
 
-        <TemplateCard
-          title="Daily Planner"
-        />
+<TemplateCard
+  title="Daily Planner"
+  description="Plan your priorities and organize your day."
+  badge="Planning"
+  icon="📋"
+  onClick={() => {
+    setEditingReview(null);
+    setActiveTemplate("planner");
+  }}
+/>
 
-        <TemplateCard
-          title="Goal Tracker"
-        />
+<TemplateCard
+  title="Goal Tracker"
+  description="Set meaningful goals and track your progress."
+  badge="Goals"
+  icon="🎯"
+  onClick={() => {
+    setEditingReview(null);
+    setActiveTemplate("goals");
+  }}
+/>
 
-        <TemplateCard
-          title="Habit Tracker"
-        />
+<TemplateCard
+  title="Habit Tracker"
+  description="Build consistency and track your daily habits."
+  badge="Habits"
+  icon="🔥"
+  onClick={() => {
+    setEditingReview(null);
+    setActiveTemplate("habits");
+  }}
+/>
+
+<TemplateCard
+  title="Notes"
+  description="Create, edit and organize your trading and personal notes."
+  badge="Notes"
+  icon="📝"
+  onClick={() => {
+    setEditingReview(null);
+    setActiveTemplate("notes");
+  }}
+/>
 
         <TemplateCard
           title="Daily Review"

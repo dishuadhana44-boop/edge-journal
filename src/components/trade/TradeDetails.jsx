@@ -509,7 +509,9 @@ function TradeDetails() {
                 : "text-green-500"
             }`}
           >
-            {pnl}
+            {pnl < 0
+  ? `-$${Math.abs(Number(pnl)).toFixed(0)}`
+  : `$${Number(pnl).toFixed(0)}`}
           </h1>
 
           <p className="text-xs text-gray-400 mt-1">

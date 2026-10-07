@@ -18,7 +18,10 @@ function YearlyReview({
   initialData = null,
   reviewKey = null,
 }) {
-  const { filteredTrades } = useJournal();
+  const {
+    filteredTrades,
+    selectedAccountId,
+  } = useJournal();
 
   const defaultData = {
     year: "",
@@ -157,15 +160,22 @@ function YearlyReview({
   // ============================================================
 
   const handleSave = () => {
-    const key =
-      reviewKey ||
-      `edgefinder-yearly-review-${
-        formData.year || Date.now()
-      }`;
+    const accountKey =
+    selectedAccountId
+      ? String(selectedAccountId).trim()
+      : "no-account";
+  
+  const key =
+    reviewKey ||
+    `edgefinder-yearly-review-${accountKey}-${
+      formData.year || Date.now()
+    }`;
 
     const dataToSave = {
       ...formData,
-
+      accountId: selectedAccountId
+        ? String(selectedAccountId).trim()
+        : null,
       totalTrades:
         calculatedStats.totalTrades,
 

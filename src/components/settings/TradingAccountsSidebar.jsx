@@ -4,7 +4,7 @@ import {
     Trash2,
   } from "lucide-react";
 
-  import { useJournal } from "../../context/JournalContext";
+ 
 
   export default function TradingAccountsSidebar({
     accounts,
@@ -15,7 +15,7 @@ import {
     onSetDefault,
   }) {
 
-    const { setSelectedAccountId } = useJournal();
+ 
 
   return (
     <div
@@ -29,46 +29,23 @@ import {
       border-gray-200
       "
     >
-      <button
-        onClick={onAdd}
-        className="
-        w-60
-        mb-6
-        bg-violet-600
-        hover:bg-violet-700
-        text-white
-        rounded-2xl
-        py-3
-        flex
-        items-center
-        justify-center
-        gap-2
-        text-base
-        font-semibold
-        shadow-lg
-        hover:shadow-xl
-        transition-all
-        duration-300
-        "
-      >
-        <Plus size={20} />
-        Add Trading Account
-      </button>
+  
 
       <div className="space-y-4">
         {accounts.map((acc) => (
           <button
             key={acc.id}
             onClick={() => {
-  setSelectedAccount(acc);
-
-  setSelectedAccountId(acc.id);
-
-  localStorage.setItem(
-    "selectedAccountId",
-    acc.id
-  );
-}}
+              console.log(
+                "🟣 SIDEBAR ACCOUNT CLICK:",
+                {
+                  id: acc.id,
+                  accountName: acc.accountName,
+                }
+              );
+            
+              setSelectedAccount(acc);
+            }}
             className={`
               w-full
               rounded-2xl

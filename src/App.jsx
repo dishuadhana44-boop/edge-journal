@@ -15,6 +15,7 @@ import Edge from "./pages/Edge";
 import Journal from "./pages/Journal";
 import Reports from "./pages/Reports";
 import Notebook from "./pages/Notebook";
+import Tools from "./pages/Tools/Tools";
 import EdgeOS from "./pages/EdgeOS/EdgeOS";
 import News from "./pages/News";
 import AIInsights from "./pages/AIInsights";
@@ -31,6 +32,14 @@ import { DashboardFilterProvider } from "./context/DashboardFilterContext";
 import { MarketProvider } from "./context/MarketContext";
 import { TradeProvider } from "./context/TradeContext";
 
+import PositionSizeCalculator from "./pages/Tools/components/PositionSizeCalculator";
+import RiskRewardCalculator from "./pages/Tools/components/RiskRewardCalculator";
+import PnLCalculator from "./pages/Tools/components/PnLCalculator";
+import PipCalculator from "./pages/Tools/components/PipCalculator";
+import MarginCalculator from "./pages/Tools/components/MarginCalculator";
+import CompoundingCalculator from "./pages/Tools/components/CompoundingCalculator";
+import TradingSessions from "./pages/Tools/components/TradingSessions";
+import CurrencyCorrelation from "./pages/Tools/components/CurrencyCorrelation";
 /* =========================================================
    AUTH CHECK
 ========================================================= */
@@ -173,6 +182,54 @@ function App() {
                     path="/notebook"
                     element={<Notebook />}
                   />
+
+                  {/*
+  Tools
+*/}
+<Route
+  path="/tools"
+  element={<Tools />}
+/>
+
+<Route
+  path="/tools/position-size"
+  element={<PositionSizeCalculator />}
+/>
+
+<Route
+  path="/tools/risk-reward"
+  element={<RiskRewardCalculator />}
+/>
+
+<Route
+  path="/tools/pnl"
+  element={<PnLCalculator />}
+/>
+
+<Route
+  path="/tools/pip"
+  element={<PipCalculator />}
+/>
+
+<Route
+  path="/tools/margin"
+  element={<MarginCalculator />}
+/>
+
+<Route
+  path="/tools/compounding"
+  element={<CompoundingCalculator />}
+/>
+
+<Route
+  path="/tools/trading-sessions"
+  element={<TradingSessions />}
+/>
+
+<Route
+  path="/tools/currency-correlation"
+  element={<CurrencyCorrelation />}
+/>
 
                   {/* Notebook Editor */}
 

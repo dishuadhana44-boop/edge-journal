@@ -12,11 +12,17 @@ import {
   BarChart3,
 } from "lucide-react";
 
+import { useJournal } from "../../../context/JournalContext";
+
 function ReviewHistory({
   onBack,
   onOpenReview,
 }) {
+  const { selectedAccountId } = useJournal();
+
   const [reviews, setReviews] = useState([]);
+
+  
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
 
@@ -121,7 +127,27 @@ function ReviewHistory({
         ) {
           continue;
         }
-
+        
+        const currentAccountId =
+          selectedAccountId !== undefined &&
+          selectedAccountId !== null
+            ? String(selectedAccountId).trim()
+            : "";
+        
+        const reviewAccountId =
+          data?.accountId !== undefined &&
+          data?.accountId !== null
+            ? String(data.accountId).trim()
+            : "";
+        
+        if (
+          !currentAccountId ||
+          !reviewAccountId ||
+          reviewAccountId !== currentAccountId
+        ) {
+          continue;
+        }
+        
         foundReviews.push({
           key,
           type,
@@ -144,7 +170,10 @@ function ReviewHistory({
     });
 
     setReviews(foundReviews);
-  }, [getReviewSortValue]);
+  }, [
+    getReviewSortValue,
+    selectedAccountId,
+  ]);
 
   useEffect(() => {
     loadReviews();

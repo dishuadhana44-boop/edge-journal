@@ -27,6 +27,29 @@ const STORAGE_KEYS = {
   ACCOUNT: "edgeflo_account",
 };
 
+function normalizeAccountId(value) {
+  if (
+    value === undefined ||
+    value === null ||
+    String(value).trim() === ""
+  ) {
+    return null;
+  }
+
+  return String(value);
+}
+
+function getAccountStorageKey(baseKey, accountId) {
+  const normalizedId =
+    normalizeAccountId(accountId);
+
+  if (!normalizedId) {
+    return null;
+  }
+
+  return `${baseKey}_${normalizedId}`;
+}
+
 function loadFromStorage(key, fallback) {
   try {
     const savedData = localStorage.getItem(key);
@@ -729,11 +752,22 @@ function normalizeBrokerPosition(
     broker: "cTrader",
 
     accountId:
-      position.accountId ??
-      position.ctidTraderAccountId ??
-      position.traderAccountId ??
-      position.tradeData?.accountId ??
-      null,
+  normalizeAccountId(
+    position.accountId ??
+      selectedAccountId ??
+      null
+  ),
+
+mt5Login:
+  position.login ??
+  position.accountLogin ??
+  position.mt5Login ??
+  null,
+
+mt5Server:
+  position.server ??
+  position.mt5Server ??
+  null,
 
     rawBrokerPosition:
       position,
@@ -746,7 +780,8 @@ function normalizeBrokerPosition(
 
 function normalizeMT5Position(
   position,
-  brokerTimeMsc = null
+  brokerTimeMsc = null,
+  selectedAccountId = null
 ) {
   if (
     !position ||
@@ -1025,9 +1060,12 @@ function normalizeMT5Position(
     broker: "MT5",
 
     accountId:
-      position.accountId ??
-      position.login ??
-      null,
+    normalizeAccountId(
+      selectedAccountId ??
+        position.accountId ??
+        position.login ??
+        null
+    ),
 
     // --------------------------------------------------------
     // NEVER LOSE RAW MT5 DATA
@@ -1802,9 +1840,7 @@ formatTradeDuration(
 // TRADE PROVIDER
 // ============================================================
 
-export function TradeProvider({
-  children,
-}) {
+export function TradeProvider({ children }) {
   const {
     bid,
     ask,
@@ -1813,54 +1849,67 @@ export function TradeProvider({
 
   const {
     addTrade,
+    selectedAccountId,
+    setSelectedAccountId,
   } = useJournal();
+
+  console.log(
+    "🟢 TRADE PROVIDER SELECTED ACCOUNT:",
+    selectedAccountId
+  );
 
   const [
     openTrades,
     setOpenTrades,
-  ] = useState(() =>
-    loadFromStorage(
+  ] = useState(() => {
+    const key = getAccountStorageKey(
       STORAGE_KEYS.OPEN_TRADES,
-      []
-    )
-  );
+      selectedAccountId
+    );
+
+    return key
+      ? loadFromStorage(key, [])
+      : [];
+  });
 
   const [
     pendingOrders,
     setPendingOrders,
-  ] = useState(() =>
-    loadFromStorage(
+  ] = useState(() => {
+    const key = getAccountStorageKey(
       STORAGE_KEYS.PENDING_ORDERS,
-      []
-    )
-  );
-
- const [
-  closedTrades,
-  setClosedTrades,
-] = useState(() => {
-  try {
-    const accountId = localStorage.getItem(
-      "edgeflo_active_mt5_account"
+      selectedAccountId
     );
 
-    if (!accountId) {
+    return key
+      ? loadFromStorage(key, [])
+      : [];
+  });
+
+  const [
+    closedTrades,
+    setClosedTrades,
+  ] = useState(() => {
+    const key = getAccountStorageKey(
+      STORAGE_KEYS.CLOSED_TRADES,
+      selectedAccountId
+    );
+
+    if (!key) {
       return [];
     }
 
-    return loadFromStorage(
-      `closed_trades_${accountId}`,
-      []
-    );
-  } catch (error) {
-    console.error(
-      "Failed to load account closed trades:",
-      error
-    );
+    try {
+      return loadFromStorage(key, []);
+    } catch (error) {
+      console.error(
+        "Failed to load account closed trades:",
+        error
+      );
 
-    return [];
-  }
-});
+      return [];
+    }
+  });
 
   const [
     tradeNotification,
@@ -2009,270 +2058,932 @@ export function TradeProvider({
   const [
     account,
     setAccount,
-  ] = useState(() =>
-    loadFromStorage(
+  ] = useState(() => {
+    const key = getAccountStorageKey(
       STORAGE_KEYS.ACCOUNT,
-      {
-        balance: 0,
-        equity: 0,
-        marginUsed: 0,
-        freeMargin: 0,
-        currency: "USD",
-        leverage: 100,
-      }
-    )
-  );
+      selectedAccountId
+    );
   
+    return key
+      ? loadFromStorage(key, {
+          balance: 0,
+          equity: 0,
+          marginUsed: 0,
+          freeMargin: 0,
+          currency: "USD",
+          leverage: 100,
+        })
+      : {
+          balance: 0,
+          equity: 0,
+          marginUsed: 0,
+          freeMargin: 0,
+          currency: "USD",
+          leverage: 100,
+        };
+  });
+
+// ============================================================
+// SWITCH TRADE DATA WHEN SELECTED ACCOUNT CHANGES
+// ============================================================
+
+useEffect(() => {
+  const normalizedAccountId =
+    normalizeAccountId(selectedAccountId);
+
+  if (!normalizedAccountId) {
+    setOpenTrades([]);
+    setPendingOrders([]);
+    setClosedTrades([]);
+
+    setAccount({
+      balance: 0,
+      equity: 0,
+      marginUsed: 0,
+      freeMargin: 0,
+      currency: "USD",
+      leverage: 100,
+    });
+
+    previousMT5PositionsRef.current =
+      new Map();
+
+    brokerClockRef.current = {
+      brokerTimeMsc: null,
+      clientTimeMsc: null,
+    };
+
+    setBrokerTimeMsc(null);
+
+    return;
+  }
+
+  const openTradesKey =
+    getAccountStorageKey(
+      STORAGE_KEYS.OPEN_TRADES,
+      normalizedAccountId
+    );
+
+  const pendingOrdersKey =
+    getAccountStorageKey(
+      STORAGE_KEYS.PENDING_ORDERS,
+      normalizedAccountId
+    );
+
+  const closedTradesKey =
+    getAccountStorageKey(
+      STORAGE_KEYS.CLOSED_TRADES,
+      normalizedAccountId
+    );
+
+  const accountKey =
+    getAccountStorageKey(
+      STORAGE_KEYS.ACCOUNT,
+      normalizedAccountId
+    );
+
+  const defaultAccount = {
+    balance: 0,
+    equity: 0,
+    marginUsed: 0,
+    freeMargin: 0,
+    currency: "USD",
+    leverage: 100,
+  };
+
+  const nextOpenTrades =
+    openTradesKey
+      ? loadFromStorage(openTradesKey, [])
+      : [];
+
+  const nextPendingOrders =
+    pendingOrdersKey
+      ? loadFromStorage(
+          pendingOrdersKey,
+          []
+        )
+      : [];
+
+  const nextClosedTrades =
+    closedTradesKey
+      ? loadFromStorage(
+          closedTradesKey,
+          []
+        )
+      : [];
+
+  const nextAccount =
+    accountKey
+      ? loadFromStorage(
+          accountKey,
+          defaultAccount
+        )
+      : defaultAccount;
+
+  setOpenTrades(
+    Array.isArray(nextOpenTrades)
+      ? nextOpenTrades
+      : []
+  );
+
+  setPendingOrders(
+    Array.isArray(nextPendingOrders)
+      ? nextPendingOrders
+      : []
+  );
+
+  setClosedTrades(
+    Array.isArray(nextClosedTrades)
+      ? nextClosedTrades
+      : []
+  );
+
+  setAccount({
+    ...defaultAccount,
+    ...(nextAccount || {}),
+  });
+
+// Reload the selected account's live MT5 account data.
+if (
+  nextAccount?.mt5Connected === true ||
+  nextAccount?.isBrokerAccount === true
+) {
+  setTimeout(() => {
+    syncMT5Account();
+  }, 0);
+}
+
+  // IMPORTANT:
+  // Do not carry previous account's MT5 positions
+  // into the newly selected account.
+  previousMT5PositionsRef.current =
+    new Map();
+
+  brokerClockRef.current = {
+    brokerTimeMsc: null,
+    clientTimeMsc: null,
+  };
+
+  setBrokerTimeMsc(null);
+
+  console.log(
+    "🔄 TRADE CONTEXT ACCOUNT SWITCH:",
+    {
+      selectedAccountId:
+        normalizedAccountId,
+
+      openTrades:
+        Array.isArray(nextOpenTrades)
+          ? nextOpenTrades.length
+          : 0,
+
+      pendingOrders:
+        Array.isArray(nextPendingOrders)
+          ? nextPendingOrders.length
+          : 0,
+
+      closedTrades:
+        Array.isArray(nextClosedTrades)
+          ? nextClosedTrades.length
+          : 0,
+    }
+  );
+}, [selectedAccountId]);
+
 // ============================================================
 // PERSIST TRADES AND ACCOUNT DATA
 // ============================================================
 
+// ============================================================
+// SAVE ACCOUNT OPEN TRADES
+// ============================================================
+
 useEffect(() => {
+  const accountId =
+    normalizeAccountId(selectedAccountId);
+
+  if (!accountId) {
+    return;
+  }
+
+  const key =
+    getAccountStorageKey(
+      STORAGE_KEYS.OPEN_TRADES,
+      accountId
+    );
+
+  if (!key) {
+    return;
+  }
+
   try {
     localStorage.setItem(
-      STORAGE_KEYS.OPEN_TRADES,
+      key,
       JSON.stringify(openTrades)
     );
   } catch (error) {
     console.error(
-      "Failed to save open trades:",
+      "Failed to save account open trades:",
       error
     );
   }
-}, [openTrades]);
+}, [
+  openTrades,
+  selectedAccountId,
+]);
+
+// ============================================================
+// SAVE ACCOUNT PENDING ORDERS
+// ============================================================
 
 useEffect(() => {
+  const accountId =
+    normalizeAccountId(selectedAccountId);
+
+  if (!accountId) {
+    return;
+  }
+
+  const key =
+    getAccountStorageKey(
+      STORAGE_KEYS.PENDING_ORDERS,
+      accountId
+    );
+
+  if (!key) {
+    return;
+  }
+
   try {
     localStorage.setItem(
-      STORAGE_KEYS.PENDING_ORDERS,
+      key,
       JSON.stringify(pendingOrders)
     );
   } catch (error) {
     console.error(
-      "Failed to save pending orders:",
+      "Failed to save account pending orders:",
       error
     );
   }
-}, [pendingOrders]);
+}, [
+  pendingOrders,
+  selectedAccountId,
+]);
+
+// ============================================================
+// SAVE ACCOUNT CLOSED TRADES + ACCOUNT DATA
+// ============================================================
 
 useEffect(() => {
-  try {
-    const accountId =
-      account?.login ??
-      account?.accountId ??
-      account?.id;
+  const accountId =
+    normalizeAccountId(selectedAccountId);
 
-    if (!accountId) {
-      return;
+  if (!accountId) {
+    return;
+  }
+
+  const closedTradesKey =
+    getAccountStorageKey(
+      STORAGE_KEYS.CLOSED_TRADES,
+      accountId
+    );
+
+  const accountKey =
+    getAccountStorageKey(
+      STORAGE_KEYS.ACCOUNT,
+      accountId
+    );
+
+  try {
+    if (closedTradesKey) {
+      localStorage.setItem(
+        closedTradesKey,
+        JSON.stringify(closedTrades)
+      );
     }
 
-    localStorage.setItem(
-      "edgeflo_active_mt5_account",
-      String(accountId)
-    );
-
-    localStorage.setItem(
-      `closed_trades_${accountId}`,
-      JSON.stringify(closedTrades)
-    );
+    if (accountKey) {
+      localStorage.setItem(
+        accountKey,
+        JSON.stringify(account)
+      );
+    }
   } catch (error) {
     console.error(
-      "Failed to save account closed trades:",
+      "Failed to save account trade data:",
       error
     );
   }
-}, [account, closedTrades]);
+}, [
+  selectedAccountId,
+  closedTrades,
+  account,
+]);
 
-useEffect(() => {
-  try {
-    localStorage.setItem(
-      STORAGE_KEYS.ACCOUNT,
-      JSON.stringify(account)
-    );
-  } catch (error) {
-    console.error(
-      "Failed to save account:",
-      error
-    );
-  }
-}, [account]);
+const balance =
+  normalizeNumber(
+    account.balance
+  );
 
-  const balance =
-    normalizeNumber(
-      account.balance
-    );
+const leverage =
+  normalizeNumber(
+    account.leverage,
+    100
+  ) || 100;
 
-  const leverage =
-    normalizeNumber(
-      account.leverage,
-      100
-    ) || 100;
-
-  const currentSymbol =
-    normalizeSymbol(
-      activeSymbol
-    );
+const currentSymbol =
+  normalizeSymbol(
+    activeSymbol
+  );
 
   // ==========================================================
-  // MT5 ACCOUNT SYNC
-  // ==========================================================
+// MT5 ACCOUNT SYNC + AUTOMATIC ACCOUNT DETECTION
+// ==========================================================
 
-  const syncMT5Account =
-    useCallback(
-      async () => {
-        try {
-          const response =
-            await fetch(
-              `${API_URL}/api/mt5/account`,
-              {
-                method: "GET",
-                cache: "no-store",
-              }
-            );
-
-          if (
-            !response.ok
-          ) {
-            throw new Error(
-              `MT5 account request failed: ${response.status}`
-            );
+const syncMT5Account =
+useCallback(
+  async () => {
+    try {
+      const response =
+        await fetch(
+          `${API_URL}/api/mt5/account`,
+          {
+            method: "GET",
+            cache: "no-store",
           }
+        );
 
-          const data =
-            await response.json();
+      if (!response.ok) {
+        throw new Error(
+          `MT5 account request failed: ${response.status}`
+        );
+      }
 
-          console.log(
-            "💰 MT5 ACCOUNT RESPONSE:",
-            data
+      const data =
+        await response.json();
+
+      console.log(
+        "💰 MT5 LIVE ACCOUNT RESPONSE:",
+        data
+      );
+
+      if (
+        !data ||
+        data.success !== true
+      ) {
+        console.warn(
+          "⚠️ MT5 account response was not successful:",
+          data
+        );
+
+        return null;
+      }
+
+      // ======================================================
+      // READ LIVE MT5 ACCOUNT
+      // ======================================================
+
+      const brokerAccount =
+        data.account ??
+        data.data?.account ??
+        data.data ??
+        data;
+
+      const liveMT5Login =
+        normalizeAccountId(
+          brokerAccount.login ??
+            data.login ??
+            brokerAccount.mt5Login ??
+            data.mt5Login ??
+            null
+        );
+
+      const liveMT5Server =
+        String(
+          brokerAccount.server ??
+            data.server ??
+            brokerAccount.mt5Server ??
+            data.mt5Server ??
+            ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (!liveMT5Login) {
+        console.warn(
+          "⚠️ MT5 live account login not available."
+        );
+
+        return brokerAccount;
+      }
+
+      console.log(
+        "🔎 LIVE MT5 ACCOUNT IDENTITY:",
+        {
+          login: liveMT5Login,
+          server: liveMT5Server,
+        }
+      );
+
+      // ======================================================
+      // FIND MATCHING EDGEFLO TRADING ACCOUNT
+      // ======================================================
+
+      let tradingAccounts = [];
+
+      try {
+        const rawAccounts =
+          localStorage.getItem(
+            "tradingAccounts"
           );
 
-          if (
-            !data ||
-            data.success !== true
-          ) {
-            console.warn(
-              "⚠️ MT5 account response was not successful:",
-              data
-            );
+        const parsedAccounts =
+          rawAccounts
+            ? JSON.parse(rawAccounts)
+            : [];
 
-            return null;
+        tradingAccounts =
+          Array.isArray(parsedAccounts)
+            ? parsedAccounts
+            : [];
+      } catch (error) {
+        console.error(
+          "❌ Failed to read tradingAccounts:",
+          error
+        );
+      }
+
+      const matchingAccount =
+        tradingAccounts.find(
+          (accountItem) => {
+            const accountLogin =
+              normalizeAccountId(
+                accountItem?.mt5Login ??
+                  accountItem?.login ??
+                  null
+              );
+
+            const accountServer =
+              String(
+                accountItem?.mt5Server ??
+                  accountItem?.server ??
+                  ""
+              )
+                .trim()
+                .toLowerCase();
+
+            if (
+              !accountLogin ||
+              accountLogin !==
+                liveMT5Login
+            ) {
+              return false;
+            }
+
+            // If both sides have a server,
+            // require the server to match too.
+            if (
+              accountServer &&
+              liveMT5Server &&
+              accountServer !==
+                liveMT5Server
+            ) {
+              return false;
+            }
+
+            return true;
           }
+        ) ?? null;
 
-          const brokerAccount =
-            data.account ??
-            data.data?.account ??
-            data.data ??
-            data;
+      // ======================================================
+      // AUTOMATIC EDGEFLO ACCOUNT SWITCH
+      // ======================================================
 
-          const brokerBalance =
-            getBrokerNumber(
+      if (matchingAccount) {
+        const matchingAccountId =
+          normalizeAccountId(
+            matchingAccount.id
+          );
+
+        const currentAccountId =
+          normalizeAccountId(
+            selectedAccountId
+          );
+
+        console.log(
+          "🎯 MT5 → EDGEFLO ACCOUNT MATCH:",
+          {
+            currentAccountId,
+            matchingAccountId,
+            mt5Login:
+              liveMT5Login,
+            mt5Server:
+              liveMT5Server,
+            accountName:
+              matchingAccount.accountName,
+          }
+        );
+
+        if (
+          matchingAccountId &&
+          matchingAccountId !== currentAccountId
+        ) {
+          console.log(
+            "🔄 AUTOMATICALLY SWITCHING EDGEFLO ACCOUNT:",
+            {
+              from: currentAccountId,
+              to: matchingAccountId,
+              mt5Login: liveMT5Login,
+              mt5Server: liveMT5Server,
+            }
+          );
+        
+          // Update the account with the latest live MT5 identity/data.
+          const updatedMT5Account = {
+            ...matchingAccount,
+        
+            mt5Login: liveMT5Login,
+            mt5Server: liveMT5Server,
+        
+            mt5Connected: true,
+            isBrokerAccount: true,
+            broker: "MT5",
+            brokerAccountId: liveMT5Login,
+        
+            connectionStatus: "connected",
+        
+            balance: getBrokerNumber(
               brokerAccount.balance,
-              data.balance
-            );
-
-          const brokerEquity =
-            getBrokerNumber(
+              data.balance,
+              matchingAccount.balance
+            ),
+        
+            equity: getBrokerNumber(
               brokerAccount.equity,
-              data.equity
-            );
-
-          const brokerMargin =
-            getBrokerNumber(
+              data.equity,
+              matchingAccount.equity
+            ),
+        
+            marginUsed: getBrokerNumber(
               brokerAccount.margin,
               brokerAccount.marginUsed,
               data.margin,
-              data.marginUsed
-            );
-
-          const brokerFreeMargin =
-            getBrokerNumber(
+              data.marginUsed,
+              matchingAccount.marginUsed
+            ),
+        
+            freeMargin: getBrokerNumber(
               brokerAccount.freeMargin,
               brokerAccount.free_margin,
               data.freeMargin,
-              data.free_margin
-            );
-
-          const brokerLeverage =
-            getBrokerNumber(
-              brokerAccount.leverage,
-              data.leverage
-            ) || 100;
-
-          const brokerCurrency =
-            brokerAccount.currency ||
-            data.currency ||
-            "USD";
-
-          setAccount(
-            (prev) => ({
-              ...prev,
-
-              balance:
-                brokerBalance > 0
-                  ? brokerBalance
-                  : prev.balance,
-
-              equity:
-                brokerEquity > 0
-                  ? brokerEquity
-                  : prev.equity,
-
-              marginUsed:
-                brokerMargin >= 0
-                  ? brokerMargin
-                  : prev.marginUsed,
-
-              freeMargin:
-                brokerFreeMargin >= 0
-                  ? brokerFreeMargin
-                  : prev.freeMargin,
-
-              leverage:
-                brokerLeverage,
-
-              currency:
-                brokerCurrency,
-            })
+              data.free_margin,
+              matchingAccount.freeMargin
+            ),
+        
+            floatingPnL: getBrokerNumber(
+              brokerAccount.profit,
+              data.profit,
+              matchingAccount.floatingPnL
+            ),
+        
+            leverage:
+              getBrokerNumber(
+                brokerAccount.leverage,
+                data.leverage,
+                matchingAccount.leverage
+              ) || 100,
+        
+            currency:
+              brokerAccount.currency ||
+              data.currency ||
+              matchingAccount.currency ||
+              "USD",
+        
+            lastSynced:
+              new Date().toISOString(),
+          };
+        
+          // Keep Trading Accounts page in sync.
+          window.dispatchEvent(
+            new CustomEvent(
+              "mt5AccountUpdated",
+              {
+                detail: updatedMT5Account,
+              }
+            )
           );
-
-          console.log(
-            "✅ REAL MT5 ACCOUNT SYNC:",
-            {
-              balance:
-                brokerBalance,
-
-              equity:
-                brokerEquity,
-
-              marginUsed:
-                brokerMargin,
-
-              freeMargin:
-                brokerFreeMargin,
-
-              leverage:
-                brokerLeverage,
-
-              currency:
-                brokerCurrency,
-            }
+        
+          // Switch EdgeFlo to this account.
+          setSelectedAccountId(
+            matchingAccountId
           );
-
-          return brokerAccount;
-        } catch (
-          error
-        ) {
-          console.error(
-            "❌ MT5 ACCOUNT SYNC ERROR:",
-            error
-          );
-
-          return null;
         }
-      },
-      []
-    );
 
+      } else {
+        console.warn(
+          "⚠️ NO EDGEFLO ACCOUNT MATCHED LIVE MT5 ACCOUNT:",
+          {
+            liveMT5Login,
+            liveMT5Server,
+          }
+        );
+      
+        // ==========================================================
+        // AUTOMATICALLY CREATE EDGEFLO ACCOUNT FOR NEW MT5 ACCOUNT
+        // ==========================================================
+      
+        const newAccountId =
+          `mt5-${liveMT5Login}`;
+      
+        const existingById =
+          tradingAccounts.find(
+            (accountItem) =>
+              normalizeAccountId(
+                accountItem?.id
+              ) === newAccountId
+          );
+      
+        if (!existingById) {
+          const newMT5Account = {
+            id: newAccountId,
+      
+            accountName:
+              `MT5 Account ${liveMT5Login}`,
+      
+            currency:
+              brokerAccount.currency ||
+              data.currency ||
+              "USD",
+      
+            startingBalance:
+              getBrokerNumber(
+                brokerAccount.balance,
+                data.balance
+              ),
+      
+            balance:
+              getBrokerNumber(
+                brokerAccount.balance,
+                data.balance
+              ),
+      
+            equity:
+              getBrokerNumber(
+                brokerAccount.equity,
+                data.equity
+              ),
+      
+            accountType:
+              "MT5",
+      
+            leverage:
+              getBrokerNumber(
+                brokerAccount.leverage,
+                data.leverage
+              ) || 100,
+      
+            isDefault:
+              tradingAccounts.length === 0,
+      
+            isBrokerAccount:
+              true,
+      
+            broker:
+              "MT5",
+      
+            brokerAccountId:
+              liveMT5Login,
+      
+            connectionStatus:
+              "connected",
+      
+            mt5Login:
+              liveMT5Login,
+      
+            mt5Server:
+              liveMT5Server,
+      
+            mt5Connected:
+              true,
+      
+            mt5TerminalId:
+              null,
+      
+            strategyId:
+              null,
+      
+            strategyName:
+              null,
+      
+            marginUsed:
+              getBrokerNumber(
+                brokerAccount.margin,
+                brokerAccount.marginUsed,
+                data.margin,
+                data.marginUsed
+              ),
+      
+            freeMargin:
+              getBrokerNumber(
+                brokerAccount.freeMargin,
+                brokerAccount.free_margin,
+                data.freeMargin,
+                data.free_margin
+              ),
+      
+            floatingPnL:
+              getBrokerNumber(
+                brokerAccount.profit,
+                data.profit
+              ),
+      
+            lastSynced:
+              new Date().toISOString(),
+      
+            createdAt:
+              new Date().toISOString(),
+          };
+      
+          try {
+            const updatedTradingAccounts = [
+              ...tradingAccounts,
+              newMT5Account,
+            ];
+            
+            localStorage.setItem(
+              "tradingAccounts",
+              JSON.stringify(
+                updatedTradingAccounts
+              )
+            );
+            
+            // Notify Trading Accounts page immediately.
+            window.dispatchEvent(
+              new CustomEvent(
+                "mt5AccountUpdated",
+                {
+                  detail: newMT5Account,
+                }
+              )
+            );
+            
+            console.log(
+              "🆕 NEW MT5 ACCOUNT AUTOMATICALLY CREATED:",
+              newMT5Account
+            );
+            
+            setSelectedAccountId(
+              newAccountId
+            );
+          } catch (error) {
+            console.error(
+              "❌ FAILED TO CREATE MT5 ACCOUNT:",
+              error
+            );
+          }
+        } else {
+          console.log(
+            "ℹ️ MT5 ACCOUNT ALREADY EXISTS BY ID:",
+            newAccountId
+          );
+      
+          setSelectedAccountId(
+            newAccountId
+          );
+        }
+      }
+
+      // ======================================================
+      // ACCOUNT FINANCIAL DATA
+      // ======================================================
+
+      const brokerBalance =
+        getBrokerNumber(
+          brokerAccount.balance,
+          data.balance
+        );
+
+      const brokerEquity =
+        getBrokerNumber(
+          brokerAccount.equity,
+          data.equity
+        );
+
+      const brokerMargin =
+        getBrokerNumber(
+          brokerAccount.margin,
+          brokerAccount.marginUsed,
+          data.margin,
+          data.marginUsed
+        );
+
+      const brokerFreeMargin =
+        getBrokerNumber(
+          brokerAccount.freeMargin,
+          brokerAccount.free_margin,
+          data.freeMargin,
+          data.free_margin
+        );
+
+      const brokerLeverage =
+        getBrokerNumber(
+          brokerAccount.leverage,
+          data.leverage
+        ) || 100;
+
+      const brokerCurrency =
+        brokerAccount.currency ||
+        data.currency ||
+        "USD";
+
+      // ======================================================
+      // UPDATE LIVE ACCOUNT STATE
+      // ======================================================
+
+      setAccount(
+        (prev) => ({
+          ...prev,
+
+          balance:
+            brokerBalance >= 0
+              ? brokerBalance
+              : prev.balance,
+
+          equity:
+            brokerEquity >= 0
+              ? brokerEquity
+              : prev.equity,
+
+          marginUsed:
+            brokerMargin >= 0
+              ? brokerMargin
+              : prev.marginUsed,
+
+          freeMargin:
+            brokerFreeMargin >= 0
+              ? brokerFreeMargin
+              : prev.freeMargin,
+
+          leverage:
+            brokerLeverage,
+
+          currency:
+            brokerCurrency,
+
+          mt5Login:
+            liveMT5Login,
+
+          mt5Server:
+            liveMT5Server,
+        })
+      );
+
+      console.log(
+        "✅ REAL MT5 ACCOUNT SYNC:",
+        {
+          login:
+            liveMT5Login,
+          server:
+            liveMT5Server,
+          balance:
+            brokerBalance,
+          equity:
+            brokerEquity,
+          marginUsed:
+            brokerMargin,
+          freeMargin:
+            brokerFreeMargin,
+          leverage:
+            brokerLeverage,
+          currency:
+            brokerCurrency,
+        }
+      );
+
+      return {
+        ...brokerAccount,
+        login:
+          liveMT5Login,
+        server:
+          liveMT5Server,
+      };
+    } catch (error) {
+      console.error(
+        "❌ MT5 ACCOUNT SYNC ERROR:",
+        error
+      );
+
+      return null;
+    }
+  },
+  [
+    selectedAccountId,
+    setSelectedAccountId,
+  ]
+);
+
+
+      
   // ==========================================================
   // MT5 ACCOUNT POLLING
   // ==========================================================
@@ -2325,14 +3036,25 @@ useEffect(() => {
     useCallback(
       async () => {
         try {
-          const response =
-            await fetch(
-              `${API_URL}/api/mt5/positions`,
-              {
-                method: "GET",
-                cache: "no-store",
-              }
-            );
+          const activeAccountId =
+          normalizeAccountId(
+            selectedAccountId
+          );
+
+        if (!activeAccountId) {
+          return [];
+        }
+
+        const response =
+        await fetch(
+          `${API_URL}/api/mt5/positions?accountId=${encodeURIComponent(
+            activeAccountId
+          )}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
 
           if (
             !response.ok
@@ -2344,6 +3066,108 @@ useEffect(() => {
 
           const data =
             await response.json();
+
+            const liveMT5Login = normalizeAccountId(
+              data.mt5Login ??
+                data.login ??
+                null
+            );
+            
+            const liveMT5Server = String(
+              data.mt5Server ??
+                data.server ??
+                ""
+            ).trim().toLowerCase();
+            
+            const selectedAccount =
+              normalizeAccountId(
+                selectedAccountId
+              );
+            
+              const storedTradingAccounts =
+              (() => {
+                try {
+                  const raw =
+                    localStorage.getItem(
+                      "tradingAccounts"
+                    );
+            
+                  const parsed =
+                    raw ? JSON.parse(raw) : [];
+            
+                  return Array.isArray(parsed)
+                    ? parsed
+                    : [];
+                } catch (error) {
+                  console.error(
+                    "❌ Failed to read trading accounts:",
+                    error
+                  );
+                  return [];
+                }
+              })();
+            
+            const selectedTradingAccount =
+              storedTradingAccounts.find(
+                (account) =>
+                  normalizeAccountId(
+                    account?.id
+                  ) === selectedAccount
+              ) ?? null;
+            
+            const selectedMT5Login =
+              normalizeAccountId(
+                selectedTradingAccount?.mt5Login ??
+                  selectedTradingAccount?.login ??
+                  null
+              );
+            
+            const selectedMT5Server =
+              String(
+                selectedTradingAccount?.mt5Server ??
+                  selectedTradingAccount?.server ??
+                  ""
+              )
+                .trim()
+                .toLowerCase();
+
+                if (
+                  selectedMT5Login &&
+                  liveMT5Login &&
+                  selectedMT5Login !== liveMT5Login
+                ) {
+                  console.warn(
+                    "🚫 MT5 ACCOUNT MISMATCH — IGNORING LIVE POSITIONS:",
+                    {
+                      selectedAccount,
+                      selectedMT5Login,
+                      liveMT5Login,
+                      selectedMT5Server,
+                      liveMT5Server,
+                    }
+                  );
+                
+                  return [];
+                }
+                
+                if (
+                  selectedMT5Server &&
+                  liveMT5Server &&
+                  selectedMT5Server !== liveMT5Server
+                ) {
+                  console.warn(
+                    "🚫 MT5 SERVER MISMATCH — IGNORING LIVE POSITIONS:",
+                    {
+                      selectedAccount,
+                      selectedMT5Login,
+                      liveMT5Login,
+                      selectedMT5Server,
+                      liveMT5Server,
+                    }
+                  );
+                
+                  return [];
+                }
 
           if (
             !data ||
@@ -2386,20 +3210,19 @@ useEffect(() => {
               ? data.positions
               : [];
 
-          const normalizedMT5Positions =
-            mt5Positions
-              .map(
-                (
-                  position
-                ) =>
-                  normalizeMT5Position(
-                    position,
-                    responseBrokerTimeMsc
-                  )
-              )
-              .filter(
-                Boolean
-              );
+              const normalizedMT5Positions =
+              mt5Positions
+                .map(
+                  (position) =>
+                    normalizeMT5Position(
+                      position,
+                      responseBrokerTimeMsc,
+                      selectedAccountId
+                    )
+                )
+                .filter(
+                  Boolean
+                );
 
           // ======================================================
           // DETECT CLOSED MT5 POSITIONS
@@ -2677,12 +3500,13 @@ const closedTime =
           return [];
         }
       },
-      [
-        getCurrentBrokerTimeMsc,
-        updateBrokerClock,
-        addTrade,
-        showTradeNotification,
-      ]
+    [
+  getCurrentBrokerTimeMsc,
+  updateBrokerClock,
+  addTrade,
+  showTradeNotification,
+  selectedAccountId,
+]
     );
 
   // ==========================================================
@@ -3514,136 +4338,133 @@ const closedTime =
     );
 
   // ==========================================================
-  // CANCEL PENDING ORDER
-  // ==========================================================
+// CANCEL PENDING ORDER
+// ==========================================================
 
-  const cancelPendingOrder =
-    useCallback(
-      async (order) => {
-        if (!order) {
-          return null;
-        }
+const cancelPendingOrder = useCallback(
+  async (order) => {
+    if (!order) {
+      return {
+        success: false,
+        error: "Pending order is required.",
+      };
+    }
 
-        const orderId =
-          order.orderId ??
-          order.brokerOrderId ??
-          order.ticket ??
-          order.id;
+    const orderId =
+      order.orderId ??
+      order.brokerOrderId ??
+      order.ticket ??
+      order.id;
 
-        if (
-          orderId ===
-            undefined ||
-          orderId === null ||
-          String(
-            orderId
-          ).trim() === ""
-        ) {
-          console.error(
-            "❌ Cannot cancel pending order: missing order ID",
-            order
-          );
+    const ticket = Number(orderId);
 
-          return null;
-        }
+    if (
+      !Number.isInteger(ticket) ||
+      ticket <= 0
+    ) {
+      console.error(
+        "❌ Cannot cancel pending order: invalid order ID",
+        order
+      );
 
-        console.log(
-          "🟠 CANCEL MT5 PENDING ORDER:",
-          {
-            orderId,
-            order,
-          }
-        );
+      return {
+        success: false,
+        error: "Invalid pending order ticket.",
+      };
+    }
 
-        try {
-          const response =
-            await fetch(
-              `${API_URL}/api/mt5/order`,
-              {
-                method:
-                  "POST",
-
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-
-                body:
-                  JSON.stringify({
-                    ticket:
-                      Number(
-                        orderId
-                      ),
-                  }),
-              }
-            );
-
-          const data =
-            await response.json();
-
-          console.log(
-            "🟠 MT5 CANCEL RESPONSE:",
-            data
-          );
-
-          if (
-            !response.ok ||
-            data.success !==
-              true
-          ) {
-            throw new Error(
-              data.error ||
-                data.message ||
-                "Failed to cancel pending order"
-            );
-          }
-
-          setPendingOrders(
-            (prev) =>
-              prev.filter(
-                (item) => {
-                  const itemId =
-                    item.orderId ??
-                    item.brokerOrderId ??
-                    item.ticket ??
-                    item.id;
-
-                  return (
-                    String(
-                      itemId
-                    ) !==
-                    String(
-                      orderId
-                    )
-                  );
-                }
-              )
-          );
-
-          console.log(
-            "✅ MT5 PENDING ORDER CANCELLED:",
-            orderId
-          );
-
-          return data;
-        } catch (
-          error
-        ) {
-          console.error(
-            "❌ MT5 PENDING ORDER CANCEL ERROR:",
-            error
-          );
-
-          return {
-            success:
-              false,
-
-            error:
-              error.message,
-          };
-        }
-      },
-      []
+    console.log(
+      "🗑️ CANCELLING MT5 PENDING ORDER:",
+      {
+        ticket,
+        order,
+      }
     );
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/mt5/cancel-order`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ticket,
+          }),
+        }
+      );
+
+      let data = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+
+      console.log(
+        "📩 MT5 CANCEL RESPONSE:",
+        {
+          status: response.status,
+          ok: response.ok,
+          data,
+        }
+      );
+
+      if (
+        !response.ok ||
+        data?.success !== true
+      ) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            "Failed to cancel pending order."
+        );
+      }
+
+      setPendingOrders((prev) =>
+        prev.filter((item) => {
+          const itemId =
+            item.orderId ??
+            item.brokerOrderId ??
+            item.ticket ??
+            item.id;
+
+          return (
+            String(itemId) !==
+            String(ticket)
+          );
+        })
+      );
+
+      console.log(
+        "✅ MT5 PENDING ORDER CANCELLED:",
+        ticket
+      );
+
+      return {
+        ...data,
+        success: true,
+        orderId: ticket,
+        ticket,
+      };
+    } catch (error) {
+      console.error(
+        "❌ MT5 PENDING ORDER CANCEL ERROR:",
+        error
+      );
+
+      return {
+        success: false,
+        error:
+          error?.message ||
+          "Failed to cancel pending order.",
+      };
+    }
+  },
+  [API_URL]
+);
 
   // ==========================================================
   // MODIFY PENDING ORDER HELPER
@@ -4341,6 +5162,260 @@ const executeTrade = useCallback(
   ]
 );
 
+const placePendingOrder = useCallback(
+  async (trade = {}) => {
+    const dailyGuardrailStatus =
+      getDailyGuardrailStatus(
+        trade?.guardrails ?? null
+      );
+
+    if (dailyGuardrailStatus.locked) {
+      return {
+        success: false,
+        error: dailyGuardrailStatus.reason,
+        code: "DAILY_GUARDRAIL_LOCK",
+      };
+    }
+
+    const side = normalizeSide(trade.side);
+
+    const lots = normalizeNumber(
+      trade.quantity ?? trade.lots
+    );
+
+    const symbol = normalizeSymbol(
+      trade.symbol || currentSymbol
+    );
+
+    const entry = normalizeNumber(
+      trade.entry ?? trade.price
+    );
+
+    const stopLoss = normalizeNumber(
+      trade.stopLoss ?? trade.sl
+    );
+
+    const takeProfit = normalizeNumber(
+      trade.takeProfit ?? trade.tp
+    );
+
+    if (!["buy", "sell"].includes(side)) {
+      return {
+        success: false,
+        error: "Invalid pending order side.",
+      };
+    }
+
+    if (lots <= 0) {
+      return {
+        success: false,
+        error: "Invalid pending order volume.",
+      };
+    }
+
+    if (entry <= 0) {
+      return {
+        success: false,
+        error: "Invalid pending order entry price.",
+      };
+    }
+
+    // --------------------------------------------------
+    // Convert EdgeFlo order type → MT5 order type
+    // --------------------------------------------------
+
+    const rawOrderType = String(
+      trade.orderType ?? trade.type ?? ""
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, " ");
+
+    let mt5OrderType = "";
+
+    if (
+      rawOrderType === "limit" ||
+      rawOrderType === "buy limit" ||
+      rawOrderType === "sell limit"
+    ) {
+      mt5OrderType =
+        side === "buy"
+          ? "BUY_LIMIT"
+          : "SELL_LIMIT";
+    } else if (
+      rawOrderType === "stop" ||
+      rawOrderType === "buy stop" ||
+      rawOrderType === "sell stop"
+    ) {
+      mt5OrderType =
+        side === "buy"
+          ? "BUY_STOP"
+          : "SELL_STOP";
+    }
+
+    if (!mt5OrderType) {
+      return {
+        success: false,
+        error: "Invalid pending order type.",
+      };
+    }
+
+    const requestBody = {
+      symbol,
+      side: side.toUpperCase(),
+      type: mt5OrderType,
+      orderType: mt5OrderType,
+      lots,
+      entry,
+      stopLoss,
+      takeProfit,
+      comment: "EdgeFlo Pending Order",
+      magic: 2026001,
+    };
+
+    console.log(
+      "📤 SENDING REAL MT5 PENDING ORDER:",
+      requestBody
+    );
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/mt5/pending-order`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(
+            requestBody
+          ),
+        }
+      );
+
+      let data = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+
+      console.log(
+        "📩 MT5 PENDING ORDER RESPONSE:",
+        {
+          status: response.status,
+          ok: response.ok,
+          data,
+        }
+      );
+
+      if (
+        !response.ok ||
+        data?.success !== true
+      ) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            "MT5 pending order failed."
+        );
+      }
+
+      const ticket =
+        data?.ticket ??
+        data?.orderId ??
+        data?.order ??
+        data?.pendingOrder?.ticket ??
+        data?.pendingOrder?.orderId ??
+        null;
+
+      console.log(
+        "🎫 MT5 PENDING ORDER TICKET:",
+        ticket
+      );
+
+      const pendingOrder = {
+        ...trade,
+        ...data,
+        ticket,
+        orderId: ticket,
+        brokerOrderId: ticket,
+        symbol,
+        side,
+        entry,
+        stopLoss,
+        takeProfit,
+        quantity: lots,
+        orderType:
+          trade.orderType ??
+          trade.type,
+        broker: "MT5",
+        rawBrokerOrder:
+          data?.pendingOrder ?? data,
+      };
+
+      const storedOrder =
+        addPendingOrder(
+          pendingOrder
+        );
+
+      if (
+        showTradeNotification
+      ) {
+        showTradeNotification({
+          id:
+            ticket ??
+            `pending-${Date.now()}`,
+          symbol,
+          side,
+          quantity: lots,
+          entry,
+          stopLoss,
+          takeProfit,
+          status: "PENDING",
+          broker: "MT5",
+        });
+      }
+
+      console.log(
+        "✅ REAL MT5 PENDING ORDER CREATED:",
+        {
+          ticket,
+          pendingOrder:
+            storedOrder,
+        }
+      );
+
+      return {
+        success: true,
+        ...data,
+        ticket,
+        orderId: ticket,
+        pendingOrder:
+          storedOrder,
+      };
+    } catch (error) {
+      console.error(
+        "❌ REAL MT5 PENDING ORDER ERROR:",
+        error
+      );
+
+      return {
+        success: false,
+        error:
+          error?.message ||
+          "Failed to place MT5 pending order.",
+      };
+    }
+  },
+  [
+    API_URL,
+    currentSymbol,
+    addPendingOrder,
+    showTradeNotification,
+    getDailyGuardrailStatus,
+  ]
+);
 
  // ==========================================================
 // CLOSE TRADE
@@ -5195,7 +6270,9 @@ console.log(
     pendingOrders,
 
     // Trade actions
+    // Trade actions
     executeTrade,
+    placePendingOrder,
     getDailyGuardrailStatus,
     addPendingOrder,
     closeTrade,

@@ -18,7 +18,10 @@ function QuarterlyReview({
   initialData = null,
   reviewKey = null,
 }) {
-  const { filteredTrades } = useJournal();
+  const {
+    filteredTrades,
+    selectedAccountId,
+  } = useJournal();
 
   const defaultData = {
     quarter: "",
@@ -177,18 +180,25 @@ function QuarterlyReview({
   // ============================================================
 
   const handleSave = () => {
-    const key =
-      reviewKey ||
-      `edgefinder-quarterly-review-${
-        formData.year || "unknown"
-      }-${
-        formData.quarter ||
-        Date.now()
-      }`;
+    const accountKey =
+    selectedAccountId
+      ? String(selectedAccountId).trim()
+      : "no-account";
+  
+  const key =
+    reviewKey ||
+    `edgefinder-quarterly-review-${accountKey}-${
+      formData.year || "unknown"
+    }-${
+      formData.quarter ||
+      Date.now()
+    }`;
 
     const dataToSave = {
       ...formData,
-
+      accountId: selectedAccountId
+        ? String(selectedAccountId).trim()
+        : null,
       startDate: quarterRange.startDate,
       endDate: quarterRange.endDate,
 

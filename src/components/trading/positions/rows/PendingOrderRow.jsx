@@ -328,23 +328,21 @@ import {
     // CANCEL PENDING ORDER
     // ==========================================================
   
-    const handleCancelOrder =
-      () => {
-        setMenuOpen(false);
-  
-        if (
-          typeof onCancel ===
-          "function"
-        ) {
-          onCancel(order);
-          return;
-        }
-  
-        console.log(
-          "🟠 PENDING ORDER CANCEL:",
-          order
-        );
-      };
+    const handleCancelOrder = () => {
+      console.log("🔍 FULL PENDING ORDER FOR CANCEL:", order);
+    
+      setMenuOpen(false);
+    
+      if (typeof onCancel === "function") {
+        onCancel(order);
+        return;
+      }
+    
+      console.log(
+        "🟠 PENDING ORDER CANCEL:",
+        order
+      );
+    };
   
     // ==========================================================
     // EDIT CELL

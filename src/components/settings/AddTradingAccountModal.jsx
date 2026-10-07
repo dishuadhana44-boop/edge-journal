@@ -33,19 +33,76 @@ export default function AddTradingAccountModal({
     if (!form.accountName.trim()) return;
 
     const newAccount = {
-
-      id: Date.now(),
-
-      accountName: form.accountName,
-
+      id: String(Date.now()),
+    
+      accountName: form.accountName.trim(),
+    
       currency: form.currency,
-
-      startingBalance: Number(form.startingBalance),
-
-      accountType: form.accountType,
-
-      isDefault: accounts.length === 0,
-
+    
+      startingBalance:
+        Number(form.startingBalance) || 0,
+    
+      balance:
+        Number(form.startingBalance) || 0,
+    
+      equity:
+        Number(form.startingBalance) || 0,
+    
+      accountType:
+        form.accountType,
+    
+      leverage: 100,
+    
+      isDefault:
+        accounts.length === 0,
+    
+      // ========================================================
+      // BROKER
+      // ========================================================
+    
+      isBrokerAccount: false,
+    
+      broker: null,
+    
+      brokerAccountId: null,
+    
+      connectionStatus: "manual",
+    
+      lastSynced: null,
+    
+      // ========================================================
+      // MT5
+      // ========================================================
+    
+      mt5Login: null,
+    
+      mt5Server: null,
+    
+      mt5Connected: false,
+    
+      mt5TerminalId: null,
+    
+      // ========================================================
+      // STRATEGY
+      // ========================================================
+    
+      strategyId: null,
+    
+      strategyName: null,
+    
+      // ========================================================
+      // ACCOUNT DETAILS
+      // ========================================================
+    
+      marginUsed: 0,
+    
+      freeMargin:
+        Number(form.startingBalance) || 0,
+    
+      floatingPnL: 0,
+    
+      createdAt:
+        new Date().toISOString(),
     };
 
     const updated = [...accounts, newAccount];

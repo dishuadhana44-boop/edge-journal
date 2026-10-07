@@ -122,11 +122,11 @@ import {
         {
           title: "Performance",
           rows: [
-            ["Net Profit", `₹${netProfit.toLocaleString()}`],
+            ["Net Profit", `$${netProfit.toLocaleString()}`],
             ["Gross Profit", `₹${totalWin.toLocaleString()}`],
-            ["Gross Loss", `₹${totalLoss.toLocaleString()}`],
+            ["Gross Loss", `$${totalLoss.toLocaleString()}`],
             ["Profit Factor", profitFactor],
-            ["Expectancy", `₹${expectancy}`],
+            ["Expectancy", `$${expectancy}`],
           ],
         },
       
@@ -145,9 +145,9 @@ import {
         {
           title: "Risk",
           rows: [
-            ["Average Win", `₹${averageWin}`],
+            ["Average Win", `$${averageWin}`],
             ["Average Loss", `₹${averageLoss}`],
-            ["Largest Win", `₹${maxWin}`],
+            ["Largest Win", `$${maxWin}`],
             ["Largest Loss", `₹${maxLoss}`],
             ["Max Drawdown", "Coming Soon"],
           ],

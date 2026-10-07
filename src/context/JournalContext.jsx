@@ -14,19 +14,24 @@ const JournalContext = createContext(null);
 // ============================================================
 
 function normalizeNumber(value, fallback = 0) {
-  if (
-    value === undefined ||
-    value === null ||
-    value === ""
-  ) {
+  if (value === undefined || value === null || value === "") {
     return fallback;
   }
 
   const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
 
-  return Number.isFinite(number)
-    ? number
-    : fallback;
+// ============================================================
+// ACCOUNT ID
+// ============================================================
+
+function normalizeAccountId(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  return String(value);
 }
 
 // ============================================================
@@ -51,9 +56,7 @@ function normalizeDirection(trade) {
     trade?.type ??
     "";
 
-  const value = String(raw)
-    .trim()
-    .toLowerCase();
+  const value = String(raw).trim().toLowerCase();
 
   if (
     value === "buy" ||
@@ -77,19 +80,6 @@ function normalizeDirection(trade) {
 // ============================================================
 // TIMESTAMP PARSER
 // ============================================================
-//
-// Supports:
-//
-// 1. ISO strings
-//    2026-09-15T15:02:00.000Z
-//
-// 2. JavaScript milliseconds
-//    1757948520000
-//
-// 3. Unix seconds
-//    1757948520
-//
-// ============================================================
 
 function getValidTimestamp(...values) {
   for (const value of values) {
@@ -101,16 +91,12 @@ function getValidTimestamp(...values) {
       continue;
     }
 
-    // ----------------------------------------------------------
     // NUMBER
-    // ----------------------------------------------------------
-
     if (
       typeof value === "number" &&
       Number.isFinite(value) &&
       value > 0
     ) {
-      // Unix seconds → milliseconds
       if (value < 100000000000) {
         return value * 1000;
       }
@@ -118,29 +104,19 @@ function getValidTimestamp(...values) {
       return value;
     }
 
-    // ----------------------------------------------------------
     // NUMERIC STRING
-    // ----------------------------------------------------------
-
     if (
       typeof value === "string" &&
       value.trim() !== "" &&
-      /^-?\d+(\.\d+)?$/.test(
-        value.trim()
-      )
+      /^-?\d+(\.\d+)?$/.test(value.trim())
     ) {
-      const number =
-        Number(value);
+      const number = Number(value);
 
       if (
         Number.isFinite(number) &&
         number > 0
       ) {
-        // Unix seconds → milliseconds
-        if (
-          number <
-          100000000000
-        ) {
+        if (number < 100000000000) {
           return number * 1000;
         }
 
@@ -148,18 +124,10 @@ function getValidTimestamp(...values) {
       }
     }
 
-    // ----------------------------------------------------------
     // DATE STRING
-    // ----------------------------------------------------------
+    const date = new Date(value);
 
-    const date =
-      new Date(value);
-
-    if (
-      !Number.isNaN(
-        date.getTime()
-      )
-    ) {
+    if (!Number.isNaN(date.getTime())) {
       return date.getTime();
     }
   }
@@ -180,7 +148,6 @@ function getEntryTimestamp(trade) {
     trade?.createdAt,
     trade?.timestamp,
 
-    // Nested data
     trade?.tradeData?.entryTime,
     trade?.tradeData?.openedAt,
     trade?.tradeData?.openTime,
@@ -188,7 +155,6 @@ function getEntryTimestamp(trade) {
     trade?.tradeData?.createdAt,
     trade?.tradeData?.timestamp,
 
-    // Nested position data
     trade?.position?.entryTime,
     trade?.position?.openedAt,
     trade?.position?.openTime,
@@ -208,12 +174,9 @@ function getExitTimestamp(trade) {
     trade?.closingTime,
     trade?.closedTime,
     trade?.exitedAt,
-
-    // Execution timestamp
     trade?.executionTime,
     trade?.executedAt,
 
-    // Nested data
     trade?.tradeData?.exitTime,
     trade?.tradeData?.closedAt,
     trade?.tradeData?.closeTime,
@@ -221,12 +184,10 @@ function getExitTimestamp(trade) {
     trade?.tradeData?.closedTime,
     trade?.tradeData?.exitedAt,
 
-    // Nested execution
     trade?.execution?.timestamp,
     trade?.execution?.time,
     trade?.execution?.closedAt,
 
-    // Nested position
     trade?.position?.exitTime,
     trade?.position?.closedAt,
     trade?.position?.closeTime,
@@ -243,20 +204,13 @@ function getTradeDate(trade) {
     getEntryTimestamp(trade) ??
     getExitTimestamp(trade);
 
-  if (
-    timestamp === null
-  ) {
+  if (timestamp === null) {
     return null;
   }
 
-  const date =
-    new Date(timestamp);
+  const date = new Date(timestamp);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return null;
   }
 
@@ -268,30 +222,24 @@ function getTradeDate(trade) {
 // ============================================================
 
 function getDateString(trade) {
-  const date =
-    getTradeDate(trade);
+  const date = getTradeDate(trade);
 
   if (!date) {
     return (
       trade?.date ??
-      new Date()
-        .toISOString()
-        .split("T")[0]
+      new Date().toISOString().split("T")[0]
     );
   }
 
-  const year =
-    date.getFullYear();
+  const year = date.getFullYear();
 
-  const month =
-    String(
-      date.getMonth() + 1
-    ).padStart(2, "0");
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
 
-  const day =
-    String(
-      date.getDate()
-    ).padStart(2, "0");
+  const day = String(
+    date.getDate()
+  ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
@@ -301,30 +249,19 @@ function getDateString(trade) {
 // ============================================================
 
 function getDayName(trade) {
-  const date =
-    getTradeDate(trade);
+  const date = getTradeDate(trade);
 
   if (!date) {
     return trade?.day ?? "";
   }
 
-  return date.toLocaleDateString(
-    "en-US",
-    {
-      weekday: "long",
-    }
-  );
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+  });
 }
 
 // ============================================================
 // TIME FORMAT
-// ============================================================
-//
-// Example:
-//
-// 20:30 → 8:30 PM
-// 08:50 → 8:50 AM
-//
 // ============================================================
 
 function formatTradeTime(timestamp) {
@@ -335,34 +272,24 @@ function formatTradeTime(timestamp) {
     return "--";
   }
 
-  const date =
-    new Date(timestamp);
+  const date = new Date(timestamp);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "--";
   }
 
-  return date.toLocaleTimeString(
-    "en-US",
-    {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }
-  );
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 // ============================================================
 // FULL DATE + TIME
 // ============================================================
 
-function formatTradeDateTime(
-  timestamp
-) {
+function formatTradeDateTime(timestamp) {
   if (
     timestamp === undefined ||
     timestamp === null
@@ -370,28 +297,20 @@ function formatTradeDateTime(
     return "--";
   }
 
-  const date =
-    new Date(timestamp);
+  const date = new Date(timestamp);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "--";
   }
 
-  return date.toLocaleString(
-    "en-US",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }
-  );
+  return date.toLocaleString("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 // ============================================================
@@ -410,8 +329,7 @@ function calculateTradeDuration(
   }
 
   const duration =
-    exitTimestamp -
-    entryTimestamp;
+    exitTimestamp - entryTimestamp;
 
   if (duration <= 0) {
     return 0;
@@ -423,22 +341,9 @@ function calculateTradeDuration(
 // ============================================================
 // FORMAT DURATION
 // ============================================================
-//
-// Examples:
-//
-// 20 seconds → 20s
-// 90 seconds → 1m 30s
-// 20 minutes → 20m
-// 1 hour 20 minutes → 1h 20m
-// 2 hours → 2h
-//
-// ============================================================
 
-function formatTradeDuration(
-  durationMs
-) {
-  const duration =
-    Number(durationMs);
+function formatTradeDuration(durationMs) {
+  const duration = Number(durationMs);
 
   if (
     !Number.isFinite(duration) ||
@@ -447,28 +352,19 @@ function formatTradeDuration(
     return "0s";
   }
 
-  const totalSeconds =
-    Math.floor(
-      duration / 1000
-    );
+  const totalSeconds = Math.floor(
+    duration / 1000
+  );
 
-  const hours =
-    Math.floor(
-      totalSeconds / 3600
-    );
+  const hours = Math.floor(
+    totalSeconds / 3600
+  );
 
-  const minutes =
-    Math.floor(
-      (totalSeconds % 3600) /
-        60
-    );
+  const minutes = Math.floor(
+    (totalSeconds % 3600) / 60
+  );
 
-  const seconds =
-    totalSeconds % 60;
-
-  // ----------------------------------------------------------
-  // HOURS
-  // ----------------------------------------------------------
+  const seconds = totalSeconds % 60;
 
   if (hours > 0) {
     if (minutes > 0) {
@@ -478,10 +374,6 @@ function formatTradeDuration(
     return `${hours}h`;
   }
 
-  // ----------------------------------------------------------
-  // MINUTES
-  // ----------------------------------------------------------
-
   if (minutes > 0) {
     if (seconds > 0) {
       return `${minutes}m ${seconds}s`;
@@ -490,42 +382,17 @@ function formatTradeDuration(
     return `${minutes}m`;
   }
 
-  // ----------------------------------------------------------
-  // SECONDS
-  // ----------------------------------------------------------
-
   return `${seconds}s`;
 }
 
 // ============================================================
 // TRADING SESSION
 // ============================================================
-//
-// Session is derived from UTC.
-//
-// Asia:
-// 00:00 - 07:59 UTC
-//
-// London:
-// 08:00 - 12:59 UTC
-//
-// New York:
-// 13:00 - 20:59 UTC
-//
-// Sydney:
-// 21:00 - 23:59 UTC
-//
-// ============================================================
 
 function getTradingSession(trade) {
-  // If an explicit session exists,
-  // preserve it.
-
   if (
     trade?.session &&
-    String(
-      trade.session
-    ).trim() !== ""
+    String(trade.session).trim() !== ""
   ) {
     return trade.session;
   }
@@ -533,44 +400,27 @@ function getTradingSession(trade) {
   const timestamp =
     getEntryTimestamp(trade);
 
-  if (
-    timestamp === null
-  ) {
+  if (timestamp === null) {
     return "";
   }
 
-  const date =
-    new Date(timestamp);
+  const date = new Date(timestamp);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "";
   }
 
-  const hour =
-    date.getUTCHours();
+  const hour = date.getUTCHours();
 
-  if (
-    hour >= 0 &&
-    hour < 8
-  ) {
+  if (hour >= 0 && hour < 8) {
     return "Asia";
   }
 
-  if (
-    hour >= 8 &&
-    hour < 13
-  ) {
+  if (hour >= 8 && hour < 13) {
     return "London";
   }
 
-  if (
-    hour >= 13 &&
-    hour < 21
-  ) {
+  if (hour >= 13 && hour < 21) {
     return "New York";
   }
 
@@ -581,36 +431,24 @@ function getTradingSession(trade) {
 // RISK / REWARD
 // ============================================================
 
-function calculateRiskReward(
-  trade
-) {
-  const entry =
-    normalizeNumber(
-      trade?.entry ??
-        trade?.entryPrice
-    );
+function calculateRiskReward(trade) {
+  const entry = normalizeNumber(
+    trade?.entry ??
+      trade?.entryPrice
+  );
 
-  const stopLoss =
-    normalizeNumber(
-      trade?.stopLoss ??
-        trade?.sl
-    );
+  const stopLoss = normalizeNumber(
+    trade?.stopLoss ??
+      trade?.sl
+  );
 
-  const takeProfit =
-    normalizeNumber(
-      trade?.takeProfit ??
-        trade?.tp
-    );
+  const takeProfit = normalizeNumber(
+    trade?.takeProfit ??
+      trade?.tp
+  );
 
   const direction =
-    normalizeDirection(
-      trade
-    );
-
-  // ----------------------------------------------------------
-  // If price data is unavailable,
-  // use existing RR.
-  // ----------------------------------------------------------
+    normalizeDirection(trade);
 
   if (
     entry <= 0 ||
@@ -627,45 +465,22 @@ function calculateRiskReward(
   let risk = 0;
   let reward = 0;
 
-  // ----------------------------------------------------------
-  // BUY
-  // ----------------------------------------------------------
-
-  if (
-    direction === "Buy"
-  ) {
-    risk =
-      entry - stopLoss;
-
-    reward =
-      takeProfit - entry;
+  if (direction === "Buy") {
+    risk = entry - stopLoss;
+    reward = takeProfit - entry;
   }
 
-  // ----------------------------------------------------------
-  // SELL
-  // ----------------------------------------------------------
-
-  if (
-    direction === "Sell"
-  ) {
-    risk =
-      stopLoss - entry;
-
-    reward =
-      entry - takeProfit;
+  if (direction === "Sell") {
+    risk = stopLoss - entry;
+    reward = entry - takeProfit;
   }
 
-  if (
-    risk <= 0 ||
-    reward < 0
-  ) {
+  if (risk <= 0 || reward < 0) {
     return 0;
   }
 
   return Number(
-    (
-      reward / risk
-    ).toFixed(2)
+    (reward / risk).toFixed(2)
   );
 }
 
@@ -673,9 +488,7 @@ function calculateRiskReward(
 // NORMALIZE JOURNAL TRADE
 // ============================================================
 
-function normalizeJournalTrade(
-  trade
-) {
+function normalizeJournalTrade(trade) {
   if (
     !trade ||
     typeof trade !== "object"
@@ -683,43 +496,20 @@ function normalizeJournalTrade(
     return trade;
   }
 
-  // ==========================================================
-  // BASIC DATA
-  // ==========================================================
-
   const direction =
-    normalizeDirection(
-      trade
-    );
+    normalizeDirection(trade);
 
-  const symbol =
-    normalizeSymbol(
-      trade.symbol ??
-        trade.pair ??
-        trade.instrument
-    );
-
-  // ==========================================================
-  // ACTUAL ENTRY TIMESTAMP
-  // ==========================================================
+  const symbol = normalizeSymbol(
+    trade.symbol ??
+      trade.pair ??
+      trade.instrument
+  );
 
   const entryTimestamp =
-    getEntryTimestamp(
-      trade
-    );
-
-  // ==========================================================
-  // ACTUAL EXIT TIMESTAMP
-  // ==========================================================
+    getEntryTimestamp(trade);
 
   const exitTimestamp =
-    getExitTimestamp(
-      trade
-    );
-
-  // ==========================================================
-  // DURATION
-  // ==========================================================
+    getExitTimestamp(trade);
 
   const durationMs =
     calculateTradeDuration(
@@ -728,48 +518,27 @@ function normalizeJournalTrade(
     );
 
   const duration =
-    formatTradeDuration(
-      durationMs
-    );
-
-  // ==========================================================
-  // DATE
-  // ==========================================================
+    formatTradeDuration(durationMs);
 
   const date =
     entryTimestamp !== null
       ? getDateString({
           ...trade,
-          openedAt:
-            entryTimestamp,
+          openedAt: entryTimestamp,
         })
-      : getDateString(
-          trade
-        );
-
-  // ==========================================================
-  // DAY
-  // ==========================================================
+      : getDateString(trade);
 
   const day =
     entryTimestamp !== null
       ? getDayName({
           ...trade,
-          openedAt:
-            entryTimestamp,
+          openedAt: entryTimestamp,
         })
-      : getDayName(
-          trade
-        );
-
-  // ==========================================================
-  // SESSION
-  // ==========================================================
+      : getDayName(trade);
 
   const session =
     getTradingSession({
       ...trade,
-
       openedAt:
         entryTimestamp ??
         trade?.openedAt ??
@@ -777,35 +546,19 @@ function normalizeJournalTrade(
         null,
     });
 
-  // ==========================================================
-  // RISK / REWARD
-  // ==========================================================
-
   const rr =
-    calculateRiskReward(
-      trade
-    );
+    calculateRiskReward(trade);
 
-  // ==========================================================
-  // P&L
-  // ==========================================================
+  const pnl = normalizeNumber(
+    trade.pnl ??
+      trade.netProfit ??
+      trade.netPnL ??
+      trade.profit ??
+      trade.PnL ??
+      0
+  );
 
-  const pnl =
-    normalizeNumber(
-      trade.pnl ??
-        trade.netProfit ??
-        trade.netPnL ??
-        trade.profit ??
-        trade.PnL ??
-        0
-    );
-
-  // ==========================================================
-  // RESULT
-  // ==========================================================
-
-  let result =
-    trade.result;
+  let result = trade.result;
 
   if (!result) {
     if (pnl > 0) {
@@ -818,25 +571,22 @@ function normalizeJournalTrade(
   }
 
   // ==========================================================
-  // FINAL NORMALIZED TRADE
+  // ACCOUNT ISOLATION
   // ==========================================================
+
+  const accountId = normalizeAccountId(
+    trade.accountId ??
+      trade.accountID
+  );
 
   return {
     ...trade,
-
-    // ========================================================
-    // ID
-    // ========================================================
 
     id:
       trade.id ??
       `journal-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}`,
-
-    // ========================================================
-    // MAIN JOURNAL DATA
-    // ========================================================
 
     pair:
       symbol ||
@@ -849,119 +599,54 @@ function normalizeJournalTrade(
       "",
 
     date,
-
     day,
-
     session,
-
     direction,
-
     result,
 
-    // ========================================================
-    // P&L
-    // ========================================================
-
     pnl,
-
-    PnL:
-      pnl,
-
-    netProfit:
-      pnl,
-
-    netPnL:
-      pnl,
-
-    // ========================================================
-    // RISK / REWARD
-    // ========================================================
+    PnL: pnl,
+    netProfit: pnl,
+    netPnL: pnl,
 
     rr,
+    riskReward: rr,
+    riskRewardRatio: rr,
 
-    riskReward:
-      rr,
+    entryPrice: normalizeNumber(
+      trade.entryPrice ??
+        trade.entry
+    ),
 
-    riskRewardRatio:
-      rr,
+    exitPrice: normalizeNumber(
+      trade.exitPrice ??
+        trade.exit ??
+        trade.currentPrice
+    ),
 
-    // ========================================================
-    // PRICE DATA
-    // ========================================================
+    stopLoss: normalizeNumber(
+      trade.stopLoss ??
+        trade.sl
+    ),
 
-    entryPrice:
-      normalizeNumber(
-        trade.entryPrice ??
-          trade.entry
-      ),
+    takeProfit: normalizeNumber(
+      trade.takeProfit ??
+        trade.tp
+    ),
 
-    exitPrice:
-      normalizeNumber(
-        trade.exitPrice ??
-          trade.exit ??
-          trade.currentPrice
-      ),
+    entryTime: entryTimestamp,
+    openedAt: entryTimestamp,
+    openTime: entryTimestamp,
 
-    stopLoss:
-      normalizeNumber(
-        trade.stopLoss ??
-          trade.sl
-      ),
-
-    takeProfit:
-      normalizeNumber(
-        trade.takeProfit ??
-          trade.tp
-      ),
-
-    // ========================================================
-    // ENTRY TIME
-    // ========================================================
-    //
-    // IMPORTANT:
-    // Keep the ORIGINAL timestamp.
-    //
-    // UI can display it as:
-    //
-    // 8:30 PM
-    //
-    // ========================================================
-
-    entryTime:
-      entryTimestamp,
-
-    openedAt:
-      entryTimestamp,
-
-    openTime:
-      entryTimestamp,
-
-    // ========================================================
-    // EXIT TIME
-    // ========================================================
-
-    exitTime:
-      exitTimestamp,
-
-    closedAt:
-      exitTimestamp,
-
-    closeTime:
-      exitTimestamp,
-
-    // ========================================================
-    // READABLE TIME
-    // ========================================================
+    exitTime: exitTimestamp,
+    closedAt: exitTimestamp,
+    closeTime: exitTimestamp,
 
     entryTimeFormatted:
-      formatTradeTime(
-        entryTimestamp
-      ),
+      formatTradeTime(entryTimestamp),
 
     exitTimeFormatted:
-      formatTradeTime(
-        exitTimestamp
-      ),
+      formatTradeTime(exitTimestamp),
 
     entryDateTime:
       formatTradeDateTime(
@@ -973,36 +658,15 @@ function normalizeJournalTrade(
         exitTimestamp
       ),
 
-    // ========================================================
-    // DURATION
-    // ========================================================
-    //
-    // durationMs:
-    // raw milliseconds
-    //
-    // duration:
-    // UI-ready string
-    //
-    // Example:
-    // 1200000 → "20m"
-    //
-    // ========================================================
-
     durationMs,
-
     duration,
-
-    durationFormatted:
-      duration,
+    durationFormatted: duration,
 
     // ========================================================
-    // ACCOUNT
+    // GLOBAL ACCOUNT
     // ========================================================
 
-    accountId:
-      trade.accountId ??
-      trade.accountID ??
-      null,
+    accountId,
   };
 }
 
@@ -1013,29 +677,20 @@ function normalizeJournalTrade(
 function loadSavedTrades() {
   try {
     const saved =
-      localStorage.getItem(
-        "trades"
-      );
+      localStorage.getItem("trades");
 
     if (!saved) {
       return [];
     }
 
-    const parsed =
-      JSON.parse(saved);
+    const parsed = JSON.parse(saved);
 
-    if (
-      !Array.isArray(parsed)
-    ) {
+    if (!Array.isArray(parsed)) {
       return [];
     }
 
-    // Normalize old trades too.
-
     return parsed
-      .map(
-        normalizeJournalTrade
-      )
+      .map(normalizeJournalTrade)
       .filter(Boolean);
   } catch (error) {
     console.error(
@@ -1044,6 +699,28 @@ function loadSavedTrades() {
     );
 
     return [];
+  }
+}
+
+// ============================================================
+// LOAD SELECTED ACCOUNT
+// ============================================================
+
+function loadSelectedAccountId() {
+  try {
+    const saved =
+      localStorage.getItem(
+        "selectedAccountId"
+      );
+
+    return normalizeAccountId(saved);
+  } catch (error) {
+    console.error(
+      "❌ Failed to load selected account:",
+      error
+    );
+
+    return null;
   }
 }
 
@@ -1058,24 +735,63 @@ export function JournalProvider({
   // TRADES
   // ==========================================================
 
-  const [
-    trades,
-    setTrades,
-  ] = useState(() =>
+  const [trades, setTrades] = useState(() =>
     loadSavedTrades()
   );
+
+  // ==========================================================
+  // SELECTED ACCOUNT
+  // ==========================================================
+
+  const [
+    selectedAccountId,
+    setSelectedAccountIdState,
+  ] = useState(() =>
+    loadSelectedAccountId()
+  );
+
+  // ==========================================================
+  // SELECTED ACCOUNT SETTER
+  // ==========================================================
+
+  const setSelectedAccountId =
+    useCallback((accountId) => {
+      const normalizedId =
+        normalizeAccountId(accountId);
+
+      setSelectedAccountIdState(
+        normalizedId
+      );
+
+      try {
+        if (normalizedId !== null) {
+          localStorage.setItem(
+            "selectedAccountId",
+            normalizedId
+          );
+        } else {
+          localStorage.removeItem(
+            "selectedAccountId"
+          );
+        }
+      } catch (error) {
+        console.error(
+          "❌ Failed to save selected account:",
+          error
+        );
+      }
+    }, []);
 
   // ==========================================================
   // RELOAD TRADES
   // ==========================================================
 
-  const reloadTrades =
-    useCallback(() => {
-      const loaded =
-        loadSavedTrades();
+  const reloadTrades = useCallback(() => {
+    const loaded =
+      loadSavedTrades();
 
-      setTrades(loaded);
-    }, []);
+    setTrades(loaded);
+  }, []);
 
   // ==========================================================
   // SAVE TRADES
@@ -1085,9 +801,7 @@ export function JournalProvider({
     try {
       localStorage.setItem(
         "trades",
-        JSON.stringify(
-          trades
-        )
+        JSON.stringify(trades)
       );
     } catch (error) {
       console.error(
@@ -1102,272 +816,536 @@ export function JournalProvider({
   // ==========================================================
 
   useEffect(() => {
+    const handleStorage = (event) => {
+      // Another tab/window changed selected account.
+      if (
+        event.key ===
+        "selectedAccountId"
+      ) {
+        setSelectedAccountIdState(
+          normalizeAccountId(
+            event.newValue
+          )
+        );
+      }
+
+      // Another tab/window changed trades.
+      if (
+        event.key === "trades"
+      ) {
+        reloadTrades();
+      }
+    };
+
     window.addEventListener(
       "storage",
-      reloadTrades
+      handleStorage
     );
 
     return () => {
       window.removeEventListener(
         "storage",
-        reloadTrades
+        handleStorage
       );
     };
-  }, [
-    reloadTrades,
-  ]);
+  }, [reloadTrades]);
 
   // ==========================================================
   // ADD TRADE
   // ==========================================================
 
-  const addTrade =
-    useCallback(
-      (trade) => {
-        if (
-          !trade ||
-          typeof trade !==
-            "object"
-        ) {
-          console.error(
-            "❌ Cannot add invalid journal trade:",
-            trade
-          );
+  const addTrade = useCallback(
+    (trade) => {
+      if (
+        !trade ||
+        typeof trade !== "object"
+      ) {
+        console.error(
+          "❌ Cannot add invalid journal trade:",
+          trade
+        );
 
-          return;
+        return;
+      }
+
+      // ======================================================
+      // ACCOUNT SAFETY
+      // ======================================================
+
+      const tradeAccountId =
+        normalizeAccountId(
+          trade.accountId ??
+            trade.accountID
+        );
+
+      // If the caller did not provide an account,
+      // automatically attach the currently selected account.
+      const accountId =
+        tradeAccountId ??
+        selectedAccountId;
+
+      // Never create an account-less journal trade
+      // when an account is selected.
+      if (!accountId) {
+        console.warn(
+          "⚠️ Cannot add journal trade: no trading account selected."
+        );
+
+        return;
+      }
+
+      const normalizedTrade =
+        normalizeJournalTrade({
+          ...trade,
+          accountId,
+        });
+
+      console.log(
+        "📘 AUTOMATIC JOURNAL TRADE:",
+        normalizedTrade
+      );
+
+      // ======================================================
+      // DUPLICATE / UPDATE CHECK
+      // ======================================================
+
+      setTrades((prev) => {
+        const exists = prev.some(
+          (existingTrade) =>
+            String(existingTrade.id) ===
+            String(normalizedTrade.id)
+        );
+
+        // ====================================================
+        // UPDATE EXISTING
+        // ====================================================
+
+        if (exists) {
+          return prev.map(
+            (existingTrade) => {
+              if (
+                String(existingTrade.id) !==
+                String(normalizedTrade.id)
+              ) {
+                return existingTrade;
+              }
+
+              // Prevent moving an existing trade
+              // between trading accounts.
+              const existingAccountId =
+                normalizeAccountId(
+                  existingTrade.accountId
+                );
+
+              if (
+                existingAccountId &&
+                existingAccountId !==
+                  accountId
+              ) {
+                console.warn(
+                  "⚠️ Prevented moving a trade to another account."
+                );
+
+                return existingTrade;
+              }
+
+              return normalizeJournalTrade({
+                ...existingTrade,
+                ...normalizedTrade,
+                accountId:
+                  existingAccountId ??
+                  accountId,
+              });
+            }
+          );
         }
 
-        // ----------------------------------------------------
-        // NORMALIZE
-        // ----------------------------------------------------
+        // ====================================================
+        // ADD NEW
+        // ====================================================
 
-        const normalizedTrade =
-          normalizeJournalTrade(
-            trade
-          );
-
-        console.log(
-          "📘 AUTOMATIC JOURNAL TRADE:",
-          normalizedTrade
-        );
-
-        // ----------------------------------------------------
-        // DUPLICATE / UPDATE CHECK
-        // ----------------------------------------------------
-
-        setTrades(
-          (prev) => {
-            const exists =
-              prev.some(
-                (
-                  existingTrade
-                ) =>
-                  String(
-                    existingTrade.id
-                  ) ===
-                  String(
-                    normalizedTrade.id
-                  )
-              );
-
-            // --------------------------------------------------
-            // UPDATE EXISTING
-            // --------------------------------------------------
-
-            if (exists) {
-              return prev.map(
-                (
-                  existingTrade
-                ) =>
-                  String(
-                    existingTrade.id
-                  ) ===
-                  String(
-                    normalizedTrade.id
-                  )
-                    ? normalizeJournalTrade(
-                        {
-                          ...existingTrade,
-                          ...normalizedTrade,
-                        }
-                      )
-                    : existingTrade
-              );
-            }
-
-            // --------------------------------------------------
-            // ADD NEW
-            // --------------------------------------------------
-
-            return [
-              ...prev,
-              {
-                ...normalizedTrade,
-
-                id:
-                  normalizedTrade.id ??
-                  `journal-${Date.now()}-${Math.random()
-                    .toString(36)
-                    .slice(2, 8)}`,
-              },
-            ];
-          }
-        );
-      },
-      []
-    );
+        return [
+          ...prev,
+          {
+            ...normalizedTrade,
+            accountId,
+            id:
+              normalizedTrade.id ??
+              `journal-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2, 8)}`,
+          },
+        ];
+      });
+    },
+    [selectedAccountId]
+  );
 
   // ==========================================================
   // UPDATE TRADE
   // ==========================================================
 
-  const updateTrade =
-    useCallback(
-      (updatedTrade) => {
-        if (
-          !updatedTrade ||
-          updatedTrade.id ===
-            undefined ||
-          updatedTrade.id ===
-            null
-        ) {
-          console.error(
-            "❌ Cannot update trade without ID:",
-            updatedTrade
-          );
-
-          return;
-        }
-
-        const normalizedTrade =
-          normalizeJournalTrade(
-            updatedTrade
-          );
-
-        setTrades(
-          (prev) =>
-            prev.map(
-              (trade) =>
-                String(
-                  trade.id
-                ) ===
-                String(
-                  normalizedTrade.id
-                )
-                  ? normalizeJournalTrade(
-                      {
-                        ...trade,
-                        ...normalizedTrade,
-                      }
-                    )
-                  : trade
-            )
+  const updateTrade = useCallback(
+    (updatedTrade) => {
+      if (
+        !updatedTrade ||
+        updatedTrade.id === undefined ||
+        updatedTrade.id === null
+      ) {
+        console.error(
+          "❌ Cannot update trade without ID:",
+          updatedTrade
         );
-      },
-      []
-    );
+
+        return;
+      }
+
+      setTrades((prev) =>
+        prev.map((trade) => {
+          if (
+            String(trade.id) !==
+            String(updatedTrade.id)
+          ) {
+            return trade;
+          }
+
+          const existingAccountId =
+            normalizeAccountId(
+              trade.accountId
+            );
+
+          const incomingAccountId =
+            normalizeAccountId(
+              updatedTrade.accountId ??
+                updatedTrade.accountID
+            );
+
+          // Prevent changing the account of
+          // an existing trade.
+          if (
+            existingAccountId &&
+            incomingAccountId &&
+            existingAccountId !==
+              incomingAccountId
+          ) {
+            console.warn(
+              "⚠️ Prevented changing trade account."
+            );
+
+            return trade;
+          }
+
+          return normalizeJournalTrade({
+            ...trade,
+            ...updatedTrade,
+            accountId:
+              existingAccountId ??
+              incomingAccountId ??
+              selectedAccountId,
+          });
+        })
+      );
+    },
+    [selectedAccountId]
+  );
 
   // ==========================================================
   // DELETE TRADE
   // ==========================================================
 
-  const deleteTrade =
-    useCallback(
-      (id) => {
-        setTrades(
-          (prev) =>
-            prev.filter(
-              (trade) =>
-                String(
-                  trade.id
-                ) !==
-                String(id)
-            )
-        );
-      },
-      []
-    );
-
-  // ==========================================================
-  // SELECTED ACCOUNT
-  // ==========================================================
-
-  const [
-    selectedAccountId,
-    setSelectedAccountId,
-  ] = useState(() => {
-    try {
-      const saved =
-        localStorage.getItem(
-          "selectedAccountId"
-        );
-
-      return saved
-        ? Number(saved)
-        : null;
-    } catch {
-      return null;
-    }
-  });
-
-  // ==========================================================
-  // SAVE SELECTED ACCOUNT
-  // ==========================================================
-
-  useEffect(() => {
-    try {
-      if (
-        selectedAccountId !==
-        null
-      ) {
-        localStorage.setItem(
-          "selectedAccountId",
-          String(
-            selectedAccountId
-          )
-        );
-      }
-    } catch (error) {
-      console.error(
-        "❌ Failed to save selected account:",
-        error
+  const deleteTrade = useCallback(
+    (id) => {
+      setTrades((prev) =>
+        prev.filter(
+          (trade) =>
+            String(trade.id) !==
+            String(id)
+        )
       );
-    }
-  }, [
-    selectedAccountId,
-  ]);
+    },
+    []
+  );
 
   // ==========================================================
   // FILTERED TRADES
   // ==========================================================
 
-  const filteredTrades =
-    useMemo(() => {
-      return trades.filter(
-        (trade) => {
-          // Old trades without
-          // accountId remain visible.
+  const filteredTrades = useMemo(() => {
+    // No selected account = no account-scoped data.
+    if (!selectedAccountId) {
+      return [];
+    }
 
-          if (
-            !trade.accountId
-          ) {
-            return true;
-          }
+    return trades.filter((trade) => {
+      const tradeAccountId =
+        normalizeAccountId(
+          trade?.accountId ??
+            trade?.accountID
+        );
 
-          return (
-            Number(
-              trade.accountId
-            ) ===
-            Number(
-              selectedAccountId
-            )
-          );
-        }
+      // IMPORTANT:
+      // Old/unassigned trades are NOT shown
+      // inside any account.
+      if (!tradeAccountId) {
+        return false;
+      }
+
+      return (
+        tradeAccountId ===
+        String(selectedAccountId)
       );
-    }, [
-      trades,
+    });
+  }, [
+    trades,
+    selectedAccountId,
+  ]);
+
+  // ==========================================================
+  // ACCOUNT-SCOPED ADD TRADE
+  // ==========================================================
+
+  const addAccountTrade = useCallback(
+    (trade) => {
+      if (!selectedAccountId) {
+        console.warn(
+          "⚠️ Cannot add account trade: no account selected."
+        );
+
+        return;
+      }
+
+      const providedAccountId =
+        normalizeAccountId(
+          trade?.accountId ??
+            trade?.accountID
+        );
+
+      // If an account ID was supplied, it must
+      // match the currently selected account.
+      if (
+        providedAccountId &&
+        providedAccountId !==
+          String(selectedAccountId)
+      ) {
+        console.warn(
+          "⚠️ Prevented adding trade to another account."
+        );
+
+        return;
+      }
+
+      addTrade({
+        ...trade,
+        accountId:
+          providedAccountId ??
+          String(selectedAccountId),
+      });
+    },
+    [
+      addTrade,
       selectedAccountId,
-    ]);
+    ]
+  );
+
+  // ==========================================================
+  // ACCOUNT-SCOPED UPDATE TRADE
+  // ==========================================================
+
+  const updateAccountTrade =
+    useCallback(
+      (updatedTrade) => {
+        if (
+          !updatedTrade ||
+          updatedTrade.id === undefined ||
+          updatedTrade.id === null
+        ) {
+          return;
+        }
+
+        if (!selectedAccountId) {
+          console.warn(
+            "⚠️ Cannot update account trade: no account selected."
+          );
+
+          return;
+        }
+
+        const existingTrade =
+          trades.find(
+            (trade) =>
+              String(trade.id) ===
+              String(
+                updatedTrade.id
+              )
+          );
+
+        if (!existingTrade) {
+          console.warn(
+            "⚠️ Trade not found."
+          );
+
+          return;
+        }
+
+        const existingAccountId =
+          normalizeAccountId(
+            existingTrade.accountId
+          );
+
+        // Prevent accidentally editing
+        // another account's trade.
+        if (
+          existingAccountId !==
+          String(selectedAccountId)
+        ) {
+          console.warn(
+            "⚠️ Prevented updating a trade belonging to another account."
+          );
+
+          return;
+        }
+
+        const incomingAccountId =
+          normalizeAccountId(
+            updatedTrade.accountId ??
+              updatedTrade.accountID
+          );
+
+        // Prevent changing the trade's account.
+        if (
+          incomingAccountId &&
+          incomingAccountId !==
+            String(selectedAccountId)
+        ) {
+          console.warn(
+            "⚠️ Prevented moving trade to another account."
+          );
+
+          return;
+        }
+
+        updateTrade({
+          ...updatedTrade,
+          accountId:
+            String(selectedAccountId),
+        });
+      },
+      [
+        trades,
+        selectedAccountId,
+        updateTrade,
+      ]
+    );
+
+  // ==========================================================
+  // ACCOUNT-SCOPED DELETE TRADE
+  // ==========================================================
+
+  const deleteAccountTrade =
+    useCallback(
+      (tradeId) => {
+        if (!selectedAccountId) {
+          console.warn(
+            "⚠️ Cannot delete account trade: no account selected."
+          );
+
+          return;
+        }
+
+        const existingTrade =
+          trades.find(
+            (trade) =>
+              String(trade.id) ===
+              String(tradeId)
+          );
+
+        if (!existingTrade) {
+          return;
+        }
+
+        const tradeAccountId =
+          normalizeAccountId(
+            existingTrade.accountId
+          );
+
+        // Never allow deleting a trade
+        // belonging to another account.
+        if (
+          tradeAccountId !==
+          String(selectedAccountId)
+        ) {
+          console.warn(
+            "⚠️ Prevented deleting a trade belonging to another account."
+          );
+
+          return;
+        }
+
+        deleteTrade(tradeId);
+      },
+      [
+        trades,
+        selectedAccountId,
+        deleteTrade,
+      ]
+    );
+
+  // ==========================================================
+  // ACCOUNT-SCOPED STATISTICS
+  // ==========================================================
+
+  const accountTradeStats = useMemo(() => {
+    const totalTrades =
+      filteredTrades.length;
+
+    const winningTrades =
+      filteredTrades.filter(
+        (trade) =>
+          Number(trade.pnl) > 0
+      ).length;
+
+    const losingTrades =
+      filteredTrades.filter(
+        (trade) =>
+          Number(trade.pnl) < 0
+      ).length;
+
+    const breakevenTrades =
+      filteredTrades.filter(
+        (trade) =>
+          Number(trade.pnl) === 0
+      ).length;
+
+    const totalPnL =
+      filteredTrades.reduce(
+        (sum, trade) =>
+          sum +
+          normalizeNumber(
+            trade.pnl
+          ),
+        0
+      );
+
+    const winRate =
+      totalTrades > 0
+        ? Number(
+            (
+              (winningTrades /
+                totalTrades) *
+              100
+            ).toFixed(2)
+          )
+        : 0;
+
+    return {
+      totalTrades,
+      winningTrades,
+      losingTrades,
+      breakevenTrades,
+      totalPnL,
+      winRate,
+    };
+  }, [filteredTrades]);
 
   // ==========================================================
   // CONTEXT VALUE
@@ -1375,40 +1353,49 @@ export function JournalProvider({
 
   const value = {
     // --------------------------------------------------------
-    // TRADES
+    // ALL TRADES
     // --------------------------------------------------------
 
     trades,
+    setTrades,
+
+    // --------------------------------------------------------
+    // CURRENT ACCOUNT TRADES
+    // --------------------------------------------------------
 
     filteredTrades,
 
-    setTrades,
+    // --------------------------------------------------------
+    // CURRENT ACCOUNT STATISTICS
+    // --------------------------------------------------------
+
+    accountTradeStats,
 
     // --------------------------------------------------------
     // TRADE ACTIONS
     // --------------------------------------------------------
 
     addTrade,
+    addAccountTrade,
 
     updateTrade,
+    updateAccountTrade,
 
     deleteTrade,
+    deleteAccountTrade,
 
     reloadTrades,
 
     // --------------------------------------------------------
-    // ACCOUNT
+    // GLOBAL ACCOUNT
     // --------------------------------------------------------
 
     selectedAccountId,
-
     setSelectedAccountId,
   };
 
   return (
-    <JournalContext.Provider
-      value={value}
-    >
+    <JournalContext.Provider value={value}>
       {children}
     </JournalContext.Provider>
   );
@@ -1420,9 +1407,7 @@ export function JournalProvider({
 
 export function useJournal() {
   const context =
-    useContext(
-      JournalContext
-    );
+    useContext(JournalContext);
 
   if (!context) {
     throw new Error(

@@ -1,16 +1,17 @@
 import {
-    Brain,
-    LayoutDashboard,
-    ClipboardList,
-    CandlestickChart,
-    Target,
-    BookOpen,
-    BarChart3,
-    NotebookPen,
-    Newspaper,
-    Settings,
-    User,
-  } from "lucide-react";
+  Brain,
+  LayoutDashboard,
+  ClipboardList,
+  CandlestickChart,
+  Target,
+  BookOpen,
+  BarChart3,
+  NotebookPen,
+  Newspaper,
+  Wrench,
+  Settings,
+  User,
+} from "lucide-react";
   
   const icons = {
     dashboard: LayoutDashboard,
@@ -20,6 +21,7 @@ import {
     journal: BookOpen,
     reports: BarChart3,
     notebook: NotebookPen,
+    tools: Wrench,
     news: Newspaper,
     ai: Brain,
     settings: Settings,

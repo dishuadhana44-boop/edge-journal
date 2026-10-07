@@ -18,7 +18,10 @@ function DailyReview({
   initialData = null,
   reviewKey = null,
 }) {
-  const { filteredTrades } = useJournal();
+  const {
+    filteredTrades,
+    selectedAccountId,
+  } = useJournal();
 
   const defaultData = {
     date: new Date().toISOString().split("T")[0],
@@ -75,12 +78,20 @@ function DailyReview({
   };
 
   const handleSave = () => {
-    const key =
-      reviewKey ||
-      `edgefinder-daily-review-${formData.date || Date.now()}`;
+    const accountKey =
+    selectedAccountId
+      ? String(selectedAccountId).trim()
+      : "no-account";
+  
+  const key =
+    reviewKey ||
+    `edgefinder-daily-review-${accountKey}-${formData.date || Date.now()}`;
 
     const dataToSave = {
       ...formData,
+      accountId: selectedAccountId
+        ? String(selectedAccountId).trim()
+        : null,
       wins: calculatedStats.wins,
       losses: calculatedStats.losses,
       breakeven: calculatedStats.breakeven,

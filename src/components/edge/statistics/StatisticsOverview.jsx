@@ -58,7 +58,7 @@ const cards = [
   },
   {
     title: "Net P&L",
-    value: `₹${totalPnL.toLocaleString()}`,
+    value: `$${totalPnL.toLocaleString()}`,
     icon: DollarSign,
     color: totalPnL >= 0 ? "text-green-600" : "text-red-600",
   },
