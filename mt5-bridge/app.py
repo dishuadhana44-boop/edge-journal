@@ -1830,6 +1830,104 @@ def mt5_price():
                 str(error)
         }), 500
 
+# ==========================================================
+# CANDLES
+# GET /mt5/candles?symbol=EURUSD&timeframe=H1&count=100
+# ==========================================================
+
+@app.route(
+    "/mt5/candles",
+    methods=["GET"]
+)
+def mt5_candles():
+
+    try:
+
+        if not ensure_mt5_connection():
+            return jsonify({
+                "success": False,
+                "message": "MT5 is not connected."
+            }), 503
+
+        symbol = str(
+            request.args.get(
+                "symbol",
+                "EURUSD"
+            )
+        ).upper().strip()
+
+        timeframe_name = str(
+            request.args.get(
+                "timeframe",
+                "H1"
+            )
+        ).upper()
+
+        count = int(
+            request.args.get(
+                "count",
+                100
+            )
+        )
+
+        timeframe_map = {
+            "M1": mt5.TIMEFRAME_M1,
+            "M5": mt5.TIMEFRAME_M5,
+            "M15": mt5.TIMEFRAME_M15,
+            "M30": mt5.TIMEFRAME_M30,
+            "H1": mt5.TIMEFRAME_H1,
+            "H4": mt5.TIMEFRAME_H4,
+            "D1": mt5.TIMEFRAME_D1,
+        }
+
+        timeframe = timeframe_map.get(
+            timeframe_name,
+            mt5.TIMEFRAME_H1
+        )
+
+        ensure_symbol(symbol)
+
+        rates = mt5.copy_rates_from_pos(
+            symbol,
+            timeframe,
+            0,
+            count
+        )
+
+        if rates is None:
+            return jsonify({
+                "success": False,
+                "message": "Unable to fetch candles.",
+                "error": mt5_error()
+            }), 500
+
+        candles = []
+
+        for row in rates:
+
+            candles.append({
+                "time": int(row["time"]),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": int(row["tick_volume"])
+            })
+
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe_name,
+            "count": len(candles),
+            "candles": candles
+        })
+
+    except Exception as error:
+
+        return jsonify({
+            "success": False,
+            "message": str(error)
+        }), 500
 
 # ==========================================================
 # OPEN POSITIONS

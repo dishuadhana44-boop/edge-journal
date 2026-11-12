@@ -270,6 +270,78 @@ router.get("/price", async (req, res) => {
 });
 
 // ==========================================================
+// MT5 CANDLES
+// GET /api/mt5/candles?symbol=EURUSD&timeframe=H1&count=100
+// ==========================================================
+
+router.get(
+  "/candles",
+  async (req, res) => {
+    try {
+      const symbol = String(
+        req.query.symbol || "EURUSD"
+      )
+        .toUpperCase()
+        .trim();
+
+      const timeframe = String(
+        req.query.timeframe || "H1"
+      )
+        .toUpperCase()
+        .trim();
+
+      const count = Math.min(
+        Math.max(
+          parseInt(
+            req.query.count || "100",
+            10
+          ) || 100,
+          10
+        ),
+        1000
+      );
+
+      const response = await axios.get(
+        `${MT5_BRIDGE_URL}/mt5/candles`,
+        {
+          params: {
+            symbol,
+            timeframe,
+            count,
+          },
+          timeout: 10000,
+        }
+      );
+
+      return res.status(
+        response.status
+      ).json(
+        response.data
+      );
+
+    } catch (error) {
+      console.error(
+        "❌ MT5 CANDLES ROUTE ERROR:",
+        error?.response?.data ||
+          error.message
+      );
+
+      return res.status(
+        error?.response?.status || 500
+      ).json({
+        success: false,
+        message:
+          error?.response?.data?.message ||
+          "Failed to fetch MT5 candles.",
+        error:
+          error?.response?.data?.error ||
+          error.message,
+      });
+    }
+  }
+);
+
+// ==========================================================
 // OPEN POSITIONS
 // GET /api/mt5/positions
 // ==========================================================
