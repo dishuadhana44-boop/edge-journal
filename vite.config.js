@@ -10,9 +10,9 @@ export default defineConfig(({ mode }) => {
   return {
     // Qoder project runs on 5174 (original Cursor copy uses 5173)
     server: {
+      host: true,
       port: 5174,
       strictPort: true,
-      open: true,
     },
     plugins: [
       react(),
