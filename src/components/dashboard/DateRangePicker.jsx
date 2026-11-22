@@ -1,18 +1,26 @@
 import { useState, useRef, useEffect } from "react";
 import { Calendar } from "lucide-react";
 import { DayPicker } from "react-day-picker";
-import { format } from "date-fns";
-import {
-  subDays,
-  startOfMonth,
-  endOfMonth
-} from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 
 import "react-day-picker/dist/style.css";
 import "./DateRangePicker.css";
 
 import { useDashboardFilter } from "../../context/DashboardFilterContext";
 import { getDateRange, DATE_FILTERS } from "../../utils/dateRangeUtils";
+
+// react-day-picker v10 bounds the month navigation and the year dropdown with
+// startMonth/endMonth — fromYear/toYear are no longer read by the library.
+const MIN_MONTH = new Date(2000, 0, 1);
+const MAX_MONTH = new Date(2035, 11, 1);
+
+const RANGE_PRESETS = [
+  DATE_FILTERS.TODAY,
+  DATE_FILTERS.ONE_WEEK,
+  DATE_FILTERS.TWO_WEEKS,
+  DATE_FILTERS.ONE_MONTH,
+  DATE_FILTERS.ALL,
+];
 
 function DateRangePicker() {
   const popupRef = useRef(null);
@@ -36,6 +44,15 @@ const [tempStart, setTempStart] = useState(startDate);
 
 const [tempEnd, setTempEnd] = useState(endDate);
 
+// The dashboard can be re-ranged from the header quick filters while this popup
+// is closed, so re-sync the draft dates from the applied range on every open.
+useEffect(() => {
+  if (!open) return;
+
+  setTempStart(startDate);
+  setTempEnd(endDate);
+}, [open, startDate, endDate]);
+
 const applyQuickFilter = (filter) => {
 
   const range = getDateRange(filter);
@@ -53,7 +70,6 @@ const applyQuickFilter = (filter) => {
 };
 
 
-  const [activePreset, setActivePreset] = useState("today");
   useEffect(() => {
     function handleClick(e) {
       if (popupRef.current && !popupRef.current.contains(e.target)) {
@@ -85,21 +101,26 @@ const applyQuickFilter = (filter) => {
     setOpen(false);
   };
 
-  const presetButtonClass = (preset) =>
-    selectedFilter === preset
-      ? "px-5 py-2.5 rounded-xl bg-purple-600 text-white border border-purple-600 shadow-md transition-all duration-300 hover:bg-purple-700 hover:scale-105"
-      : "px-5 py-2.5 rounded-xl bg-white text-gray-700 border border-gray-200 transition-all duration-300 hover:bg-purple-50 hover:border-purple-400 hover:text-purple-700 hover:scale-105";
- 
+  const rangeDays = differenceInCalendarDays(tempEnd, tempStart) + 1;
+  const rangeSummary = `${format(tempStart, "dd MMM yyyy")} → ${format(
+    tempEnd,
+    "dd MMM yyyy"
+  )} · ${rangeDays} day${rangeDays === 1 ? "" : "s"}`;
+
+  // Visual-only: shades the days between the two draft endpoints.
+  const rangeModifiers = { range: [{ after: tempStart, before: tempEnd }] };
+  const rangeClassNames = { range: "dp-range" };
+
   
   return (
     <div className="relative" ref={popupRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 h-11 px-4 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-purple-500 transition"
+        className="flex items-center gap-2 h-9 px-3 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-purple-500 transition"
       >
-        <Calendar size={18} className="text-purple-600" />
+        <Calendar size={15} className="text-purple-600 shrink-0" />
 
-        <span className="text-sm font-medium whitespace-nowrap">
+        <span className="text-[13px] font-medium whitespace-nowrap text-gray-700">
           {format(startDate, "dd MMM yyyy")}
           {" — "}
           {format(endDate, "dd MMM yyyy")}
@@ -107,104 +128,119 @@ const applyQuickFilter = (filter) => {
       </button>
 
       {open && (
-        <div className="date-popup absolute right-0 mt-3 w-[650px] rounded-2xl border border-gray-200 bg-white shadow-2xl p-6 z-[9999]">
+        <div className="date-popup absolute right-0 mt-3 w-[650px] max-w-[92vw] z-[9999]">
 
-<div className="flex items-center justify-between mb-8">
-
-<h2 className="text-1xl font-bold text-gray-900">
-  Select Date Range
-</h2>
-
-<div className="flex items-center gap-1">
-
-<button
-    onClick={() => applyQuickFilter(DATE_FILTERS.TODAY)}
-    className={presetButtonClass(DATE_FILTERS.TODAY)}
->
-    Today
-</button>
-
-<button
-  onClick={() => applyQuickFilter(DATE_FILTERS.ONE_WEEK)}
-  className={presetButtonClass(DATE_FILTERS.ONE_WEEK)}
->
-  1W
-</button>
-
-<button
-    onClick={() => applyQuickFilter(DATE_FILTERS.TWO_WEEKS)}
-    className={presetButtonClass(DATE_FILTERS.TWO_WEEKS)}
->
-    2W
-</button>
-
-<button
-    onClick={() => applyQuickFilter(DATE_FILTERS.ONE_MONTH)}
-    className={presetButtonClass(DATE_FILTERS.ONE_MONTH)}
->
-    1M
-</button>
-
-<button
-    onClick={() => applyQuickFilter(DATE_FILTERS.ALL)}
-    className={presetButtonClass(DATE_FILTERS.ALL)}
->
-    ALL
-</button>
-
-</div>
-
-</div>
-
-<div className="grid grid-cols-2 gap-10">
+          <div className="dp-head">
 
             <div>
-              <p className="text-sm font-medium mb-3">
-                Start Date
-              </p>
+              <h2 className="dp-title">Select Date Range</h2>
+              <p className="dp-meta" title={rangeSummary}>{rangeSummary}</p>
+            </div>
+
+            <div className="dp-presets">
+              {RANGE_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  data-active={selectedFilter === preset}
+                  className="dp-preset"
+                  onClick={() => applyQuickFilter(preset)}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+
+          </div>
+
+          <div className="dp-calendars">
+
+            <div className="dp-calendar">
+              <div className="dp-calendar-head">
+                <span className="dp-calendar-label">Start Date</span>
+                <span className="dp-calendar-value">
+                  {format(tempStart, "dd MMM yyyy")}
+                </span>
+              </div>
 
               <DayPicker
+                key={`start-${format(tempStart, "yyyy-MM")}`}
                 mode="single"
                 selected={tempStart}
-                onSelect={setTempStart}
+                onSelect={(day) => day && setTempStart(day)}
+                defaultMonth={tempStart}
                 captionLayout="dropdown"
-                fromYear={2020}
-                toYear={2035}
+                navLayout="around"
+                startMonth={MIN_MONTH}
+                endMonth={MAX_MONTH}
+                disabled={[{ after: tempEnd }]}
+                modifiers={rangeModifiers}
+                modifiersClassNames={rangeClassNames}
               />
             </div>
 
-            <div>
-              <p className="text-sm font-medium mb-3">
-                End Date
-              </p>
+            <div className="dp-calendar dp-calendar--end">
+              <div className="dp-calendar-head">
+                <span className="dp-calendar-label">End Date</span>
+                <span className="dp-calendar-value">
+                  {format(tempEnd, "dd MMM yyyy")}
+                </span>
+              </div>
 
               <DayPicker
+                key={`end-${format(tempEnd, "yyyy-MM")}`}
                 mode="single"
                 selected={tempEnd}
-                onSelect={setTempEnd}
+                onSelect={(day) => day && setTempEnd(day)}
+                defaultMonth={tempEnd}
                 captionLayout="dropdown"
-                fromYear={2020}
-                toYear={2035}
+                navLayout="around"
+                startMonth={MIN_MONTH}
+                endMonth={MAX_MONTH}
+                disabled={[{ before: tempStart }]}
+                modifiers={rangeModifiers}
+                modifiersClassNames={rangeClassNames}
               />
             </div>
 
           </div>
 
-          <div className="flex justify-end gap-3 mt-6">
+          <div className="dp-foot">
 
-            <button
-              onClick={cancelDates}
-              className="px-5 py-2 rounded-xl border border-gray-300 hover:bg-gray-100"
-            >
-              Cancel
-            </button>
+            <div className="dp-legend">
+              <span className="dp-legend-item">
+                <span className="dp-swatch dp-swatch--today" />
+                Today
+              </span>
+              <span className="dp-legend-item">
+                <span className="dp-swatch dp-swatch--selected" />
+                Selected
+              </span>
+              <span className="dp-legend-item">
+                <span className="dp-swatch dp-swatch--range" />
+                In range
+              </span>
+            </div>
 
-            <button
-              onClick={applyDates}
-              className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              Apply
-            </button>
+            <div className="dp-actions">
+
+              <button
+                type="button"
+                onClick={cancelDates}
+                className="dp-btn dp-btn--ghost"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={applyDates}
+                className="dp-btn dp-btn--primary"
+              >
+                Apply
+              </button>
+
+            </div>
 
           </div>
 

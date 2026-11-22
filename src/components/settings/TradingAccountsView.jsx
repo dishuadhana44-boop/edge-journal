@@ -10,18 +10,32 @@ import {
   Unplug,
 } from "lucide-react";
 
+import {
+  canonicalBrokerLabel,
+  makeAccountIdentity,
+} from "../../lib/brokerAccountIdentity.js";
+
 export default function TradingAccountsView({ account }) {
+  const { brokerKey } = makeAccountIdentity(account);
+
   const isConnected =
-    account?.isBrokerAccount ||
-    account?.mt5Connected ||
-    account?.connectionStatus === "connected";
+    account?.connectionStatus === "connected" ||
+    (!account?.connectionStatus &&
+      brokerKey === "mt5" &&
+      account?.mt5Connected === true);
 
   const brokerName =
-    account?.broker || "MT5";
+    canonicalBrokerLabel(brokerKey) ?? "Unidentified broker";
 
-  const connectionStatus = isConnected
-    ? "Connected"
-    : "Not Connected";
+  const connectionStatus = {
+    connected: "Connected",
+    authenticating: "Authenticating",
+    connecting: "Authenticating",
+    error: "Error",
+    disconnected: "Not Connected",
+    manual: "Not Connected",
+  }[account?.connectionStatus] ??
+    (isConnected ? "Connected" : "Not Connected");
 
   return (
     <div className="space-y-8">
@@ -218,9 +232,7 @@ export default function TradingAccountsView({ account }) {
                 </p>
 
                 <h3 className="text-lg font-semibold mt-1 text-gray-900">
-                  {isConnected
-                    ? brokerName
-                    : "Not Connected"}
+                  {brokerName}
                 </h3>
               </div>
             </div>

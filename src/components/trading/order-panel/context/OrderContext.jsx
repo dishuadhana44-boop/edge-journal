@@ -6,26 +6,24 @@ import {
 } from "react";
 
 import { useMarket } from "../../../../context/MarketContext";
-import { calculateLotSize } from "../../../../utils/calculator/lotCalculator";
-import { calculatePips } from "../../../../utils/calculator/pipCalculator";
+import { useTrade } from "../../../../context/TradeContext";
 import { calculateRR } from "../../../../utils/calculator/rrCalculator";
-import { calculateRiskAmount } from "../../../../utils/calculator/riskCalculator";
+import {
+  BALANCE_MAX_AGE_MS,
+  riskAmountForAccount,
+} from "../../../../utils/trading/accountBalance";
+import {
+  SIZING_CODES,
+  distanceInPips,
+  sizePosition,
+} from "../../../../utils/trading/positionSizing";
+import {
+  DEFAULT_GUARDRAILS,
+  GUARDRAIL_STORAGE_KEY,
+  readStoredGuardrails,
+} from "../../../../utils/trading/tradingGuardrails";
 
 export const OrderContext = createContext(null);
-
-// ============================================================
-// DEFAULT GUARDRAILS
-// ============================================================
-
-const DEFAULT_GUARDRAILS = {
-  enabled: true,
-  riskPerTrade: 1,
-  maxTradesPerDay: 10,
-  maxDailyLoss: 3000,
-  maxDailyProfit: 10000,
-  tradingWindowStart: "11:30",
-  tradingWindowEnd: "19:30",
-};
 
 // ============================================================
 // TIME HELPERS
@@ -91,7 +89,35 @@ export function OrderProvider({ children }) {
   // ACCOUNT
   // ==========================================================
 
-  const balance = 100158.75;
+  // Pip value is quoted in the symbol's quote currency, so sizing needs the
+  // account currency to convert it. Sizing refuses to run when it is unknown.
+  const { account, selectedAccountId } = useTrade();
+
+  const accountCurrency = String(
+    account?.currency || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  // The balance the account actually holds. This panel once hardcoded
+  // 100158.75, which made every risk percentage mean something the account never
+  // held; risk maths now run only on a loaded, positive balance.
+  const rawAccountBalance = account?.balance;
+
+  // When this balance last came from the broker, and which account it came
+  // from. A remembered balance without a believable stamp is not evidence of
+  // what the account holds right now, so it may not drive automatic sizing.
+  const balanceRefreshedAt =
+    account?.balanceRefreshedAt;
+
+  const balanceOwnerAccountId =
+    account?.balanceRefreshedAccountId;
+
+  const balance = Number.isFinite(
+    Number(rawAccountBalance)
+  )
+    ? Number(rawAccountBalance)
+    : 0;
 
   // ==========================================================
   // ORDER SIDE
@@ -220,28 +246,7 @@ export function OrderProvider({ children }) {
   // ==========================================================
 
   const [guardrails, setGuardrails] =
-    useState(() => {
-      try {
-        const saved =
-          localStorage.getItem(
-            "tradingGuardrails"
-          );
-
-        return saved
-          ? {
-              ...DEFAULT_GUARDRAILS,
-              ...JSON.parse(saved),
-            }
-          : DEFAULT_GUARDRAILS;
-      } catch (error) {
-        console.error(
-          "Failed to load trading guardrails:",
-          error
-        );
-
-        return DEFAULT_GUARDRAILS;
-      }
-    });
+    useState(() => readStoredGuardrails().guardrails);
 
   // ==========================================================
   // LISTEN FOR GUARDRAIL UPDATES
@@ -249,30 +254,13 @@ export function OrderProvider({ children }) {
 
   useEffect(() => {
     const handleGuardrailsUpdate = () => {
-      try {
-        const saved =
-          localStorage.getItem(
-            "tradingGuardrails"
-          );
-
-        if (saved) {
-          setGuardrails({
-            ...DEFAULT_GUARDRAILS,
-            ...JSON.parse(saved),
-          });
-        }
-      } catch (error) {
-        console.error(
-          "Failed to update trading guardrails:",
-          error
-        );
-      }
+      setGuardrails(readStoredGuardrails().guardrails);
     };
 
     const handleStorageUpdate = (event) => {
       if (
         event.key ===
-        "tradingGuardrails"
+        GUARDRAIL_STORAGE_KEY
       ) {
         handleGuardrailsUpdate();
       }
@@ -390,6 +378,9 @@ export function OrderProvider({ children }) {
 
   // ==========================================================
   // RISK PIPS
+  //
+  // Measured with the symbol's own pip size. JPY pairs, metals and crypto are
+  // not 0.0001, so a fixed 4-decimal pip counted a 50-point JPY stop as 500.
   // ==========================================================
 
   const riskPips = useMemo(() => {
@@ -400,11 +391,13 @@ export function OrderProvider({ children }) {
       return 0;
     }
 
-    return calculatePips(
-      Number(effectiveEntry),
-      Number(sl)
-    );
+    return distanceInPips({
+      symbol,
+      from: Number(effectiveEntry),
+      to: Number(sl),
+    }).pips;
   }, [
+    symbol,
     effectiveEntry,
     sl,
   ]);
@@ -422,29 +415,52 @@ export function OrderProvider({ children }) {
         return 0;
       }
 
-      return calculatePips(
-        Number(effectiveEntry),
-        Number(tp)
-      );
+      return distanceInPips({
+        symbol,
+        from: Number(effectiveEntry),
+        to: Number(tp),
+      }).pips;
     }, [
+      symbol,
       effectiveEntry,
       tp,
     ]);
 
   // ==========================================================
   // RISK AMOUNT
+  //
+  // A missing, unreadable or non-positive balance produces a risk amount of
+  // zero, which stops automatic sizing with the account error below instead of
+  // silently sizing against a made-up balance. The same holds for a balance
+  // whose last broker refresh is older than the approved window, unknown, or
+  // recorded against a different account; the one-second trading-window clock
+  // re-runs this check, so auto sizing stops on its own once a sync stalls.
   // ==========================================================
 
-  const riskAmount =
+  const accountRisk =
     useMemo(() => {
-      return calculateRiskAmount(
-        Number(balance),
-        Number(risk)
-      );
+      return riskAmountForAccount({
+        balance: rawAccountBalance,
+        riskPercent: risk,
+        freshness: {
+          refreshedAt: balanceRefreshedAt,
+          ownerAccountId: balanceOwnerAccountId,
+          expectedAccountId: selectedAccountId,
+          maxAgeMs: BALANCE_MAX_AGE_MS,
+          now: currentTime,
+        },
+      });
     }, [
-      balance,
+      rawAccountBalance,
       risk,
+      balanceRefreshedAt,
+      balanceOwnerAccountId,
+      selectedAccountId,
+      currentTime,
     ]);
+
+  const riskAmount =
+    accountRisk.riskAmount;
 
   // ==========================================================
   // R:R CALCULATION
@@ -473,125 +489,32 @@ export function OrderProvider({ children }) {
   // ==========================================================
   // AUTO LOT CALCULATION
   //
-  // Existing calculator is still used first.
-  // XAUUSD gets a safe fallback if the generic calculator
-  // returns 0.
+  // Instrument-aware sizing: pip size, contract size and the quote -> account
+  // currency conversion come from the app's symbol specification table, volume is
+  // floored to the lot step (never rounded up through the risk budget), and a
+  // symbol without a usable specification blocks with a reason instead of
+  // guessing. These are app-level assumptions, not confirmed broker metadata.
   // ==========================================================
 
-  const calculatedLotSize =
+  const sizing =
     useMemo(() => {
-      const safeRiskAmount =
-        Number(riskAmount || 0);
-
-      const safeRiskPips =
-        Number(riskPips || 0);
-
-      const safeEntry =
-        Number(effectiveEntry || 0);
-
-      const safeSL =
-        Number(sl || 0);
-
-      if (
-        safeRiskAmount <= 0 ||
-        safeRiskPips <= 0
-      ) {
-        return 0;
-      }
-
-      // ------------------------------------------------------
-      // EXISTING CALCULATOR
-      // ------------------------------------------------------
-
-      let calculated = 0;
-
-      try {
-        calculated = Number(
-          calculateLotSize(
-            safeRiskAmount,
-            safeRiskPips
-          ) || 0
-        );
-      } catch (error) {
-        console.error(
-          "Lot calculation error:",
-          error
-        );
-
-        calculated = 0;
-      }
-
-      if (
-        Number.isFinite(calculated) &&
-        calculated > 0
-      ) {
-        return calculated;
-      }
-
-      // ------------------------------------------------------
-      // XAUUSD FALLBACK
-      //
-      // Standard XAUUSD contract:
-      // 1 lot = 100 oz
-      //
-      // Risk = lot × price distance × contract size
-      // Lot  = risk / (distance × contract size)
-      // ------------------------------------------------------
-
-      const normalizedSymbol =
-        String(symbol || "")
-          .trim()
-          .toUpperCase();
-
-      const isGold =
-        normalizedSymbol ===
-          "XAUUSD" ||
-        normalizedSymbol.startsWith(
-          "XAUUSD"
-        );
-
-      if (
-        isGold &&
-        safeEntry > 0 &&
-        safeSL > 0
-      ) {
-        const priceDistance =
-          Math.abs(
-            safeEntry -
-              safeSL
-          );
-
-        const contractSize = 100;
-
-        if (
-          priceDistance > 0
-        ) {
-          const goldLots =
-            safeRiskAmount /
-            (
-              priceDistance *
-              contractSize
-            );
-
-          if (
-            Number.isFinite(
-              goldLots
-            ) &&
-            goldLots > 0
-          ) {
-            return goldLots;
-          }
-        }
-      }
-
-      return 0;
+      return sizePosition({
+        symbol,
+        entryPrice: effectiveEntry,
+        stopLoss: sl,
+        riskAmount,
+        accountCurrency,
+      });
     }, [
-      riskAmount,
-      riskPips,
+      symbol,
       effectiveEntry,
       sl,
-      symbol,
+      riskAmount,
+      accountCurrency,
     ]);
+
+  const calculatedLotSize =
+    Number(sizing.lots || 0);
 
   // ==========================================================
   // FINAL LOT SIZE
@@ -600,27 +523,23 @@ export function OrderProvider({ children }) {
   // Otherwise -> use automatic lot calculation.
   // ==========================================================
 
+  const hasManualLot =
+    manualLotSize !== "" &&
+    Number.isFinite(
+      Number(manualLotSize)
+    );
+
   const lotSize = useMemo(() => {
-    const manualValue =
-      Number(manualLotSize);
-
-    const hasManualLot =
-      manualLotSize !== "" &&
-      Number.isFinite(
-        manualValue
-      );
-
     if (hasManualLot) {
       return Math.max(
         0,
-        manualValue
+        Number(manualLotSize)
       );
     }
 
-    return Number(
-      calculatedLotSize || 0
-    );
+    return calculatedLotSize;
   }, [
+    hasManualLot,
     manualLotSize,
     calculatedLotSize,
   ]);
@@ -760,10 +679,40 @@ export function OrderProvider({ children }) {
       }
 
       // ======================================================
-      // LOT SIZE
+      // ACCOUNT BALANCE
+      //
+      // Only automatic, risk-based sizing depends on the balance, so a manually
+      // entered volume keeps working while the account is not loaded. The same
+      // gate covers a balance that is stale, untimestamped, or recorded for a
+      // different account: those all leave accountRisk unavailable.
       // ======================================================
 
       if (
+        !hasManualLot &&
+        accountRisk.available === false
+      ) {
+        errors.push(
+          accountRisk.message
+        );
+      }
+
+      // ======================================================
+      // LOT SIZE
+      // ======================================================
+
+      // A manual volume is the trader's own decision, so a blocked automatic
+      // calculation is only reported when the panel is actually using it. The
+      // generic missing-input cases keep their existing messages above.
+      const sizingBlocked =
+        !sizing.ok &&
+        !hasManualLot &&
+        sizing.code !== SIZING_CODES.INVALID_INPUT;
+
+      if (sizingBlocked) {
+        errors.push(
+          sizing.message
+        );
+      } else if (
         !Number.isFinite(
           lotsValue
         ) ||
@@ -925,6 +874,9 @@ export function OrderProvider({ children }) {
       risk,
       lotSize,
       riskPips,
+      sizing,
+      accountRisk,
+      hasManualLot,
       tradingWindowOpen,
       tradingWindowStart,
       tradingWindowEnd,
@@ -939,6 +891,9 @@ export function OrderProvider({ children }) {
       value={{
         // ACCOUNT
         balance,
+        accountCurrency,
+        accountRisk,
+        balanceAvailable: accountRisk.available,
 
         // MARKET
         symbol,
@@ -982,6 +937,8 @@ export function OrderProvider({ children }) {
         riskPips,
         rewardPips,
         rr,
+        sizing,
+        hasManualLot,
         calculatedLotSize,
         lotSize,
 

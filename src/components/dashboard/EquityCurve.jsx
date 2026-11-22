@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useEffect } from "react";
+import { format } from "date-fns";
 import {
   DATE_FILTERS,
   getDateRange,
@@ -37,19 +38,12 @@ export default function EquityCurve({
     startDate,
     endDate,
   } = useDashboardFilter();
-  
-  console.log("Dashboard Start:", startDate);
-  console.log("Dashboard End:", endDate);
-  
+
+  const [chartFilter, setChartFilter] = useState(null);
 
   useEffect(() => {
     setChartFilter(null);
   }, [startDate, endDate]);
-
-
-  const [chartFilter, setChartFilter] = useState(null);
-  console.log("Chart Filter =", chartFilter);
-  const dashboardRange = getDateRange(selectedFilter);
 
   const effectiveRange = chartFilter
   ? getDateRange(chartFilter)
@@ -57,39 +51,46 @@ export default function EquityCurve({
       startDate,
       endDate,
     };
-    
-  console.log("Chart Filter:", chartFilter);
-  console.log("Effective Start:", effectiveRange.startDate);
-  console.log("Effective End:", effectiveRange.endDate);
-  const startingBalance =
-  account?.startingBalance ?? 10000;
 
-  console.log("Trades received in EquityCurve:", trades);
-  console.log("Trade count:", trades.length);
+  const startingBalance = Number(account?.startingBalance) || 0;
+
   const balanceCurve = generateBalanceCurve(
     startingBalance,
     trades,
     effectiveRange.startDate,
     effectiveRange.endDate
-);
-console.log("Balance Curve:", balanceCurve);
+  );
+
+  // The curve opens at the balance the account stood at when the period started, so
+  // the header reads the period's own baseline instead of the lifetime starting
+  // balance. It is a reconstruction from realised journal trades, not broker equity
+  // history.
+  const periodBaseline = balanceCurve[0]?.balance ?? startingBalance;
 
   const currentBalance =
-  balanceCurve.length > 0
-    ? balanceCurve[balanceCurve.length-1].value
-    : startingBalance;
-  
-    const peakBalance =
-    balanceCurve.length > 0
-      ? Math.max(...balanceCurve.map(i=>i.value))
-      : startingBalance;
-  
-      const totalPnL = currentBalance - startingBalance;
-  
-      const returnPercent =
-      startingBalance
-        ? ((totalPnL / startingBalance) * 100).toFixed(2)
-        : 0;
+    balanceCurve[balanceCurve.length - 1]?.value ?? periodBaseline;
+
+  const peakBalance = balanceCurve.length
+    ? Math.max(...balanceCurve.map((point) => point.value))
+    : periodBaseline;
+
+  const totalPnL = currentBalance - periodBaseline;
+
+  const returnPercent = periodBaseline
+    ? ((totalPnL / periodBaseline) * 100).toFixed(2)
+    : 0;
+
+  const baselineNote = `Reconstructed from the journal: $${periodBaseline.toLocaleString()} at the start of ${format(
+    effectiveRange.startDate,
+    "dd MMM yyyy"
+  )} – ${format(
+    effectiveRange.endDate,
+    "dd MMM yyyy"
+  )}, advanced by each closed trade in close-timestamp order. Not broker equity history.`;
+
+  // Without a recorded starting balance there is no honest baseline to plot from, so
+  // the curve states the limitation instead of inventing one.
+  const hasBaseline = startingBalance > 0;
 
   const [view, setView] = useState("$");
 
@@ -122,33 +123,30 @@ console.log("Balance Curve:", balanceCurve);
 
   return (
 
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
 
       {/* Header */}
 {/* Header */}
 
-<div className="flex items-center justify-between px-5 py-4 border-b">
+<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 border-b border-gray-100 shrink-0">
 
-  <div>
+  <div className="min-w-0">
 
-    <h2 className="text-lg font-semibold text-gray-900">
+    <h2 className="text-base font-semibold text-gray-900">
       Account Balance
     </h2>
 
-    
+
   </div>
 
-  <div className="flex items-center gap-1">
+  <div className="flex flex-wrap items-center gap-1">
 
     {periods.map((item) => (
 
       <button
         key={item}
-        onClick={() => {
-          console.log("Clicked:", item);
-          setChartFilter(item);
-        }}
-        className={`px-2 py-1 rounded-lg text-xs transition ${
+        onClick={() => setChartFilter(item)}
+        className={`px-2 py-1 whitespace-nowrap rounded-lg text-xs transition ${
           chartFilter === item
             ? "bg-violet-600 text-white"
             : "hover:bg-gray-100"
@@ -208,52 +206,52 @@ console.log("Balance Curve:", balanceCurve);
 
 {/* Statistics */}
 
-<div className="grid grid-cols-4 border-b">
+<div className="grid grid-cols-4 border-b border-gray-100 shrink-0">
 
-  <div className="px-5 py-3">
+  <div className="min-w-0 px-3.5 py-2.5">
 
-    <p className="text-[10px] uppercase tracking-wide text-gray-500">
-      Current Balance
+    <p className="truncate text-[10px] uppercase tracking-wide text-gray-500" title={baselineNote}>
+      Balance at period end
     </p>
 
-    <h2 className="text-xl font-bold text-gray-900">
+    <h2 className="truncate text-[17px] font-bold tabular-nums text-gray-900" title={`$${currentBalance.toLocaleString()}`}>
     ${currentBalance.toLocaleString()}
     </h2>
 
   </div>
 
-  <div className="px-5 py-3 border-l">
+  <div className="min-w-0 px-3.5 py-2.5 border-l border-gray-100">
 
-    <p className="text-[10px] uppercase tracking-wide text-gray-500">
+    <p className="truncate text-[10px] uppercase tracking-wide text-gray-500" title={`Highest reconstructed balance within the selected range. ${baselineNote}`}>
       Peak Balance
     </p>
 
-    <h2 className="text-xl font-bold text-green-600">
+    <h2 className="truncate text-[17px] font-bold tabular-nums text-green-600" title={`$${peakBalance.toLocaleString()}`}>
     ${peakBalance.toLocaleString()}
     </h2>
 
   </div>
 
-  <div className="px-5 py-3 border-l">
+  <div className="min-w-0 px-3.5 py-2.5 border-l border-gray-100">
 
-    <p className="text-[10px] uppercase tracking-wide text-gray-500">
+    <p className="truncate text-[10px] uppercase tracking-wide text-gray-500" title="Return over the selected range, measured from the balance at its opening.">
       Return
     </p>
 
-    <h2 className="text-xl font-bold text-green-600">
+    <h2 className={`truncate text-[17px] font-bold tabular-nums ${totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
     {returnPercent >= 0 ? "+" : ""}
 {returnPercent}%
     </h2>
 
   </div>
 
-  <div className="px-5 py-3 border-l">
+  <div className="min-w-0 px-3.5 py-2.5 border-l border-gray-100">
 
-    <p className="text-[10px] uppercase tracking-wide text-gray-500">
+    <p className="truncate text-[10px] uppercase tracking-wide text-gray-500" title="Realised P&L of trades that closed inside the selected range.">
       Total P&L
     </p>
 
-    <h2 className="text-xl font-bold text-green-600">
+    <h2 className={`truncate text-[17px] font-bold tabular-nums ${totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
     {totalPnL >= 0 ? "+" : "-"}$
     {Math.abs(totalPnL).toLocaleString()}
     </h2>
@@ -264,13 +262,15 @@ console.log("Balance Curve:", balanceCurve);
 
       {/* Chart */}
 
-      <div className="h-[280px] px-3 pt-1 pb-0">
+      <div className="flex-1 min-h-[150px] px-3 pt-3 pb-2">
 
-      {equityData.length <= 1 ? (
+      {equityData.length <= 1 || !hasBaseline ? (
 
-<div className="flex h-[280px] items-center justify-center text-gray-400">
+<div className="flex h-full items-center justify-center px-4 text-center text-xs leading-relaxed text-gray-500">
 
-  No trades available
+  {!hasBaseline
+    ? "This trading account has no starting balance recorded, so the reconstructed equity curve has no baseline to plot from."
+    : "No trades closed in the selected date range."}
 
 </div>
 
@@ -280,12 +280,11 @@ console.log("Balance Curve:", balanceCurve);
 
 <AreaChart
   data={equityData}
-  onMouseMove={() => console.log(equityData)}
   margin={{
-    top: 5,
-    right: 13,
-    left: -25,
-    bottom: -5,
+    top: 8,
+    right: 12,
+    left: 0,
+    bottom: 0,
   }}
 >
 
@@ -323,7 +322,11 @@ stroke="#F1F5F9"
 <XAxis
 dataKey="date"
 tickLine={false}
-axisLine={false}
+axisLine={{ stroke: "#E2E8F0" }}
+tickMargin={6}
+height={24}
+minTickGap={16}
+interval="preserveStartEnd"
 tick={{
 fontSize:11,
 fill:"#64748B",
@@ -335,7 +338,7 @@ fill:"#64748B",
   axisLine={false}
   width={55}
   tickFormatter={(v) => {
-    if (view === "%") return `${(((v - startingBalance) / startingBalance) * 100).toFixed(1)}%`;
+    if (view === "%") return periodBaseline ? `${(((v - periodBaseline) / periodBaseline) * 100).toFixed(1)}%` : "—";
 
     if (view === "R") return `${(v / 100).toFixed(1)}R`;
 
@@ -350,6 +353,8 @@ fill:"#64748B",
 
 
 <Tooltip
+allowEscapeViewBox={{ x: false, y: false }}
+wrapperStyle={{ zIndex: 20 }}
 content={<EquityTooltip view={view} />}
 />
 

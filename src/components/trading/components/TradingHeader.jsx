@@ -13,44 +13,24 @@ import { useUI } from "../../../context/UIContext";
 import { useTrade } from "../../../context/TradeContext";
 import PageHeader from "../../common/PageHeader";
 import PreMarketRoutine from "./pre-market/PreMarketRoutine";
+import {
+  PRE_MARKET_STORAGE_KEY,
+  isPreMarketRoutineCompleteToday,
+  routineDateKey,
+} from "../../../utils/preMarketRoutine";
+import { readStoredGuardrails } from "../../../utils/trading/tradingGuardrails";
 
 export default function TradingHeader() {
   // ============================================================
   // STATE
   // ============================================================
 
-  const getTodayDate = () => {
-    const today = new Date();
-
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
-  };
-
-  const PRE_MARKET_STORAGE_KEY =
-    "edgeflo_pre_market_completed_date";
-
   const [preMarketCompleted, setPreMarketCompleted] =
-    useState(() => {
-      try {
-        const savedDate = localStorage.getItem(
-          PRE_MARKET_STORAGE_KEY
-        );
+    useState(() => isPreMarketRoutineCompleteToday());
 
-        return savedDate === getTodayDate();
-      } catch (error) {
-        console.error(
-          "Failed to load pre-market status:",
-          error
-        );
-
-        return false;
-      }
-    });
-
-  const [guardrails, setGuardrails] = useState(null);
+  const [guardrails, setGuardrails] = useState(
+    () => readStoredGuardrails().guardrails
+  );
 
   const [showLockModal, setShowLockModal] =
     useState(false);
@@ -78,7 +58,7 @@ export default function TradingHeader() {
       if (preMarketCompleted) {
         localStorage.setItem(
           PRE_MARKET_STORAGE_KEY,
-          getTodayDate()
+          routineDateKey()
         );
       } else {
         localStorage.removeItem(
@@ -121,38 +101,7 @@ export default function TradingHeader() {
 
   useEffect(() => {
     const loadGuardrails = () => {
-      try {
-        const saved = localStorage.getItem(
-          "tradingGuardrails"
-        );
-
-        if (saved) {
-          setGuardrails(JSON.parse(saved));
-        } else {
-          setGuardrails({
-            enabled: true,
-            maxTradesPerDay: 10,
-            maxDailyLoss: 3000,
-            maxDailyProfit: 10000,
-            tradingWindowStart: "11:30",
-            tradingWindowEnd: "19:30",
-          });
-        }
-      } catch (error) {
-        console.error(
-          "Failed to load guardrails:",
-          error
-        );
-
-        setGuardrails({
-          enabled: true,
-          maxTradesPerDay: 10,
-          maxDailyLoss: 3000,
-          maxDailyProfit: 10000,
-          tradingWindowStart: "11:30",
-          tradingWindowEnd: "19:30",
-        });
-      }
+      setGuardrails(readStoredGuardrails().guardrails);
     };
 
     loadGuardrails();
@@ -187,6 +136,10 @@ export default function TradingHeader() {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(new Date());
+
+      // The stored value is a date, so a terminal left open past midnight
+      // drops back to "not completed" without needing a reload.
+      setPreMarketCompleted(isPreMarketRoutineCompleteToday());
     }, 1000);
 
     return () => clearInterval(interval);
@@ -672,30 +625,32 @@ export default function TradingHeader() {
               PRE-MARKET ROUTINE
           ================================================== */}
 
-          <button
-            type="button"
-            onClick={() => setPreMarketOpen(true)}
-            className="
-              h-9
-              px-5
-              flex
-              items-center
-              gap-2
-              rounded-xl
-              bg-violet-600
-              hover:bg-violet-700
-              text-white
-              text-[14px]
-              font-semibold
-              transition-all
-              duration-200
-              hover:-translate-y-[2px]
-              hover:shadow-md
-            "
-          >
-            <PlayCircle size={16} />
-            Pre-Market Routine
-          </button>
+          {!preMarketCompleted && (
+            <button
+              type="button"
+              onClick={() => setPreMarketOpen(true)}
+              className="
+                h-9
+                px-5
+                flex
+                items-center
+                gap-2
+                rounded-xl
+                bg-violet-600
+                hover:bg-violet-700
+                text-white
+                text-[14px]
+                font-semibold
+                transition-all
+                duration-200
+                hover:-translate-y-[2px]
+                hover:shadow-md
+              "
+            >
+              <PlayCircle size={16} />
+              Pre-Market Routine
+            </button>
+          )}
 
           {/* ==================================================
               COLLAPSE

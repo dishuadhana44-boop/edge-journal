@@ -21,10 +21,15 @@ export default function Settings() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
-    const hasStatus = searchParams.get("status");
+
+    // A broker hand-off is a reason to open this tab whatever its outcome: the
+    // user has to come back and finish, or read why it failed.
+    const hasBrokerReturn = ["status", "ctrader", "mt5"].some((key) =>
+      searchParams.has(key),
+    );
     const hasCode = localStorage.getItem("ctrader_code");
 
-    if (hasStatus || hasCode) {
+    if (hasBrokerReturn || hasCode) {
       setActiveTab("Broker Integration");
     }
   }, [location]);

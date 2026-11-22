@@ -28,7 +28,6 @@ import {
   Maximize,
   Bell,
   BarChart3,
-  CalendarDays,
 } from "lucide-react";
 
 const TOOLS = [
@@ -64,7 +63,7 @@ const TOOLS = [
   },
 ];
 
-const SPEEDS = [1, 2, 5, 10];
+const SPEEDS = [0.25, 0.5, 1, 2, 4, 8, 16];
 
 function distToSegment(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1;
@@ -90,6 +89,12 @@ export default function BacktestChart({
   candles,
   backtest,
   session,
+  sim,
+  toolbar,
+  sidePanel,
+  selectedPositionId,
+  onOpenSettings,
+  onSelectInterval,
 }) {
   const chartContainerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -99,6 +104,8 @@ export default function BacktestChart({
 
   const drawingsRef = useRef([]);
   const pendingPointRef = useRef(null);
+  const simRef = useRef(null);
+  const selectedRef = useRef(null);
 
   const [activeTool, setActiveTool] =
     useState("none");
@@ -116,10 +123,96 @@ export default function BacktestChart({
   // DRAWINGS
   // =========================================
 
-  useEffect(() => {
-    drawingsRef.current = drawings;
-    redraw();
-  }, [drawings]);
+  // Markers and levels are read straight from the simulation engine, so the
+  // chart can only show fills that actually happened at or before the cursor.
+  function drawTrades(ctx, chart, series, canvas) {
+    const sim = simRef.current;
+    if (!sim) return;
+
+    const cursor = backtest?.currentIndex ?? Infinity;
+    const priceY = (price) => series.priceToCoordinate(price);
+    const timeX = (time) => chart.timeScale().timeToCoordinate(chartTime(time));
+
+    function level(price, color, label, dashed = true, width = 1) {
+      const y = priceY(price);
+      if (y == null) return;
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+
+      if (dashed) ctx.setLineDash([5, 4]);
+
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+      ctx.fillStyle = color;
+      ctx.font = "10px Inter, sans-serif";
+      ctx.fillText(label, 8, y - 4);
+      ctx.restore();
+    }
+
+    function marker(x, y, kind, color) {
+      if (x == null || y == null) return;
+
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+
+      if (kind === "exit") {
+        ctx.rect(x - 4, y - 4, 8, 8);
+        ctx.fill();
+      } else if (kind === "buy") {
+        ctx.moveTo(x, y + 12);
+        ctx.lineTo(x - 5, y + 21);
+        ctx.lineTo(x + 5, y + 21);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.moveTo(x, y - 12);
+        ctx.lineTo(x - 5, y - 21);
+        ctx.lineTo(x + 5, y - 21);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    for (const order of sim.orders || []) {
+      level(
+        order.price,
+        "#f59e0b",
+        `${order.side} ${order.orderType} ${order.volume}`
+      );
+    }
+
+    for (const position of sim.positions || []) {
+      const selected = position.id === selectedRef.current;
+      const color = position.side === "BUY" ? "#16c784" : "#ef4444";
+
+      level(position.entryPrice, selected ? "#a855f7" : color, `Entry ${position.entryPrice}`, !selected, selected ? 2 : 1);
+      if (position.sl != null) level(position.sl, "#ef4444", `SL ${position.sl}`);
+      if (position.tp != null) level(position.tp, "#16c784", `TP ${position.tp}`);
+    }
+
+    for (const mark of sim.markers || []) {
+      if (mark.atIndex > cursor) continue;
+
+      const x = timeX(mark.time);
+      const y = priceY(mark.price);
+
+      marker(
+        x,
+        y,
+        mark.kind,
+        mark.kind === "buy" ? "#16c784" : mark.kind === "sell" ? "#ef4444" : "#a1a1aa"
+      );
+    }
+  }
 
   function redraw() {
     const canvas = canvasRef.current;
@@ -295,7 +388,14 @@ export default function BacktestChart({
         );
       }
     });
+
+    drawTrades(ctx, chart, series, canvas);
   }
+
+  useEffect(() => {
+    drawingsRef.current = drawings;
+    redraw();
+  }, [drawings]);
 
   // =========================================
   // CREATE CHART
@@ -442,6 +542,13 @@ export default function BacktestChart({
   // SET DATA
   // =========================================
 
+  // lightweight-charts reads bare numbers as UTC seconds, while the backtest
+  // engine keeps millisecond stamps for duration maths.
+  function chartTime(value) {
+    const num = Number(value);
+    return num > 1e11 ? Math.round(num / 1000) : num;
+  }
+
   useEffect(() => {
     if (!seriesRef.current) return;
   
@@ -455,13 +562,21 @@ export default function BacktestChart({
       return;
     }
   
-    seriesRef.current.setData(visibleCandles);
+    seriesRef.current.setData(
+      visibleCandles.map((candle) => ({ ...candle, time: chartTime(candle.time) }))
+    );
   
     redraw();
   }, [
     candles,
     backtest?.visibleCandles,
   ]);
+
+  useEffect(() => {
+    simRef.current = sim;
+    selectedRef.current = selectedPositionId;
+    redraw();
+  }, [sim, selectedPositionId]);
   // =========================================
   // CANVAS CLICK
   // =========================================
@@ -813,6 +928,8 @@ export default function BacktestChart({
   return (
     <div className="w-full h-full min-h-0 bg-[#0b0c10] text-white flex flex-col overflow-hidden">
 
+      {toolbar}
+
       {/* =================================================
           TOP TOOLBAR
       ================================================= */}
@@ -858,27 +975,29 @@ export default function BacktestChart({
         {/* TIMEFRAMES */}
 
         {[
-          "1m",
-          "5m",
-          "15m",
-          "1h",
-          "4h",
-          "D",
-        ].map((tf) => (
+          ["1m", "1m"],
+          ["5m", "5m"],
+          ["15m", "15m"],
+          ["30m", "30m"],
+          ["1h", "1h"],
+          ["4h", "4h"],
+          ["1d", "D"],
+        ].map(([value, label]) => (
           <button
-            key={tf}
+            key={value}
+            onClick={() => onSelectInterval?.(value)}
             className={`
               px-2
               text-sm
               transition-colors
               ${
-                tf === interval
+                value === interval
                   ? "text-purple-400 font-semibold"
                   : "text-zinc-400 hover:text-white"
               }
             `}
           >
-            {tf}
+            {label}
           </button>
         ))}
 
@@ -1194,6 +1313,8 @@ export default function BacktestChart({
             }}
           />
         </div>
+
+        {sidePanel}
       </div>
 
       {/* =================================================
@@ -1257,9 +1378,7 @@ export default function BacktestChart({
 
           <button
             onClick={
-              backtest.isPlaying
-                ? backtest.pause
-                : backtest.play
+              backtest.togglePlay
             }
             className="
               w-12
@@ -1387,21 +1506,31 @@ export default function BacktestChart({
             </span>
           </div>
 
-          {/* CALENDAR */}
+          {/* SIMULATED CLOCK */}
 
-          <button
-            title="Replay date"
-            className="text-zinc-400 hover:text-white"
-          >
-            <CalendarDays
-              size={18}
-            />
-          </button>
+          <div className="shrink-0 text-right leading-tight min-w-[150px]">
+            <div className="text-[11px] text-zinc-500">
+              Replay time (UTC)
+            </div>
+
+            <div className="text-xs font-medium text-white tabular-nums">
+              {backtest.currentCandle
+                ? new Date(backtest.currentCandle.time).toISOString().slice(0, 16).replace("T", " ")
+                : "—"}
+            </div>
+          </div>
+
+          {backtest.isFinished && (
+            <span className="shrink-0 rounded-lg bg-purple-600/20 px-2.5 py-1 text-[11px] font-semibold text-purple-300">
+              Replay Complete
+            </span>
+          )}
 
           {/* SETTINGS */}
 
           <button
-            title="Replay settings"
+            onClick={onOpenSettings}
+            title="Backtest settings"
             className="text-zinc-400 hover:text-white"
           >
             <Settings

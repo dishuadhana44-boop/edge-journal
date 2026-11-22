@@ -4,18 +4,24 @@ import protobuf from "protobufjs";
 import WebSocket from "ws";
 import dotenv from "dotenv";
 
-dotenv.config();
+import {
+  normalizeAccountKey,
+  selectAccountById,
+  verifyAuthenticatedAccount,
+  verifySessionAccountIdentity,
+} from "./ctraderAccountSelection.js";
+
+import { PROTO_DIR } from "../runtimePaths.js";
+
+import { ENV_FILE } from "../runtimePaths.js";
+
+dotenv.config({ path: ENV_FILE });
 
 // ============================================================
 // CONFIG
 // ============================================================
 
 const WS_URL = "wss://demo.ctraderapi.com:5035";
-
-const PROTO_DIR = path.join(
-  process.cwd(),
-  "openapi-proto-messages"
-);
 
 // ============================================================
 // SERVICE STATE
@@ -99,12 +105,26 @@ const latestPrices = new Map();
 const symbolRequestWaiters = new Map();
 
 // ============================================================
+// ORDER CONFIRMATION WAITERS
+// ============================================================
+
+const orderConfirmationWaiters = new Map();
+
+const ORDER_CONFIRMATION_TIMEOUT_MS = 10000;
+
+// ============================================================
 // STARTUP STATE
 // ============================================================
 
 let startupPromise = null;
 let startupResolve = null;
 let startupReject = null;
+
+/* Which account the startup in flight was asked for. A startup promise
+   is not a general "we are connecting" flag: sharing it between two
+   different accounts would finish one request with the other account's
+   session. */
+let startupAccountId = null;
 
 // ============================================================
 // CALLBACKS
@@ -750,6 +770,44 @@ function removePosition(positionId) {
   );
 }
 
+export function authenticatedAccountIdForEvent({
+  connected,
+  authenticated,
+  ready,
+  accountId,
+} = {}) {
+  if (!connected || !authenticated || !ready) {
+    return null;
+  }
+
+  return toStringSafe(accountId);
+}
+
+export function buildExecutionBroadcastMessage(
+  execution,
+  timestamp = Date.now()
+) {
+  if (!execution) {
+    return null;
+  }
+
+  const data = execution.data
+    ? {
+        ...execution.data,
+        ...(execution.positions !== undefined
+          ? { positions: execution.positions }
+          : {}),
+      }
+    : execution;
+
+  return {
+    type: execution.type || "execution",
+    accountId: toStringSafe(execution.accountId),
+    data,
+    timestamp,
+  };
+}
+
 // ============================================================
 // EMIT POSITION UPDATE
 // ============================================================
@@ -774,6 +832,13 @@ function emitPositionsUpdate(reason = "update") {
   ) {
     onExecutionUpdate({
       type: "positions_update",
+
+      accountId: authenticatedAccountIdForEvent({
+        connected,
+        authenticated,
+        ready: serviceReady,
+        accountId: selectedTradingAccountId,
+      }),
 
       reason,
 
@@ -1167,6 +1232,8 @@ function resetServiceState() {
 
   symbolRequestWaiters.clear();
 
+  clearOrderConfirmationWaiters();
+
   resetAccountInfo();
 }
 
@@ -1177,6 +1244,25 @@ function rejectStartup(error) {
 
   startupResolve = null;
   startupReject = null;
+}
+
+/* A startup that cannot finish must stop looking like one. Rejecting
+   alone leaves the promise, the flags and the selected account behind,
+   and every later request then inherits this failure: the rejected
+   promise is returned to callers that never asked for this account, and
+   a ready-flag reader sees a session that was never built. */
+function failStartup(error) {
+  console.error(
+    "❌ cTrader startup failed:",
+    error.message
+  );
+
+  resetServiceState();
+
+  rejectStartup(error);
+
+  startupPromise = null;
+  startupAccountId = null;
 }
 
 function resolveStartup() {
@@ -1209,6 +1295,7 @@ export async function stopCTraderService() {
   }
 
   startupPromise = null;
+  startupAccountId = null;
 
   if (currentWs) {
     try {
@@ -1677,18 +1764,44 @@ export async function startCTraderService(
     );
   }
 
+  const requestedAccountId =
+    normalizeAccountKey(preferredAccountId);
+
+  if (requestedAccountId === null) {
+    throw new Error(
+      "No usable cTrader account id was requested, so the cTrader service was not started."
+    );
+  }
+
   if (
     running &&
     connected &&
     authenticated &&
     serviceReady
   ) {
+    const reuse = verifySessionAccountIdentity({
+      requestedAccountId,
+      sessionId: selectedTradingAccountId,
+    });
+
+    if (!reuse.ok) {
+      throw new Error(reuse.message);
+    }
+
     return getCTraderServiceStatus();
   }
 
   if (startupPromise) {
+    if (startupAccountId !== requestedAccountId) {
+      throw new Error(
+        `cTrader startup is already in flight for another account, so the request for account ${requestedAccountId} was refused.`
+      );
+    }
+
     return startupPromise;
   }
+
+  startupAccountId = requestedAccountId;
 
   startupPromise =
     new Promise(
@@ -1812,7 +1925,7 @@ export async function startCTraderService(
                     "edgeflo-app-auth"
                   );
                 } catch (error) {
-                  rejectStartup(error);
+                  failStartup(error);
                 }
               }
             );
@@ -1907,30 +2020,25 @@ export async function startCTraderService(
                       }
                     );
 
-                    let account =
-                      accounts[0];
+                    const selection =
+                      selectAccountById({
+                        accountIds: accounts.map(
+                          (account) =>
+                            account?.ctidTraderAccountId
+                        ),
 
-                    if (
-                      preferredAccountId
-                    ) {
-                      const found =
-                        accounts.find(
-                          (item) =>
-                            String(
-                              item.ctidTraderAccountId
-                            ) ===
-                            String(
-                              preferredAccountId
-                            )
-                        );
+                        requestedAccountId:
+                          preferredAccountId,
+                      });
 
-                      if (found) {
-                        account = found;
-                      }
+                    if (!selection.ok) {
+                      throw new Error(
+                        selection.message
+                      );
                     }
 
                     selectedTradingAccountId =
-                      account.ctidTraderAccountId;
+                      selection.accountId;
 
                     const request =
                       AccountAuthReq.create({
@@ -1967,8 +2075,23 @@ export async function startCTraderService(
                         outer.payload
                       );
 
+                    const verification =
+                      verifyAuthenticatedAccount({
+                        requestedAccountId:
+                          selectedTradingAccountId,
+
+                        respondedAccountId:
+                          response.ctidTraderAccountId,
+                      });
+
+                    if (!verification.ok) {
+                      throw new Error(
+                        verification.message
+                      );
+                    }
+
                     selectedTradingAccountId =
-                      response.ctidTraderAccountId;
+                      verification.accountId;
 
                     authenticated = true;
 
@@ -2412,6 +2535,14 @@ export async function startCTraderService(
                         outer.payload
                       );
 
+                    // Confirm the outstanding order request, if
+                    // this frame names its client order id.
+
+                    recordBrokerOrderFrame(
+                      "execution",
+                      execution
+                    );
+
                     console.log("");
                     console.log("====================================");
                     console.log("📈 EXECUTION EVENT");
@@ -2448,6 +2579,13 @@ export async function startCTraderService(
                       onExecutionUpdate({
                         type: "execution",
 
+                        accountId: authenticatedAccountIdForEvent({
+                          connected,
+                          authenticated,
+                          ready: serviceReady,
+                          accountId: selectedTradingAccountId,
+                        }),
+
                         data:
                           execution,
 
@@ -2483,6 +2621,11 @@ export async function startCTraderService(
                       OrderErrorEvent.decode(
                         outer.payload
                       );
+
+                    recordBrokerOrderFrame(
+                      "error",
+                      errorEvent
+                    );
 
                     console.error("");
                     console.error("====================================");
@@ -2526,7 +2669,7 @@ export async function startCTraderService(
                   );
 
                   if (!serviceReady) {
-                    rejectStartup(error);
+                    failStartup(error);
                   }
                 }
               }
@@ -2545,7 +2688,7 @@ export async function startCTraderService(
                 );
 
                 if (!serviceReady) {
-                  rejectStartup(
+                  failStartup(
                     error
                   );
                 }
@@ -2587,20 +2730,12 @@ export async function startCTraderService(
                 resetServiceState();
 
                 startupPromise = null;
+                startupAccountId = null;
               }
             );
 
           } catch (error) {
-            console.error(
-              "❌ cTrader startup failed:",
-              error.message
-            );
-
-            resetServiceState();
-
-            rejectStartup(error);
-
-            startupPromise = null;
+            failStartup(error);
           }
         })();
       }
@@ -2611,6 +2746,7 @@ export async function startCTraderService(
   } finally {
     if (serviceReady) {
       startupPromise = null;
+      startupAccountId = null;
     }
   }
 }
@@ -2620,6 +2756,7 @@ export async function startCTraderService(
 // ============================================================
 
 export async function placeMarketOrder({
+  symbol,
   side,
   lots,
   stopLoss = null,
@@ -2639,9 +2776,17 @@ export async function placeMarketOrder({
     );
   }
 
-  if (!selectedSymbolId) {
+  const target =
+    resolveOrderSymbolTarget({
+      symbols:
+        getAvailableSymbols(),
+
+      symbol,
+    });
+
+  if (!target.ok) {
     throw new Error(
-      "Trading symbol is unavailable."
+      target.message
     );
   }
 
@@ -2673,25 +2818,7 @@ export async function placeMarketOrder({
   }
 
   const symbolData =
-    getSymbolById(
-      selectedSymbolId
-    );
-
-  if (!symbolData) {
-    throw new Error(
-      "Selected symbol data unavailable."
-    );
-  }
-
-  if (
-    !symbolData.fullDataLoaded ||
-    !symbolData.volumeStep ||
-    !symbolData.lotSize
-  ) {
-    throw new Error(
-      `Full trading configuration is unavailable for ${symbolData.symbolName}.`
-    );
-  }
+    target.symbolData;
 
   const volume =
     lotsToVolume(
@@ -2715,7 +2842,7 @@ export async function placeMarketOrder({
       selectedTradingAccountId,
 
     symbolId:
-      selectedSymbolId,
+      symbolData.symbolId,
 
     orderType:
       ORDER_TYPE.MARKET,
@@ -2767,6 +2894,11 @@ export async function placeMarketOrder({
       .encode(request)
       .finish();
 
+  const orderConfirmation =
+    waitForOrderConfirmation({
+      clientOrderId
+    });
+
   sendCTraderMessage(
     PAYLOAD.NEW_ORDER_REQ,
     payload,
@@ -2785,7 +2917,7 @@ export async function placeMarketOrder({
       ),
 
     symbol:
-      selectedSymbolName,
+      symbolData.symbolName,
 
     side:
       normalizedSide,
@@ -2812,15 +2944,30 @@ export async function placeMarketOrder({
     requestReconciliation();
   }, 1000);
 
+  const confirmation =
+    await orderConfirmation;
+
   return {
-    success: true,
+    success:
+      confirmation.status === "accepted",
+
+    status:
+      confirmation.status,
+
+    confirmed:
+      confirmation.status === "accepted",
+
+    sent: true,
+
+    message:
+      confirmation.message ?? null,
 
     symbol:
-      selectedSymbolName,
+      symbolData.symbolName,
 
     symbolId:
       toStringSafe(
-        selectedSymbolId
+        symbolData.symbolId
       ),
 
     side:
@@ -2832,6 +2979,18 @@ export async function placeMarketOrder({
     volume,
 
     clientOrderId,
+
+    orderId:
+      confirmation.orderId ?? null,
+
+    positionId:
+      confirmation.positionId ?? null,
+
+    executionPrice:
+      confirmation.price ?? null,
+
+    executionVolume:
+      confirmation.volume ?? null,
 
     requestedStopLoss:
       normalizedStopLoss,
@@ -3060,6 +3219,478 @@ export function getOpenPositions() {
   return Array.from(
     positionsMap.values()
   );
+}
+
+// ============================================================
+// RESOLVE CLOSE TARGET
+// ============================================================
+
+export function resolvePositionSymbolId({
+  positions,
+  positionId,
+} = {}) {
+  const target = toStringSafe(positionId);
+
+  if (!target || target === "0") {
+    return {
+      ok: false,
+
+      code: "position_id_missing",
+
+      message: "Position ID is required.",
+    };
+  }
+
+  if (!Array.isArray(positions)) {
+    return {
+      ok: false,
+
+      code: "position_not_found",
+
+      message:
+        "No live cTrader positions are available to close.",
+    };
+  }
+
+  const match = positions.find(
+    (position) =>
+      position &&
+      toStringSafe(position.positionId) === target
+  );
+
+  if (!match) {
+    return {
+      ok: false,
+
+      code: "position_not_found",
+
+      message:
+        "Position is not in the live cTrader position list.",
+    };
+  }
+
+  const symbolId = toStringSafe(match.symbolId);
+
+  if (!symbolId) {
+    return {
+      ok: false,
+
+      code: "symbol_unavailable",
+
+      message:
+        "Position symbol is unavailable; the close was not sent.",
+    };
+  }
+
+  return {
+    ok: true,
+
+    positionId: target,
+
+    symbolId,
+  };
+}
+
+// ============================================================
+// RESOLVE MARKET ORDER TARGET
+// ============================================================
+
+export function resolveOrderSymbolTarget({
+  symbols,
+  symbol,
+} = {}) {
+  const requested = toStringSafe(symbol)?.trim();
+
+  if (!requested || requested === "0") {
+    return {
+      ok: false,
+
+      code: "symbol_missing",
+
+      message: "A trading symbol is required.",
+    };
+  }
+
+  if (!Array.isArray(symbols)) {
+    return {
+      ok: false,
+
+      code: "symbol_directory_unavailable",
+
+      message:
+        "No cTrader symbol directory is available; the order was not sent.",
+    };
+  }
+
+  const requestedName =
+    normalizeSymbolName(requested);
+
+  const match =
+    symbols.find(
+      (entry) =>
+        entry &&
+        toStringSafe(entry.symbolId) === requested
+    ) ??
+    symbols.find(
+      (entry) =>
+        entry &&
+        normalizeSymbolName(entry.symbolName) ===
+          requestedName
+    );
+
+  if (!match) {
+    return {
+      ok: false,
+
+      code: "symbol_not_found",
+
+      message:
+        `Symbol ${requested} is not available on this cTrader account.`,
+    };
+  }
+
+  if (
+    !match.fullDataLoaded ||
+    !Number(match.lotSize) ||
+    !Number(match.volumeStep)
+  ) {
+    return {
+      ok: false,
+
+      code: "symbol_not_configured",
+
+      message:
+        `Full trading configuration is unavailable for ${match.symbolName}; the order was not sent.`,
+    };
+  }
+
+  return {
+    ok: true,
+
+    symbolId: toStringSafe(match.symbolId),
+
+    symbolName: match.symbolName,
+
+    symbolData: match,
+  };
+}
+
+// ============================================================
+// ORDER CONFIRMATION
+// ============================================================
+
+// Correlation reads only frames the message handler already
+// decoded; no protobuf type is looked up here. Whether the broker
+// echoes our clientOrderId back on the execution event is an
+// UNVERIFIED protocol assumption, so an unmatched frame yields
+// "unconfirmed" and never a success.
+
+const CLIENT_ORDER_ID_FIELDS = [
+  "clientId",
+  "clientOrderId",
+  "client_order_id",
+];
+
+function identifierText(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const text = String(value).trim();
+
+  if (text === "" || text === "[object Object]" || text === "0") {
+    return null;
+  }
+
+  return text;
+}
+
+function measuredValue(value) {
+  const number =
+    typeof value === "object"
+      ? Number(identifierText(value))
+      : Number(value);
+
+  if (value === null || value === undefined || !Number.isFinite(number)) {
+    return null;
+  }
+
+  // A protobuf default for an unset numeric field is 0.
+  return number === 0 ? null : number;
+}
+
+function frameField(frame, names) {
+  for (const candidate of [frame, frame?.execution]) {
+    if (!candidate || typeof candidate !== "object") {
+      continue;
+    }
+
+    for (const name of names) {
+      const value = candidate[name];
+
+      if (value === undefined || value === null) {
+        continue;
+      }
+
+      if (typeof value === "string" && value.trim() === "") {
+        continue;
+      }
+
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function frameClientOrderId(frame) {
+  return identifierText(
+    frameField(frame, CLIENT_ORDER_ID_FIELDS)
+  );
+}
+
+function rejectionMessage(frame) {
+  for (const name of [
+    "description",
+    "errorDescription",
+    "errorCode",
+  ]) {
+    const value = frameField(frame, [name]);
+
+    if (value) {
+      return String(value);
+    }
+  }
+
+  return "The broker rejected the order request.";
+}
+
+export function summarizeOrderExecution({
+  kind,
+  frame,
+  clientOrderId,
+}) {
+  const expected = identifierText(clientOrderId);
+
+  if (!expected) {
+    return {
+      matched: false,
+
+      code: "client_order_id_missing",
+    };
+  }
+
+  if (!frame || typeof frame !== "object") {
+    return {
+      matched: false,
+
+      code: "frame_unavailable",
+    };
+  }
+
+  const observed = frameClientOrderId(frame);
+
+  if (!observed) {
+    return {
+      matched: false,
+
+      code: "frame_unattributed",
+    };
+  }
+
+  if (observed !== expected) {
+    return {
+      matched: false,
+
+      code: "client_order_id_mismatch",
+    };
+  }
+
+  if (kind === "error") {
+    return {
+      matched: true,
+
+      kind: "error",
+
+      status: "rejected",
+
+      message: rejectionMessage(frame),
+    };
+  }
+
+  const orderStatus = frameField(frame, [
+    "orderStatus",
+    "order_status",
+  ]);
+
+  return {
+    matched: true,
+
+    kind: "execution",
+
+    status: "accepted",
+
+    orderId: identifierText(
+      frameField(frame, ["orderId", "order_id"])
+    ),
+
+    positionId: identifierText(
+      frameField(frame, ["positionId", "position_id"])
+    ),
+
+    symbolId: identifierText(
+      frameField(frame, ["symbolId", "symbol_id"])
+    ),
+
+    price: measuredValue(frameField(frame, ["price"])),
+
+    volume: measuredValue(frameField(frame, ["volume"])),
+
+    orderStatus:
+      orderStatus === undefined ? null : orderStatus,
+  };
+}
+
+function unconfirmedOutcome(code) {
+  return {
+    status: "unconfirmed",
+
+    confirmed: false,
+
+    success: false,
+
+    code,
+
+    message:
+      "No broker execution event was attributed to this order, so it is unknown whether the order was placed. Check the open positions before sending another order.",
+
+    orderId: null,
+
+    positionId: null,
+  };
+}
+
+function outcomeFromSummary(summary) {
+  return {
+    status: summary.status,
+
+    confirmed: summary.status === "accepted",
+
+    success: summary.status === "accepted",
+
+    message: summary.message ?? null,
+
+    orderId: summary.orderId ?? null,
+
+    positionId: summary.positionId ?? null,
+
+    symbolId: summary.symbolId ?? null,
+
+    price: summary.price ?? null,
+
+    volume: summary.volume ?? null,
+
+    orderStatus: summary.orderStatus ?? null,
+  };
+}
+
+function settleOrderConfirmation(key, outcome, clearTimer) {
+  const waiters =
+    orderConfirmationWaiters.get(key);
+
+  if (!waiters) {
+    return false;
+  }
+
+  orderConfirmationWaiters.delete(key);
+
+  for (const waiter of waiters) {
+    if (
+      clearTimer &&
+      waiter.timeout !== null &&
+      waiter.timeout !== undefined
+    ) {
+      waiter.clearTimeoutFn(waiter.timeout);
+    }
+
+    waiter.resolve(outcome);
+  }
+
+  return true;
+}
+
+export function waitForOrderConfirmation({
+  clientOrderId,
+  timeoutMs = ORDER_CONFIRMATION_TIMEOUT_MS,
+  setTimeoutFn = setTimeout,
+  clearTimeoutFn = clearTimeout,
+} = {}) {
+  const key = identifierText(clientOrderId);
+
+  if (!key) {
+    return Promise.resolve(
+      unconfirmedOutcome("client_order_id_missing")
+    );
+  }
+
+  const waiters =
+    orderConfirmationWaiters.get(key) ?? new Set();
+
+  orderConfirmationWaiters.set(key, waiters);
+
+  return new Promise((resolve) => {
+    const waiter = {
+      resolve,
+      clearTimeoutFn,
+      timeout: null,
+    };
+
+    waiter.timeout = setTimeoutFn(() => {
+      settleOrderConfirmation(
+        key,
+        unconfirmedOutcome("confirmation_window_elapsed"),
+        false
+      );
+    }, timeoutMs);
+
+    waiters.add(waiter);
+  });
+}
+
+export function recordBrokerOrderFrame(kind, frame) {
+  const key = frameClientOrderId(frame);
+
+  if (!key || !orderConfirmationWaiters.has(key)) {
+    return false;
+  }
+
+  const summary = summarizeOrderExecution({
+    kind,
+
+    frame,
+
+    clientOrderId: key,
+  });
+
+  if (!summary.matched) {
+    return false;
+  }
+
+  return settleOrderConfirmation(
+    key,
+    outcomeFromSummary(summary),
+    true
+  );
+}
+
+export function clearOrderConfirmationWaiters() {
+  for (const key of [...orderConfirmationWaiters.keys()]) {
+    settleOrderConfirmation(
+      key,
+      unconfirmedOutcome("service_reset"),
+      true
+    );
+  }
 }
 
 // ============================================================

@@ -10,6 +10,10 @@ import {
 
 import { useTrade } from "../../../../context/TradeContext";
 
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:4000";
+
 export default function PositionActions({ trade }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -94,7 +98,7 @@ export default function PositionActions({ trade }) {
       });
 
       const response = await fetch(
-        "http://localhost:4000/api/mt5/close-position",
+        `${API_URL}/api/mt5/close-position`,
         {
           method: "POST",
           headers: {

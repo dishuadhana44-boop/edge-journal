@@ -1,12 +1,22 @@
 import { useMemo } from "react";
 
-export default function DisciplineBreakdown({ trades = [] }) {
+import { selectRealizedTrades } from "../../../utils/dashboardCurveEngine";
 
-  console.log("DisciplineBreakdown trades:", trades);
+export default function DisciplineBreakdown({
+  trades = [],
+  startDate = null,
+  endDate = null,
+}) {
 
   const stats = useMemo(() => {
 
-    if (!trades || trades.length === 0) {
+    // The same closed-trade slice of the applied period that every other Dashboard
+    // widget reads, so the scores cannot describe a different range than the charts.
+    const realized = selectRealizedTrades(trades, { startDate, endDate });
+
+    const periodTrades = realized.map((entry) => entry.trade);
+
+    if (periodTrades.length === 0) {
       return {
         performance: 0,
         discipline: 0,
@@ -20,13 +30,13 @@ export default function DisciplineBreakdown({ trades = [] }) {
 
     // baaki calculation...
 
-    const totalTrades = trades.length;
+    const totalTrades = periodTrades.length;
 
     // ==========================================
     // PERFORMANCE
     // ==========================================
 
-    const wins = trades.filter((trade) => {
+    const wins = periodTrades.filter((trade) => {
       const result = String(trade?.result || "").toLowerCase();
       const pnl = Number(trade?.pnl || 0);
 
@@ -44,7 +54,7 @@ export default function DisciplineBreakdown({ trades = [] }) {
     // DISCIPLINE
     // ==========================================
 
-    const followedPlanTrades = trades.filter((trade) => {
+    const followedPlanTrades = periodTrades.filter((trade) => {
       return (
         trade?.followedPlan === true ||
         trade?.followedPlan === "true" ||
@@ -64,7 +74,7 @@ export default function DisciplineBreakdown({ trades = [] }) {
     // RISK MANAGEMENT
     // ==========================================
 
-    const goodRiskTrades = trades.filter((trade) => {
+    const goodRiskTrades = periodTrades.filter((trade) => {
       const rr = Number(trade?.rr || 0);
 
       const hasStopLoss =
@@ -88,14 +98,9 @@ export default function DisciplineBreakdown({ trades = [] }) {
 
     const dayMap = {};
 
-    trades.forEach((trade) => {
-      const date =
-        trade?.date ||
-        trade?.createdAt;
-
-      if (!date) return;
-
-      const day = new Date(date).toDateString();
+    // Daily buckets carry the same realised timestamp as the Daily P&L curve.
+    realized.forEach(({ trade, closedAt }) => {
+      const day = new Date(closedAt).toDateString();
 
       if (!dayMap[day]) {
         dayMap[day] = 0;
@@ -180,49 +185,49 @@ export default function DisciplineBreakdown({ trades = [] }) {
       streak,
       grade,
     };
-  }, [trades]);
+  }, [trades, startDate, endDate]);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="h-full flex flex-col bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
 
       {/* HEADER */}
-      <div className="px-5 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">
+      <div className="px-4 py-2.5 border-b border-gray-200 shrink-0">
+        <h2 className="text-base font-semibold text-gray-900">
           Discipline Breakdown
         </h2>
       </div>
 
       {/* CONTENT */}
-      <div className="p-6">
+      <div className="flex-1 min-h-0 px-4 py-3.5 flex flex-col justify-between gap-3">
 
-        <ScoreBar
-          label="Performance"
-          value={stats.performance}
-          color="bg-emerald-500"
-        />
+        <div className="flex flex-col gap-3">
+          <ScoreBar
+            label="Performance"
+            value={stats.performance}
+            color="bg-emerald-500"
+          />
 
-        <ScoreBar
-          label="Discipline"
-          value={stats.discipline}
-          color="bg-violet-500"
-        />
+          <ScoreBar
+            label="Discipline"
+            value={stats.discipline}
+            color="bg-violet-500"
+          />
 
-        <ScoreBar
-          label="Risk Management"
-          value={stats.riskManagement}
-          color="bg-sky-500"
-        />
+          <ScoreBar
+            label="Risk Management"
+            value={stats.riskManagement}
+            color="bg-sky-500"
+          />
 
-        <ScoreBar
-          label="Consistency"
-          value={stats.consistency}
-          color="bg-orange-500"
-        />
-
-       
+          <ScoreBar
+            label="Consistency"
+            value={stats.consistency}
+            color="bg-orange-500"
+          />
+        </div>
 
         {/* FOOTER */}
-        <div className="border-t border-gray-200 pt-3 flex items-center justify-between">
+        <div className="shrink-0 border-t border-gray-200 pt-3 flex items-center justify-between gap-4">
 
           <div>
             <p className="text-xs text-gray-500">
@@ -268,19 +273,19 @@ export default function DisciplineBreakdown({ trades = [] }) {
 
 function ScoreBar({ label, value, color }) {
   return (
-    <div className="mb-5">
+    <div>
 
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-700">
+      <div className="flex items-center justify-between gap-3">
+        <span className="truncate text-[13px] text-gray-700">
           {label}
         </span>
 
-        <span className="text-sm font-medium text-gray-900">
+        <span className="shrink-0 text-[13px] font-semibold tabular-nums text-gray-900">
           {value}/100
         </span>
       </div>
 
-      <div className="h-2.5 rounded-full bg-gray-200 overflow-hidden">
+      <div className="mt-1.5 h-1.5 rounded-full bg-gray-200 overflow-hidden">
         <div
           className={`${color} h-full rounded-full transition-all duration-500`}
           style={{

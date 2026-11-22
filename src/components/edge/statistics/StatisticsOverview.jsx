@@ -6,11 +6,23 @@ import {
   BarChart3,
   Award,
 } from "lucide-react";
+import { useJournal } from "../../../context/JournalContext";
+import {
+  JOURNAL_PERSISTENCE_STATUS,
+  describeJournalPersistence,
+} from "../../../lib/journalPersistenceStatus.js";
 
 export default function StatisticsOverview({ plan }) {
 
-  const allTrades =
-  JSON.parse(localStorage.getItem("trades")) || [];
+  // The journal context already parsed and normalized the stored rows, so a
+  // malformed journal can never throw here. These numbers describe only the
+  // rows the context could trust.
+  const { trades, journalPersistence } = useJournal();
+
+  const allTrades = Array.isArray(trades) ? trades : [];
+
+  const persistenceView =
+    describeJournalPersistence(journalPersistence);
 
 const planTrades = allTrades.filter(
   (trade) =>
@@ -87,6 +99,27 @@ const cards = [
     color: "text-yellow-600",
   },
 ];
+
+  // The saved journal could not be read, so these metrics would describe an
+  // unknown journal rather than an empty one. Explain instead of counting.
+  if (persistenceView.status === JOURNAL_PERSISTENCE_STATUS.UNREADABLE) {
+    return (
+      <div
+        role="status"
+        className="bg-white rounded-2xl border border-amber-300 p-5"
+      >
+
+        <p className="font-semibold text-amber-900">
+          {persistenceView.title}
+        </p>
+
+        <p className="text-sm text-gray-600 mt-1">
+          {persistenceView.detail}
+        </p>
+
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-3 gap-2">

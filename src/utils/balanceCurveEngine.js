@@ -1,105 +1,80 @@
 import { format } from "date-fns";
 
+import {
+  getPeriodStartingBalance,
+  selectRealizedTrades,
+} from "./dashboardCurveEngine.js";
+
+// Reconstructed balance curve for the selected period. The series opens at the
+// balance the account stood at when the period started, so zooming into a week
+// shows a true continuation of the account's history instead of resetting to the
+// starting balance. Built only from realised journal trades attributed to their
+// close timestamp; this is a reconstruction from the journal, not broker balance
+// history.
 export function generateBalanceCurve(
   startingBalance = 0,
   trades = [],
   startDate = null,
   endDate = null
 ) {
-  let balance = Number(startingBalance);
-  let equityValue = Number(startingBalance);
-
-  const curve = [];
-
-  // Start Point
-  curve.push({
-    date: "Start",
-    balance,
-    equity: equityValue,
-    drawdown: 0,
-    value: balance,
-    percent: 0,
-    r: 0,
-    pnl: 0,
+  const baseline = getPeriodStartingBalance(trades, {
+    startingBalance,
+    startDate,
   });
 
-  if (!trades.length) return curve;
+  let balance = baseline;
 
-  const sortedTrades = [...trades].sort(
-    (a, b) => new Date(a.date) - new Date(b.date)
+  const curve = [
+    {
+      date: "Start",
+      balance: baseline,
+      equity: baseline,
+      drawdown: 0,
+      value: baseline,
+      percent: 0,
+      r: 0,
+      pnl: 0,
+    },
+  ];
+
+  selectRealizedTrades(trades, { startDate, endDate }).forEach(
+    ({ trade, closedAt }) => {
+      const pnl = Number(trade.pnl || 0);
+
+      balance += pnl;
+
+      const totalPnL = balance - baseline;
+
+      curve.push({
+        date: format(closedAt, "dd MMM"),
+        balance,
+        equity: balance,
+        drawdown: 0,
+        value: balance,
+        percent:
+          baseline === 0
+            ? 0
+            : Number(((totalPnL / baseline) * 100).toFixed(2)),
+        r: Number((totalPnL / 100).toFixed(2)),
+        pnl,
+        closedAt,
+        tradeId: trade.id,
+      });
+    }
   );
 
-  sortedTrades.forEach((trade) => {
-
-    console.log(
-      "Checking:",
-      trade.date,
-      new Date(trade.date),
-      "Start:",
-      startDate,
-      "End:",
-      endDate
-    );
-    
-    const tradeDate = new Date(trade.date);
-    
-    if (startDate && tradeDate < startDate) {
-      console.log("Skipped (before start)", trade.date);
-      return;
-    }
-    
-    if (endDate && tradeDate > endDate) {
-      console.log("Skipped (after end)", trade.date);
-      return;
-    }
-    
-    console.log("Included:", trade.date);
-
-    
-
-    if (startDate && tradeDate < startDate) return;
-    if (endDate && tradeDate > endDate) return;
-
-    const pnl = Number(trade.pnl || 0);
-
-    balance += pnl;
-    equityValue = balance;
-
-    const totalPnL = balance - startingBalance;
-
-    curve.push({
-      date: format(tradeDate, "dd MMM"),
-      balance: balance,
-      equity: equityValue, // <-- Yeh equity key add kar di gayi hai
-      drawdown: 0,
-      value: balance,
-      percent:
-        startingBalance === 0
-          ? 0
-          : Number(
-              (
-                (totalPnL / startingBalance) *
-                100
-              ).toFixed(2)
-            ),
-      r: Number((totalPnL / 100).toFixed(2)),
-      pnl,
-      tradeId: trade.id,
-    });
-  });
-
-  // Drawdown Calculation
-  let peak = startingBalance;
+  // Peak-and-trough depth, measured from the same baseline the curve starts at.
+  let peak = baseline;
 
   curve.forEach((item) => {
     if (item.balance > peak) {
       peak = item.balance;
     }
-    item.drawdown = Number(
-      (
-        ((item.balance - peak) / peak) * 100
-      ).toFixed(2)
-    );
+
+    item.drawdown =
+      peak === 0
+        ? 0
+        : Number((((item.balance - peak) / peak) * 100).toFixed(2));
   });
 
   return curve;

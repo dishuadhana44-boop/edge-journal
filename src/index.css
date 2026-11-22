@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Class-based dark mode — dark: utilities follow the
+   .dark class toggled by ThemeContext, not OS preference */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ==========================================================
    EDGEFLO — GLOBAL THEME
    Black + Purple Dark Mode

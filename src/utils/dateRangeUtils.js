@@ -87,3 +87,26 @@ import {
     };
   }
 
+  function toValidDate(value) {
+    if (!value) return null;
+
+    const date = value instanceof Date ? value : new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  // Every dashboard consumer slices history with these boundaries, so the applied
+  // range is resolved once here in local calendar time: the first day counts from
+  // its first millisecond and the last day through its final one. Ranges applied
+  // from the calendar carry midnight endpoints, which would otherwise drop the
+  // whole of the selected end day.
+  export function normalizePeriodBounds(startDate, endDate) {
+    const start = toValidDate(startDate);
+    const end = toValidDate(endDate);
+
+    return {
+      start: start ? startOfDay(start).getTime() : null,
+      end: end ? endOfDay(end).getTime() : null,
+    };
+  }
+

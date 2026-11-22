@@ -5,701 +5,129 @@ import {
   useState,
   useCallback,
   useMemo,
+  useSyncExternalStore,
 } from "react";
+import {
+  normalizeAccountId,
+  normalizeJournalTrade,
+  normalizeNumber,
+} from "../lib/journalTradeNormalization.js";
+import {
+  canPersistAfterRead,
+  readJournalStorage,
+  writeJournalStorage,
+} from "../lib/journalStorage.js";
+import {
+  JOURNAL_PERSISTENCE_INITIAL,
+  reduceJournalPersistence,
+} from "../lib/journalPersistenceStore.js";
+
 
 const JournalContext = createContext(null);
 
 // ============================================================
-// HELPERS
+// NORMALIZATION LIVES IN src/lib/journalTradeNormalization.js
 // ============================================================
 
-function normalizeNumber(value, fallback = 0) {
-  if (value === undefined || value === null || value === "") {
-    return fallback;
+// ============================================================
+// PERSISTENCE STATUS
+// ============================================================
+//
+// Saving the journal is a write to an external system, and its outcome has to
+// be readable by the app. React state is not set from inside that effect: the
+// effect publishes to this store and subscribers read it, so a failed save
+// becomes visible instead of only being logged.
+//
+// The store itself is src/lib/journalPersistenceStore.js. This file only
+// supplies the two things a pure module cannot hold: the listener set React
+// subscribes to, and the count of writes the storage helper proved.
+
+// A verified write is one whose bytes read back identically
+// (src/lib/journalStorage.js:245). Failed, blocked, unverified and read-only
+// operations never advance this, and the reducer additionally refuses anything
+// that is not strictly newer than what it already published.
+let journalWriteReceipt = 0;
+
+let journalPersistenceSnapshot =
+  JOURNAL_PERSISTENCE_INITIAL;
+
+const journalPersistenceListeners = new Set();
+
+function publishJournalPersistence(patch) {
+  const { snapshot, changed } = reduceJournalPersistence(
+    journalPersistenceSnapshot,
+    patch
+  );
+
+  // Unchanged is unchanged: the reducer gives back the same reference, so the
+  // store snapshot stays stable and no subscriber is told to re-read.
+  if (changed === false) {
+    return;
   }
 
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
+  journalPersistenceSnapshot = snapshot;
 
-// ============================================================
-// ACCOUNT ID
-// ============================================================
-
-function normalizeAccountId(value) {
-  if (value === undefined || value === null || value === "") {
-    return null;
-  }
-
-  return String(value);
-}
-
-// ============================================================
-// SYMBOL
-// ============================================================
-
-function normalizeSymbol(symbol) {
-  return String(symbol || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-}
-
-// ============================================================
-// DIRECTION
-// ============================================================
-
-function normalizeDirection(trade) {
-  const raw =
-    trade?.direction ??
-    trade?.side ??
-    trade?.type ??
-    "";
-
-  const value = String(raw).trim().toLowerCase();
-
-  if (
-    value === "buy" ||
-    value === "long" ||
-    value === "1"
-  ) {
-    return "Buy";
-  }
-
-  if (
-    value === "sell" ||
-    value === "short" ||
-    value === "2"
-  ) {
-    return "Sell";
-  }
-
-  return "";
-}
-
-// ============================================================
-// TIMESTAMP PARSER
-// ============================================================
-
-function getValidTimestamp(...values) {
-  for (const value of values) {
-    if (
-      value === undefined ||
-      value === null ||
-      value === ""
-    ) {
-      continue;
-    }
-
-    // NUMBER
-    if (
-      typeof value === "number" &&
-      Number.isFinite(value) &&
-      value > 0
-    ) {
-      if (value < 100000000000) {
-        return value * 1000;
-      }
-
-      return value;
-    }
-
-    // NUMERIC STRING
-    if (
-      typeof value === "string" &&
-      value.trim() !== "" &&
-      /^-?\d+(\.\d+)?$/.test(value.trim())
-    ) {
-      const number = Number(value);
-
-      if (
-        Number.isFinite(number) &&
-        number > 0
-      ) {
-        if (number < 100000000000) {
-          return number * 1000;
-        }
-
-        return number;
-      }
-    }
-
-    // DATE STRING
-    const date = new Date(value);
-
-    if (!Number.isNaN(date.getTime())) {
-      return date.getTime();
-    }
-  }
-
-  return null;
-}
-
-// ============================================================
-// ENTRY TIMESTAMP
-// ============================================================
-
-function getEntryTimestamp(trade) {
-  return getValidTimestamp(
-    trade?.entryTime,
-    trade?.openedAt,
-    trade?.openTime,
-    trade?.creationTime,
-    trade?.createdAt,
-    trade?.timestamp,
-
-    trade?.tradeData?.entryTime,
-    trade?.tradeData?.openedAt,
-    trade?.tradeData?.openTime,
-    trade?.tradeData?.creationTime,
-    trade?.tradeData?.createdAt,
-    trade?.tradeData?.timestamp,
-
-    trade?.position?.entryTime,
-    trade?.position?.openedAt,
-    trade?.position?.openTime,
-    trade?.position?.creationTime
+  journalPersistenceListeners.forEach(
+    (listener) => listener()
   );
 }
 
-// ============================================================
-// EXIT TIMESTAMP
-// ============================================================
-
-function getExitTimestamp(trade) {
-  return getValidTimestamp(
-    trade?.exitTime,
-    trade?.closedAt,
-    trade?.closeTime,
-    trade?.closingTime,
-    trade?.closedTime,
-    trade?.exitedAt,
-    trade?.executionTime,
-    trade?.executedAt,
-
-    trade?.tradeData?.exitTime,
-    trade?.tradeData?.closedAt,
-    trade?.tradeData?.closeTime,
-    trade?.tradeData?.closingTime,
-    trade?.tradeData?.closedTime,
-    trade?.tradeData?.exitedAt,
-
-    trade?.execution?.timestamp,
-    trade?.execution?.time,
-    trade?.execution?.closedAt,
-
-    trade?.position?.exitTime,
-    trade?.position?.closedAt,
-    trade?.position?.closeTime,
-    trade?.position?.closingTime
-  );
-}
-
-// ============================================================
-// DATE PARSER
-// ============================================================
-
-function getTradeDate(trade) {
-  const timestamp =
-    getEntryTimestamp(trade) ??
-    getExitTimestamp(trade);
-
-  if (timestamp === null) {
-    return null;
-  }
-
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date;
-}
-
-// ============================================================
-// DATE STRING
-// ============================================================
-
-function getDateString(trade) {
-  const date = getTradeDate(trade);
-
-  if (!date) {
-    return (
-      trade?.date ??
-      new Date().toISOString().split("T")[0]
-    );
-  }
-
-  const year = date.getFullYear();
-
-  const month = String(
-    date.getMonth() + 1
-  ).padStart(2, "0");
-
-  const day = String(
-    date.getDate()
-  ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-// ============================================================
-// DAY
-// ============================================================
-
-function getDayName(trade) {
-  const date = getTradeDate(trade);
-
-  if (!date) {
-    return trade?.day ?? "";
-  }
-
-  return date.toLocaleDateString("en-US", {
-    weekday: "long",
-  });
-}
-
-// ============================================================
-// TIME FORMAT
-// ============================================================
-
-function formatTradeTime(timestamp) {
-  if (
-    timestamp === undefined ||
-    timestamp === null
-  ) {
-    return "--";
-  }
-
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return "--";
-  }
-
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-// ============================================================
-// FULL DATE + TIME
-// ============================================================
-
-function formatTradeDateTime(timestamp) {
-  if (
-    timestamp === undefined ||
-    timestamp === null
-  ) {
-    return "--";
-  }
-
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return "--";
-  }
-
-  return date.toLocaleString("en-US", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-// ============================================================
-// DURATION CALCULATOR
-// ============================================================
-
-function calculateTradeDuration(
-  entryTimestamp,
-  exitTimestamp
-) {
-  if (
-    entryTimestamp === null ||
-    exitTimestamp === null
-  ) {
-    return 0;
-  }
-
-  const duration =
-    exitTimestamp - entryTimestamp;
-
-  if (duration <= 0) {
-    return 0;
-  }
-
-  return duration;
-}
-
-// ============================================================
-// FORMAT DURATION
-// ============================================================
-
-function formatTradeDuration(durationMs) {
-  const duration = Number(durationMs);
-
-  if (
-    !Number.isFinite(duration) ||
-    duration <= 0
-  ) {
-    return "0s";
-  }
-
-  const totalSeconds = Math.floor(
-    duration / 1000
-  );
-
-  const hours = Math.floor(
-    totalSeconds / 3600
-  );
-
-  const minutes = Math.floor(
-    (totalSeconds % 3600) / 60
-  );
-
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    if (minutes > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-
-    return `${hours}h`;
-  }
-
-  if (minutes > 0) {
-    if (seconds > 0) {
-      return `${minutes}m ${seconds}s`;
-    }
-
-    return `${minutes}m`;
-  }
-
-  return `${seconds}s`;
-}
-
-// ============================================================
-// TRADING SESSION
-// ============================================================
-
-function getTradingSession(trade) {
-  if (
-    trade?.session &&
-    String(trade.session).trim() !== ""
-  ) {
-    return trade.session;
-  }
-
-  const timestamp =
-    getEntryTimestamp(trade);
-
-  if (timestamp === null) {
-    return "";
-  }
-
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const hour = date.getUTCHours();
-
-  if (hour >= 0 && hour < 8) {
-    return "Asia";
-  }
-
-  if (hour >= 8 && hour < 13) {
-    return "London";
-  }
-
-  if (hour >= 13 && hour < 21) {
-    return "New York";
-  }
-
-  return "Sydney";
-}
-
-// ============================================================
-// RISK / REWARD
-// ============================================================
-
-function calculateRiskReward(trade) {
-  const entry = normalizeNumber(
-    trade?.entry ??
-      trade?.entryPrice
-  );
-
-  const stopLoss = normalizeNumber(
-    trade?.stopLoss ??
-      trade?.sl
-  );
-
-  const takeProfit = normalizeNumber(
-    trade?.takeProfit ??
-      trade?.tp
-  );
-
-  const direction =
-    normalizeDirection(trade);
-
-  if (
-    entry <= 0 ||
-    stopLoss <= 0 ||
-    takeProfit <= 0
-  ) {
-    return normalizeNumber(
-      trade?.rr ??
-        trade?.riskReward ??
-        trade?.riskRewardRatio
-    );
-  }
-
-  let risk = 0;
-  let reward = 0;
-
-  if (direction === "Buy") {
-    risk = entry - stopLoss;
-    reward = takeProfit - entry;
-  }
-
-  if (direction === "Sell") {
-    risk = stopLoss - entry;
-    reward = entry - takeProfit;
-  }
-
-  if (risk <= 0 || reward < 0) {
-    return 0;
-  }
-
-  return Number(
-    (reward / risk).toFixed(2)
-  );
-}
-
-// ============================================================
-// NORMALIZE JOURNAL TRADE
-// ============================================================
-
-function normalizeJournalTrade(trade) {
-  if (
-    !trade ||
-    typeof trade !== "object"
-  ) {
-    return trade;
-  }
-
-  const direction =
-    normalizeDirection(trade);
-
-  const symbol = normalizeSymbol(
-    trade.symbol ??
-      trade.pair ??
-      trade.instrument
-  );
-
-  const entryTimestamp =
-    getEntryTimestamp(trade);
-
-  const exitTimestamp =
-    getExitTimestamp(trade);
-
-  const durationMs =
-    calculateTradeDuration(
-      entryTimestamp,
-      exitTimestamp
-    );
-
-  const duration =
-    formatTradeDuration(durationMs);
-
-  const date =
-    entryTimestamp !== null
-      ? getDateString({
-          ...trade,
-          openedAt: entryTimestamp,
-        })
-      : getDateString(trade);
-
-  const day =
-    entryTimestamp !== null
-      ? getDayName({
-          ...trade,
-          openedAt: entryTimestamp,
-        })
-      : getDayName(trade);
-
-  const session =
-    getTradingSession({
-      ...trade,
-      openedAt:
-        entryTimestamp ??
-        trade?.openedAt ??
-        trade?.openTime ??
-        null,
-    });
-
-  const rr =
-    calculateRiskReward(trade);
-
-  const pnl = normalizeNumber(
-    trade.pnl ??
-      trade.netProfit ??
-      trade.netPnL ??
-      trade.profit ??
-      trade.PnL ??
-      0
-  );
-
-  let result = trade.result;
-
-  if (!result) {
-    if (pnl > 0) {
-      result = "Win";
-    } else if (pnl < 0) {
-      result = "Loss";
-    } else {
-      result = "Breakeven";
-    }
-  }
-
-  // ==========================================================
-  // ACCOUNT ISOLATION
-  // ==========================================================
-
-  const accountId = normalizeAccountId(
-    trade.accountId ??
-      trade.accountID
-  );
-
-  return {
-    ...trade,
-
-    id:
-      trade.id ??
-      `journal-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`,
-
-    pair:
-      symbol ||
-      trade.pair ||
-      "",
-
-    symbol:
-      symbol ||
-      trade.symbol ||
-      "",
-
-    date,
-    day,
-    session,
-    direction,
-    result,
-
-    pnl,
-    PnL: pnl,
-    netProfit: pnl,
-    netPnL: pnl,
-
-    rr,
-    riskReward: rr,
-    riskRewardRatio: rr,
-
-    entryPrice: normalizeNumber(
-      trade.entryPrice ??
-        trade.entry
-    ),
-
-    exitPrice: normalizeNumber(
-      trade.exitPrice ??
-        trade.exit ??
-        trade.currentPrice
-    ),
-
-    stopLoss: normalizeNumber(
-      trade.stopLoss ??
-        trade.sl
-    ),
-
-    takeProfit: normalizeNumber(
-      trade.takeProfit ??
-        trade.tp
-    ),
-
-    entryTime: entryTimestamp,
-    openedAt: entryTimestamp,
-    openTime: entryTimestamp,
-
-    exitTime: exitTimestamp,
-    closedAt: exitTimestamp,
-    closeTime: exitTimestamp,
-
-    entryTimeFormatted:
-      formatTradeTime(entryTimestamp),
-
-    exitTimeFormatted:
-      formatTradeTime(exitTimestamp),
-
-    entryDateTime:
-      formatTradeDateTime(
-        entryTimestamp
-      ),
-
-    exitDateTime:
-      formatTradeDateTime(
-        exitTimestamp
-      ),
-
-    durationMs,
-    duration,
-    durationFormatted: duration,
-
-    // ========================================================
-    // GLOBAL ACCOUNT
-    // ========================================================
-
-    accountId,
+function subscribeToJournalPersistence(listener) {
+  journalPersistenceListeners.add(listener);
+
+  return () => {
+    journalPersistenceListeners.delete(listener);
   };
+}
+
+function getJournalPersistenceSnapshot() {
+  return journalPersistenceSnapshot;
 }
 
 // ============================================================
 // LOAD SAVED TRADES
 // ============================================================
 
-function loadSavedTrades() {
-  try {
-    const saved =
-      localStorage.getItem("trades");
+function getJournalStorage() {
+  return typeof localStorage === "undefined"
+    ? null
+    : localStorage;
+}
 
-    if (!saved) {
-      return [];
-    }
+function normalizeJournalRows(rows) {
+  return rows
+    .map(normalizeJournalTrade)
+    .filter(Boolean);
+}
 
-    const parsed = JSON.parse(saved);
+// A journal that could not be read has unknown contents rather than empty
+// contents, so this result decides whether saving is allowed at all.
+function readInitialJournal() {
+  const read = readJournalStorage(getJournalStorage());
 
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
+  const canPersist = canPersistAfterRead(read);
 
-    return parsed
-      .map(normalizeJournalTrade)
-      .filter(Boolean);
-  } catch (error) {
+  if (!canPersist) {
     console.error(
-      "❌ Failed to load journal trades:",
-      error
+      "⚠️ Journal storage could not be read safely, so saving is disabled:",
+      read.status,
+      read.reason
     );
-
-    return [];
   }
+
+  return {
+    trades:
+      read.rows === null
+        ? []
+        : normalizeJournalRows(read.rows),
+    persistence: {
+      readStatus: read.status,
+      canPersist,
+      writeStatus: null,
+      persisted: false,
+      message: read.message ?? null,
+    },
+  };
 }
 
 // ============================================================
@@ -735,9 +163,29 @@ export function JournalProvider({
   // TRADES
   // ==========================================================
 
-  const [trades, setTrades] = useState(() =>
-    loadSavedTrades()
+  const [initialJournal] = useState(
+    readInitialJournal
   );
+
+  const [trades, setTrades] = useState(
+    initialJournal.trades
+  );
+
+  const canPersistJournal =
+    initialJournal.persistence.canPersist;
+
+  const journalPersistence =
+    useSyncExternalStore(
+      subscribeToJournalPersistence,
+      getJournalPersistenceSnapshot,
+      getJournalPersistenceSnapshot
+    );
+
+  useEffect(() => {
+    publishJournalPersistence(
+      initialJournal.persistence
+    );
+  }, [initialJournal]);
 
   // ==========================================================
   // SELECTED ACCOUNT
@@ -787,10 +235,29 @@ export function JournalProvider({
   // ==========================================================
 
   const reloadTrades = useCallback(() => {
-    const loaded =
-      loadSavedTrades();
+    const read = readJournalStorage(getJournalStorage());
 
-    setTrades(loaded);
+    if (!canPersistAfterRead(read)) {
+      console.error(
+        "⚠️ Journal storage could not be re-read safely, so the current journal is kept:",
+        read.status,
+        read.reason
+      );
+
+      publishJournalPersistence({
+        readStatus: read.status,
+        message: read.message ?? null,
+      });
+
+      return;
+    }
+
+    setTrades(normalizeJournalRows(read.rows));
+
+    publishJournalPersistence({
+      readStatus: read.status,
+      message: null,
+    });
   }, []);
 
   // ==========================================================
@@ -798,18 +265,36 @@ export function JournalProvider({
   // ==========================================================
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        "trades",
-        JSON.stringify(trades)
-      );
-    } catch (error) {
+    if (!canPersistJournal) {
+      return;
+    }
+
+    const result = writeJournalStorage(
+      getJournalStorage(),
+      trades
+    );
+
+    if (result.persisted) {
+      journalWriteReceipt += 1;
+    } else {
       console.error(
         "❌ Failed to save journal trades:",
-        error
+        result.status,
+        result.reason,
+        result.message
       );
     }
-  }, [trades]);
+
+    publishJournalPersistence({
+      writeStatus: result.status,
+      persisted: result.persisted,
+      message: result.message,
+      // On a write that proved nothing this is still the last published value,
+      // and the reducer only accepts a strictly newer one, so a failure cannot
+      // move it.
+      writeReceipt: journalWriteReceipt,
+    });
+  }, [trades, canPersistJournal]);
 
   // ==========================================================
   // STORAGE EVENT
@@ -1385,6 +870,12 @@ export function JournalProvider({
     deleteAccountTrade,
 
     reloadTrades,
+
+    // --------------------------------------------------------
+    // PERSISTENCE STATUS
+    // --------------------------------------------------------
+
+    journalPersistence,
 
     // --------------------------------------------------------
     // GLOBAL ACCOUNT

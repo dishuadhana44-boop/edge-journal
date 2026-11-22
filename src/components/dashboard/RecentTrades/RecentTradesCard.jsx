@@ -298,12 +298,12 @@ export default function RecentTradesCard() {
     .slice(0, 5);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
 
-      <div className="flex items-center justify-between px-6 py-2 border-b border-gray-200">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
 
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-base font-semibold text-gray-900">
             Recent Open Positions
           </h2>
 
@@ -321,7 +321,7 @@ export default function RecentTradesCard() {
       </div>
 
       {recentPositions.length === 0 ? (
-        <div className="flex items-center justify-center py-17">
+        <div className="flex-1 flex items-center justify-center">
 
           <div className="text-center">
 
@@ -338,39 +338,39 @@ export default function RecentTradesCard() {
         </div>
       ) : (
 
-        <div className="overflow-x-auto">
+        <div className="flex-1 min-h-0 overflow-auto">
 
-          <table className="w-full min-w-[950px]">
+          <table className="w-full min-w-[680px]">
 
             <thead className="bg-gray-50 border-b border-gray-200">
 
               <tr>
 
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Instrument
                 </th>
 
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Side
                 </th>
 
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Lots
                 </th>
 
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Entry
                 </th>
 
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Current
                 </th>
 
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   P/L
                 </th>
 
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Duration
                 </th>
 
@@ -475,7 +475,7 @@ export default function RecentTradesCard() {
                       className="border-b border-gray-100 last:border-none hover:bg-gray-50 cursor-pointer transition"
                     >
 
-                      <td className="px-6 py-3">
+                      <td className="px-4 py-2">
 
                         <div className="flex items-center gap-3">
 
@@ -501,7 +501,7 @@ export default function RecentTradesCard() {
 
                       </td>
 
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-2 text-center">
 
                         <div
                           className={`inline-flex items-center gap-1 text-sm font-semibold ${
@@ -534,26 +534,26 @@ export default function RecentTradesCard() {
 
                       </td>
 
-                      <td className="px-4 py-3 text-right text-sm text-gray-700">
+                      <td className="px-4 py-2 text-right text-sm text-gray-700">
                         {formatLots(
                           quantity
                         )}
                       </td>
 
-                      <td className="px-4 py-3 text-right text-sm text-gray-700">
+                      <td className="px-4 py-2 text-right text-sm text-gray-700">
                         {formatPrice(
                           entry
                         )}
                       </td>
 
-                      <td className="px-4 py-3 text-right text-sm text-gray-700">
+                      <td className="px-4 py-2 text-right text-sm text-gray-700">
                         {formatPrice(
                           currentPrice
                         )}
                       </td>
 
                       <td
-                        className={`px-4 py-3 text-right text-sm font-semibold ${
+                        className={`px-4 py-2 text-right text-sm font-semibold ${
                           pnl >= 0
                             ? "text-emerald-600"
                             : "text-red-600"
@@ -562,7 +562,7 @@ export default function RecentTradesCard() {
                         {formatPnL(pnl)}
                       </td>
 
-                      <td className="px-6 py-3 text-right text-sm text-gray-500 font-mono">
+                      <td className="px-4 py-2 text-right text-sm text-gray-500 font-mono">
                         {formatDuration(
                           openedAt,
                           now

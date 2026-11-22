@@ -11,19 +11,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTrade } from "../../../context/TradeContext";
-
-// ============================================================
-// DEFAULT GUARDRAILS
-// ============================================================
-
-const DEFAULT_GUARDRAILS = {
-  enabled: true,
-  maxTradesPerDay: 10,
-  maxDailyLoss: 3000,
-  maxDailyProfit: 10000,
-  tradingWindowStart: "10:30",
-  tradingWindowEnd: "13:30",
-};
+import {
+  readStoredGuardrails,
+} from "../../../utils/trading/tradingGuardrails";
 
 // ============================================================
 // DEFAULT WATCHLIST
@@ -37,8 +27,7 @@ const DEFAULT_WATCHLIST = [];
 
 export default function TradingInsightsPanel() {
   const {
-    openTrades = [],
-    closedTrades = [],
+    getDailyGuardrailStatus,
   } = useTrade();
 
   const [activeTab, setActiveTab] = useState("watchlist");
@@ -84,20 +73,9 @@ export default function TradingInsightsPanel() {
   // GUARDRAILS
   // ============================================================
 
-  const [guardrails, setGuardrails] = useState(() => {
-    try {
-      const saved = localStorage.getItem("tradingGuardrails");
-
-      return saved
-        ? {
-            ...DEFAULT_GUARDRAILS,
-            ...JSON.parse(saved),
-          }
-        : DEFAULT_GUARDRAILS;
-    } catch {
-      return DEFAULT_GUARDRAILS;
-    }
-  });
+  const [guardrails, setGuardrails] = useState(
+    () => readStoredGuardrails().guardrails
+  );
 
   // ============================================================
   // SELECTED EDGE PLAN
@@ -218,22 +196,7 @@ export default function TradingInsightsPanel() {
 
   useEffect(() => {
     const loadGuardrails = () => {
-      try {
-        const saved =
-          localStorage.getItem("tradingGuardrails");
-
-        if (saved) {
-          setGuardrails({
-            ...DEFAULT_GUARDRAILS,
-            ...JSON.parse(saved),
-          });
-        }
-      } catch (error) {
-        console.error(
-          "Failed to load guardrails:",
-          error
-        );
-      }
+      setGuardrails(readStoredGuardrails().guardrails);
     };
 
     loadGuardrails();
@@ -262,141 +225,41 @@ export default function TradingInsightsPanel() {
   }, []);
 
   // ============================================================
-  // TODAY'S TRADES
+  // DAILY GUARDRAIL STATUS
+  //
+  // This panel used to keep its own copy of "today" and of the daily total while
+  // the order-blocking code measured the UTC day. Both now come from the single
+  // evaluator, so a progress bar can never disagree with the limit that actually
+  // locks trading.
   // ============================================================
 
-  const getTradeId = (trade, index = 0) => {
-    return (
-      trade?.id ??
-      trade?.ticket ??
-      trade?.positionId ??
-      trade?.brokerPositionId ??
-      trade?.deal ??
-      `trade-${index}`
-    );
-  };
+  const dailyGuardrailStatus =
+    getDailyGuardrailStatus(guardrails);
 
-  const getTradeDate = (trade) => {
-    const dateValue =
-      trade?.closedAt ??
-      trade?.closeTime ??
-      trade?.time ??
-      trade?.openedAt ??
-      trade?.openTime ??
-      trade?.createdAt ??
-      trade?.date ??
-      trade?.timestamp;
+  const dailyPnL =
+    dailyGuardrailStatus.dailyPnL;
 
-    if (!dateValue) {
-      return null;
-    }
-
-    let tradeDate;
-
-    if (typeof dateValue === "number") {
-      tradeDate =
-        dateValue < 100000000000
-          ? new Date(dateValue * 1000)
-          : new Date(dateValue);
-    } else {
-      tradeDate = new Date(dateValue);
-    }
-
-    if (Number.isNaN(tradeDate.getTime())) {
-      return null;
-    }
-
-    return tradeDate;
-  };
-
-  const isToday = (date) => {
-    if (!date) {
-      return false;
-    }
-
-    const today = new Date();
-
-    return (
-      date.getFullYear() === today.getFullYear() &&
-      date.getMonth() === today.getMonth() &&
-      date.getDate() === today.getDate()
-    );
-  };
-
-  const allTrades = useMemo(() => {
-    const combinedTrades = [
-      ...openTrades,
-      ...closedTrades,
-    ];
-
-    return Array.from(
-      new Map(
-        combinedTrades.map((trade, index) => [
-          String(getTradeId(trade, index)),
-          trade,
-        ])
-      ).values()
-    );
-  }, [openTrades, closedTrades]);
-
-  const todayTrades = useMemo(() => {
-    return allTrades.filter((trade) =>
-      isToday(getTradeDate(trade))
-    );
-  }, [allTrades]);
-
-  const todayClosedTrades = useMemo(() => {
-    return closedTrades.filter((trade) =>
-      isToday(getTradeDate(trade))
-    );
-  }, [closedTrades]);
-
-  // ============================================================
-  // TRADE COUNT
-  // ============================================================
-
-  const tradeCount = todayTrades.length;
+  const tradeCount =
+    dailyGuardrailStatus.dailyTradeCount;
 
   const maxTrades = Math.max(
-    Number(guardrails.maxTradesPerDay) || 1,
+    Number(
+      dailyGuardrailStatus.limits.maxTradesPerDay
+    ) || 0,
     1
   );
 
-  // ============================================================
-  // DAILY PNL
-  // ============================================================
-
-  const dailyPnL = useMemo(() => {
-    return todayClosedTrades.reduce((total, trade) => {
-      const pnlValue =
-        trade?.netProfit ??
-        trade?.netPnL ??
-        trade?.realizedPnL ??
-        trade?.pnl ??
-        trade?.profit ??
-        0;
-
-      const pnl = Number(pnlValue);
-
-      if (!Number.isFinite(pnl)) {
-        return total;
-      }
-
-      return total + pnl;
-    }, 0);
-  }, [todayClosedTrades]);
-
-  // ============================================================
-  // GUARDRAIL LIMITS
-  // ============================================================
-
   const maxDailyLoss = Math.max(
-    Number(guardrails.maxDailyLoss) || 0,
+    Number(
+      dailyGuardrailStatus.limits.maxDailyLoss
+    ) || 0,
     0
   );
 
   const maxDailyProfit = Math.max(
-    Number(guardrails.maxDailyProfit) || 0,
+    Number(
+      dailyGuardrailStatus.limits.maxDailyProfit
+    ) || 0,
     0
   );
 
@@ -479,15 +342,13 @@ export default function TradingInsightsPanel() {
       now.getHours() * 60 +
       now.getMinutes();
 
-    const [startHour, startMinute] = (
-      guardrails.tradingWindowStart || "07:30"
-    )
+    // readStoredGuardrails() always supplies a valid HH:MM, so there is no
+    // second set of window defaults to drift away from the enforced ones.
+    const [startHour, startMinute] = guardrails.tradingWindowStart
       .split(":")
       .map(Number);
 
-    const [endHour, endMinute] = (
-      guardrails.tradingWindowEnd || "20:30"
-    )
+    const [endHour, endMinute] = guardrails.tradingWindowEnd
       .split(":")
       .map(Number);
 
@@ -515,6 +376,9 @@ export default function TradingInsightsPanel() {
 
   // ============================================================
   // RULE VIOLATION
+  //
+  // Reported by the same evaluator that locks order execution, in its own
+  // priority order, so this banner and a rejected click can never disagree.
   // ============================================================
 
   const ruleViolation = useMemo(() => {
@@ -522,29 +386,15 @@ export default function TradingInsightsPanel() {
       return null;
     }
 
-    if (
-      maxTrades > 0 &&
-      tradeCount >= maxTrades
-    ) {
-      return `Daily trade limit reached (${tradeCount}/${maxTrades}).`;
+    if (dailyGuardrailStatus.enforceable === false) {
+      return (
+        dailyGuardrailStatus.configIssues?.[0] ||
+        "Daily limits cannot be checked right now."
+      );
     }
 
-    if (
-      maxDailyLoss > 0 &&
-      dailyPnL <= -maxDailyLoss
-    ) {
-      return `Maximum daily loss reached (${formatPnL(
-        dailyPnL
-      )}).`;
-    }
-
-    if (
-      maxDailyProfit > 0 &&
-      dailyPnL >= maxDailyProfit
-    ) {
-      return `Daily profit target reached (${formatPnL(
-        dailyPnL
-      )}).`;
+    if (dailyGuardrailStatus.locked) {
+      return dailyGuardrailStatus.reason;
     }
 
     if (!tradingWindowOpen) {
@@ -554,19 +404,15 @@ export default function TradingInsightsPanel() {
     return null;
   }, [
     guardrails.enabled,
-    maxTrades,
-    tradeCount,
-    maxDailyLoss,
-    maxDailyProfit,
-    dailyPnL,
+    dailyGuardrailStatus,
     tradingWindowOpen,
   ]);
 
   const tradingStart =
-    guardrails.tradingWindowStart || "10:30";
+    guardrails.tradingWindowStart;
 
   const tradingEnd =
-    guardrails.tradingWindowEnd || "13:30";
+    guardrails.tradingWindowEnd;
 
   const formatTradingTime = (time) => {
     if (!time) return "-";

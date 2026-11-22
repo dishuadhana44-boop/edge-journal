@@ -1,42 +1,15 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, Save } from "lucide-react";
-
-const DEFAULT_GUARDRAILS = {
-  enabled: true,
-
-  maxTradesPerDay: 10,
-
-  maxDailyLoss: 500,
-
-  maxDailyProfit: 1000,
-
-  // Maximum dollar risk allowed on one trade
-  maxRiskPerTrade: 1000,
-
-  // Default risk percentage per trade
-  riskPerTrade: 1,
-
-  maxConsecutiveLosses: 3,
-
-  maxPositionSize: 5,
-
-  tradingWindowStart: "11:30",
-
-  tradingWindowEnd: "20:30",
-};
+import {
+  readStoredGuardrails,
+} from "../../utils/trading/tradingGuardrails";
 
 export default function GuardrailsPage() {
-  const [settings, setSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem("tradingGuardrails");
-
-      return saved
-        ? { ...DEFAULT_GUARDRAILS, ...JSON.parse(saved) }
-        : DEFAULT_GUARDRAILS;
-    } catch {
-      return DEFAULT_GUARDRAILS;
-    }
-  });
+  // The same merged + validated configuration the order path enforces, so this
+  // form cannot show a limit that enforcement is not actually applying.
+  const [settings, setSettings] = useState(
+    () => readStoredGuardrails().guardrails
+  );
 
   const [saved, setSaved] = useState(false);
 

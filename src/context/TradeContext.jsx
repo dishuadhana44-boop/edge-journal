@@ -14,6 +14,31 @@ const API_URL =
 import { useJournal } from "./JournalContext";
 import { useMarket } from "./MarketContext";
 
+import {
+  evaluateDailyGuardrail,
+  readStoredGuardrails,
+} from "../utils/trading/tradingGuardrails";
+
+import {
+  captureRecoveryClockSample,
+  RECOVERY_CLOCK_STATUS,
+} from "../utils/trading/recoveryClock";
+
+import {
+  planRecoveryPreviewForAccount,
+} from "../lib/mt5RecoveryAccountPreview";
+
+import {
+  makeAccountIdentity,
+  resolveActiveAccountData,
+  accountStorageKey,
+  loadAccountScopedData,
+} from "../lib/brokerAccountIdentity.js";
+
+import {
+  priceSourceForBrokerKey,
+} from "../lib/marketPriceSource.js";
+
 const TradeContext = createContext(null);
 
 // ============================================================
@@ -40,14 +65,56 @@ function normalizeAccountId(value) {
 }
 
 function getAccountStorageKey(baseKey, accountId) {
-  const normalizedId =
-    normalizeAccountId(accountId);
+  const identity = readSelectedAccountIdentity(accountId);
+
+  return accountStorageKey(baseKey, identity);
+}
+
+function loadAccountStorage(baseKey, accountId, fallback) {
+  const identity = readSelectedAccountIdentity(accountId);
+
+  return loadAccountScopedData(
+    localStorage,
+    baseKey,
+    {
+      brokerKey: identity.brokerKey,
+      accountId: identity.accountId,
+      fallback,
+    }
+  ).value;
+}
+
+function readSelectedAccountIdentity(accountId) {
+  const normalizedId = normalizeAccountId(accountId);
 
   if (!normalizedId) {
-    return null;
+    return makeAccountIdentity(null);
   }
 
-  return `${baseKey}_${normalizedId}`;
+  const stored = readStoredTradingAccounts().find(
+    (account) =>
+      normalizeAccountId(account?.id) === normalizedId
+  );
+
+  return makeAccountIdentity(
+    stored ?? { id: normalizedId }
+  );
+}
+
+// TradeContext holds no accounts state — every existing account lookup in this
+// file reads the stored list directly, so identity checks do the same.
+function readStoredTradingAccounts() {
+  try {
+    const raw = localStorage.getItem("tradingAccounts");
+
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error("❌ Failed to read trading accounts:", error);
+
+    return [];
+  }
 }
 
 function loadFromStorage(key, fallback) {
@@ -540,7 +607,8 @@ function getPositionKey(position) {
 // ============================================================
 
 function normalizeBrokerPosition(
-  position
+  position,
+  selectedAccountId = null
 ) {
   if (
     !position ||
@@ -1845,17 +1913,74 @@ export function TradeProvider({ children }) {
     bid,
     ask,
     symbol: activeSymbol,
+    positions: cTraderPositions,
+    cTraderAccountId,
+    setPriceSource,
   } = useMarket();
 
   const {
     addTrade,
     selectedAccountId,
-    setSelectedAccountId,
   } = useJournal();
 
   console.log(
     "🟢 TRADE PROVIDER SELECTED ACCOUNT:",
     selectedAccountId
+  );
+
+  // ==========================================================
+  // THE SELECTED ACCOUNT DECLARES THE PRICE SOURCE
+  // ==========================================================
+  //
+  // MarketProvider owns the bid/ask pair but must not choose which account it
+  // belongs to; JournalContext owns the selection but knows nothing about
+  // prices. This is the seam between them: the selected account's broker, read
+  // through the same identity authority the account-scoped storage keys use, is
+  // what tells the market which of its two producers may write.
+  //
+  // selectedAccountId is the only trigger. An account that is merely stored,
+  // discovered, defaulted or pushed by an event declares nothing, because none
+  // of those moved the selection. An identity whose broker the vocabulary does
+  // not name answers null, and the provider then changes nothing - the fail-open
+  // is the provider's existing behaviour, not a guessed source.
+
+  useEffect(() => {
+    const identity = readSelectedAccountIdentity(
+      selectedAccountId
+    );
+
+    setPriceSource(
+      priceSourceForBrokerKey(identity.brokerKey)
+    );
+  }, [selectedAccountId, setPriceSource]);
+
+  // ==========================================================
+  // LATE-RESPONSE SAFETY
+  // ==========================================================
+  //
+  // Every MT5 request in this provider outlives the render that issued it, and
+  // the user can switch accounts while one is in flight. These refs are written
+  // during render, so a response can compare itself against the *current*
+  // selection synchronously instead of trusting the closure it was created in.
+  // The two generations are independent: an in-flight account request must not
+  // be cancelled by a positions request, or vice versa.
+
+  const selectedAccountIdRef = useRef(
+    normalizeAccountId(selectedAccountId)
+  );
+
+  selectedAccountIdRef.current =
+    normalizeAccountId(selectedAccountId);
+
+  const mt5AccountGenerationRef = useRef(0);
+
+  const mt5PositionsGenerationRef = useRef(0);
+
+  const [
+    accountStateOwnerId,
+    setAccountStateOwnerId,
+  ] = useState(() =>
+    normalizeAccountId(selectedAccountId)
   );
 
   const [
@@ -1868,7 +1993,11 @@ export function TradeProvider({ children }) {
     );
 
     return key
-      ? loadFromStorage(key, [])
+      ? loadAccountStorage(
+          STORAGE_KEYS.OPEN_TRADES,
+          selectedAccountId,
+          []
+        )
       : [];
   });
 
@@ -1882,7 +2011,11 @@ export function TradeProvider({ children }) {
     );
 
     return key
-      ? loadFromStorage(key, [])
+      ? loadAccountStorage(
+          STORAGE_KEYS.PENDING_ORDERS,
+          selectedAccountId,
+          []
+        )
       : [];
   });
 
@@ -1900,7 +2033,11 @@ export function TradeProvider({ children }) {
     }
 
     try {
-      return loadFromStorage(key, []);
+      return loadAccountStorage(
+        STORAGE_KEYS.CLOSED_TRADES,
+        selectedAccountId,
+        []
+      );
     } catch (error) {
       console.error(
         "Failed to load account closed trades:",
@@ -1932,6 +2069,19 @@ export function TradeProvider({ children }) {
       brokerTimeMsc: null,
       clientTimeMsc: null,
     });
+
+  // ==========================================================
+  // RECOVERY CLOCK SAMPLE
+  // ==========================================================
+  //
+  // Separate from the UI clock above: offline recovery may only anchor its
+  // lookback on a broker reading whose source is an MT5 tick and whose login
+  // and server both belong to the selected account. Everything it cannot
+  // confirm stays null so recovery refuses to plan a window, instead of
+  // quietly falling back to this machine's clock.
+
+  const recoveryClockRef =
+    useRef(null);
 
   const [
     brokerTimeMsc,
@@ -2021,6 +2171,113 @@ export function TradeProvider({ children }) {
     );
 
   // ==========================================================
+  // REMEMBER A RECOVERY-USABLE BROKER CLOCK SAMPLE
+  // ==========================================================
+
+  const rememberRecoveryClockSample =
+    useCallback(
+      (
+        data,
+        expectedAccount
+      ) => {
+        const outcome =
+          captureRecoveryClockSample({
+            brokerTimeMsc:
+              getBrokerNumber(
+                data?.broker_time_msc,
+                data?.brokerTimeMsc
+              ),
+
+            brokerTimeSource:
+              data?.broker_time_source ??
+              data?.brokerTimeSource ??
+              null,
+
+            sampledAtClientMsc:
+              Date.now(),
+
+            expectedIdentity: {
+              mt5Login:
+                expectedAccount?.mt5Login ??
+                expectedAccount?.login ??
+                null,
+
+              mt5Server:
+                expectedAccount?.mt5Server ??
+                expectedAccount?.server ??
+                null,
+            },
+
+            returnedIdentity: {
+              mt5Login:
+                data?.mt5Login ??
+                data?.login ??
+                null,
+
+              mt5Server:
+                data?.mt5Server ??
+                data?.server ??
+                null,
+            },
+          });
+
+        recoveryClockRef.current =
+          outcome.status ===
+          RECOVERY_CLOCK_STATUS.ACCEPTED
+            ? outcome.sample
+            : null;
+
+        return recoveryClockRef.current;
+      },
+      []
+    );
+
+  const getRecoveryClockSample =
+    useCallback(
+      () => recoveryClockRef.current,
+      []
+    );
+
+  // ==========================================================
+  // RECOVERY PREVIEW — integration path, not started
+  //
+  // Nothing calls this yet: no effect, timer, poll or button. The live
+  // identity and the journal snapshot come from the caller because this
+  // context owns neither the broker's account response nor the journal;
+  // `now` is the client instant the sample's age is measured against, not
+  // the anchor — the anchor stays the trusted broker tick plus elapsed
+  // client time inside the recovery clock.
+  // ==========================================================
+
+  const planAccountRecoveryPreview =
+    useCallback(
+      (input) =>
+        planRecoveryPreviewForAccount({
+          accounts: loadFromStorage(
+            "tradingAccounts",
+            []
+          ),
+
+          getRecoveryClockSample:
+            getRecoveryClockSample,
+
+          now: Date.now(),
+
+          apiUrl: API_URL,
+
+          fetchImpl: (url, options) =>
+            fetch(url, options),
+
+          liveIdentity:
+            input?.liveIdentity,
+
+          existingJournal:
+            input?.existingJournal,
+        }),
+      [getRecoveryClockSample]
+    );
+
+  // ==========================================================
   // TRADE NOTIFICATION
   // ==========================================================
 
@@ -2065,14 +2322,20 @@ export function TradeProvider({ children }) {
     );
   
     return key
-      ? loadFromStorage(key, {
-          balance: 0,
-          equity: 0,
-          marginUsed: 0,
-          freeMargin: 0,
-          currency: "USD",
-          leverage: 100,
-        })
+      ? loadAccountStorage(
+          STORAGE_KEYS.ACCOUNT,
+          selectedAccountId,
+          {
+            balance: 0,
+            equity: 0,
+            marginUsed: 0,
+            freeMargin: 0,
+            currency: "USD",
+            leverage: 100,
+            balanceRefreshedAt: null,
+            balanceRefreshedAccountId: null,
+          }
+        )
       : {
           balance: 0,
           equity: 0,
@@ -2080,6 +2343,8 @@ export function TradeProvider({ children }) {
           freeMargin: 0,
           currency: "USD",
           leverage: 100,
+          balanceRefreshedAt: null,
+          balanceRefreshedAccountId: null,
         };
   });
 
@@ -2103,7 +2368,11 @@ useEffect(() => {
       freeMargin: 0,
       currency: "USD",
       leverage: 100,
+      balanceRefreshedAt: null,
+      balanceRefreshedAccountId: null,
     });
+
+    setAccountStateOwnerId(null);
 
     previousMT5PositionsRef.current =
       new Map();
@@ -2112,6 +2381,8 @@ useEffect(() => {
       brokerTimeMsc: null,
       clientTimeMsc: null,
     };
+
+    recoveryClockRef.current = null;
 
     setBrokerTimeMsc(null);
 
@@ -2149,33 +2420,42 @@ useEffect(() => {
     freeMargin: 0,
     currency: "USD",
     leverage: 100,
+    balanceRefreshedAt: null,
+    balanceRefreshedAccountId: null,
   };
 
   const nextOpenTrades =
     openTradesKey
-      ? loadFromStorage(openTradesKey, [])
+      ? loadAccountStorage(
+          STORAGE_KEYS.OPEN_TRADES,
+          normalizedAccountId,
+          []
+        )
       : [];
 
   const nextPendingOrders =
     pendingOrdersKey
-      ? loadFromStorage(
-          pendingOrdersKey,
+      ? loadAccountStorage(
+          STORAGE_KEYS.PENDING_ORDERS,
+          normalizedAccountId,
           []
         )
       : [];
 
   const nextClosedTrades =
     closedTradesKey
-      ? loadFromStorage(
-          closedTradesKey,
+      ? loadAccountStorage(
+          STORAGE_KEYS.CLOSED_TRADES,
+          normalizedAccountId,
           []
         )
       : [];
 
   const nextAccount =
     accountKey
-      ? loadFromStorage(
-          accountKey,
+      ? loadAccountStorage(
+          STORAGE_KEYS.ACCOUNT,
+          normalizedAccountId,
           defaultAccount
         )
       : defaultAccount;
@@ -2203,6 +2483,11 @@ useEffect(() => {
     ...(nextAccount || {}),
   });
 
+  // Ownership moves in the same batch as the values it describes, so a
+  // persistence effect can never write this account's arrays under the
+  // previous account's keys during the switch render.
+  setAccountStateOwnerId(normalizedAccountId);
+
 // Reload the selected account's live MT5 account data.
 if (
   nextAccount?.mt5Connected === true ||
@@ -2223,6 +2508,8 @@ if (
     brokerTimeMsc: null,
     clientTimeMsc: null,
   };
+
+  recoveryClockRef.current = null;
 
   setBrokerTimeMsc(null);
 
@@ -2262,7 +2549,7 @@ useEffect(() => {
   const accountId =
     normalizeAccountId(selectedAccountId);
 
-  if (!accountId) {
+  if (!accountId || accountStateOwnerId !== accountId) {
     return;
   }
 
@@ -2290,6 +2577,7 @@ useEffect(() => {
 }, [
   openTrades,
   selectedAccountId,
+  accountStateOwnerId,
 ]);
 
 // ============================================================
@@ -2300,7 +2588,7 @@ useEffect(() => {
   const accountId =
     normalizeAccountId(selectedAccountId);
 
-  if (!accountId) {
+  if (!accountId || accountStateOwnerId !== accountId) {
     return;
   }
 
@@ -2328,6 +2616,7 @@ useEffect(() => {
 }, [
   pendingOrders,
   selectedAccountId,
+  accountStateOwnerId,
 ]);
 
 // ============================================================
@@ -2338,7 +2627,7 @@ useEffect(() => {
   const accountId =
     normalizeAccountId(selectedAccountId);
 
-  if (!accountId) {
+  if (!accountId || accountStateOwnerId !== accountId) {
     return;
   }
 
@@ -2378,6 +2667,7 @@ useEffect(() => {
   selectedAccountId,
   closedTrades,
   account,
+  accountStateOwnerId,
 ]);
 
 const balance =
@@ -2403,7 +2693,60 @@ const currentSymbol =
 const syncMT5Account =
 useCallback(
   async () => {
+    // This request answers to exactly one account, chosen when it was issued.
+    // Anything that has changed since then — a newer request for the same
+    // account, or a different account being selected — makes its payload
+    // stale, and a stale payload may not touch selection, state, storage,
+    // events or storage-owned account lists.
+    const requestAccountId =
+      normalizeAccountId(selectedAccountIdRef.current);
+
+    const requestGeneration =
+      ++mt5AccountGenerationRef.current;
+
+    const requestIsCurrent = () =>
+      mt5AccountGenerationRef.current === requestGeneration &&
+      normalizeAccountId(selectedAccountIdRef.current) ===
+        requestAccountId;
+
     try {
+      // ======================================================
+      // THE MT5 TERMINAL SESSION MAY NOT CLAIM ANOTHER BROKER'S ACCOUNT
+      // ======================================================
+
+      const selectionIdentity =
+        makeAccountIdentity(
+          readStoredTradingAccounts().find(
+            (account) =>
+              normalizeAccountId(account?.id) ===
+              normalizeAccountId(selectedAccountId)
+          ) ?? null
+        );
+
+      const selectionIsAnotherBroker =
+        (
+          selectionIdentity.brokerKey !== null &&
+          selectionIdentity.brokerKey !== "mt5"
+        ) ||
+        (
+          selectionIdentity.brokerKey === null &&
+          selectionIdentity.rawBroker !== null
+        );
+
+      if (selectionIsAnotherBroker) {
+        console.warn(
+          "🚫 MT5 ACCOUNT SYNC SKIPPED — the selected account belongs to another broker:",
+          {
+            selectedAccountId,
+            broker: selectionIdentity.rawBroker,
+            brokerKey: selectionIdentity.brokerKey,
+            identityStatus: selectionIdentity.identityStatus,
+          }
+        );
+
+        return null;
+      }
+
       const response =
         await fetch(
           `${API_URL}/api/mt5/account`,
@@ -2413,6 +2756,10 @@ useCallback(
           }
         );
 
+      if (!requestIsCurrent()) {
+        return null;
+      }
+
       if (!response.ok) {
         throw new Error(
           `MT5 account request failed: ${response.status}`
@@ -2421,6 +2768,10 @@ useCallback(
 
       const data =
         await response.json();
+
+      if (!requestIsCurrent()) {
+        return null;
+      }
 
       console.log(
         "💰 MT5 LIVE ACCOUNT RESPONSE:",
@@ -2489,52 +2840,33 @@ useCallback(
       // FIND MATCHING EDGEFLO TRADING ACCOUNT
       // ======================================================
 
-      let tradingAccounts = [];
-
-      try {
-        const rawAccounts =
-          localStorage.getItem(
-            "tradingAccounts"
-          );
-
-        const parsedAccounts =
-          rawAccounts
-            ? JSON.parse(rawAccounts)
-            : [];
-
-        tradingAccounts =
-          Array.isArray(parsedAccounts)
-            ? parsedAccounts
-            : [];
-      } catch (error) {
-        console.error(
-          "❌ Failed to read tradingAccounts:",
-          error
-        );
-      }
+      const tradingAccounts =
+        readStoredTradingAccounts();
 
       const matchingAccount =
         tradingAccounts.find(
           (accountItem) => {
-            const accountLogin =
-              normalizeAccountId(
-                accountItem?.mt5Login ??
-                  accountItem?.login ??
-                  null
-              );
+            const accountIdentity =
+              makeAccountIdentity(accountItem);
 
-            const accountServer =
-              String(
-                accountItem?.mt5Server ??
-                  accountItem?.server ??
-                  ""
-              )
-                .trim()
-                .toLowerCase();
+            // A live MT5 login may only ever bind an MT5 account.
+            if (
+              accountIdentity.brokerKey !== null &&
+              accountIdentity.brokerKey !== "mt5"
+            ) {
+              return false;
+            }
 
             if (
-              !accountLogin ||
-              accountLogin !==
+              accountIdentity.brokerKey === null &&
+              accountIdentity.rawBroker !== null
+            ) {
+              return false;
+            }
+
+            if (
+              !accountIdentity.externalId ||
+              accountIdentity.externalId !==
                 liveMT5Login
             ) {
               return false;
@@ -2543,9 +2875,9 @@ useCallback(
             // If both sides have a server,
             // require the server to match too.
             if (
-              accountServer &&
+              accountIdentity.server &&
               liveMT5Server &&
-              accountServer !==
+              accountIdentity.server !==
                 liveMT5Server
             ) {
               return false;
@@ -2559,11 +2891,19 @@ useCallback(
       // AUTOMATIC EDGEFLO ACCOUNT SWITCH
       // ======================================================
 
+      let balanceOwnerAccountId =
+        normalizeAccountId(
+          selectedAccountId
+        );
+
       if (matchingAccount) {
         const matchingAccountId =
           normalizeAccountId(
             matchingAccount.id
           );
+
+        balanceOwnerAccountId =
+          matchingAccountId ?? null;
 
         const currentAccountId =
           normalizeAccountId(
@@ -2588,17 +2928,24 @@ useCallback(
           matchingAccountId &&
           matchingAccountId !== currentAccountId
         ) {
+          if (!requestIsCurrent()) {
+            return null;
+          }
+
           console.log(
-            "🔄 AUTOMATICALLY SWITCHING EDGEFLO ACCOUNT:",
+            "🔄 MT5 TERMINAL IS ON ANOTHER SAVED ACCOUNT:",
             {
-              from: currentAccountId,
-              to: matchingAccountId,
+              selectedAccountId: currentAccountId,
+              liveAccountId: matchingAccountId,
               mt5Login: liveMT5Login,
               mt5Server: liveMT5Server,
             }
           );
-        
-          // Update the account with the latest live MT5 identity/data.
+
+          // The terminal being on another account is reported, not acted on:
+          // that account's record is refreshed with the latest live MT5
+          // identity/data and announced, and the active account stays chosen
+          // by the user.
           const updatedMT5Account = {
             ...matchingAccount,
         
@@ -2673,10 +3020,9 @@ useCallback(
             )
           );
         
-          // Switch EdgeFlo to this account.
-          setSelectedAccountId(
-            matchingAccountId
-          );
+          // This response describes the other account, so it must not also
+          // restamp the financial state the selected account rendered with.
+          return null;
         }
 
       } else {
@@ -2694,16 +3040,68 @@ useCallback(
       
         const newAccountId =
           `mt5-${liveMT5Login}`;
+
+        balanceOwnerAccountId = null;
       
-        const existingById =
+        const sameIdAccount =
           tradingAccounts.find(
             (accountItem) =>
               normalizeAccountId(
                 accountItem?.id
               ) === newAccountId
           );
+
+        // ==========================================================
+        // A LOCAL ID THAT MERELY LOOKS LIKE THIS LOGIN IS NOT A
+        // CLAIM OF LIVE IDENTITY
+        // ==========================================================
+        //
+        // `mt5-<login>` is only how this app names an account. A record that
+        // carries the id but belongs to another server is a different broker
+        // account, so this session may not select it, restamp its balance or
+        // rewrite the stored list for it. It must not be duplicated either:
+        // the terminal describes something no local record owns.
+        if (sameIdAccount) {
+          const fallbackVerdict =
+            resolveActiveAccountData({
+              accounts: tradingAccounts,
+              selectedAccountId: newAccountId,
+              liveIdentity: {
+                broker: "mt5",
+                externalId: liveMT5Login,
+                server: liveMT5Server,
+              },
+            });
+
+          if (!fallbackVerdict.ok) {
+            console.warn(
+              "🚫 MT5 LIVE SESSION DOES NOT OWN THE SAME-ID LOCAL ACCOUNT — IGNORING IT:",
+              {
+                status: fallbackVerdict.status,
+                reason: fallbackVerdict.reason,
+                selectedAccountId,
+                newAccountId,
+                liveMT5Login,
+                liveMT5Server,
+                storedMT5Login:
+                  fallbackVerdict.identity?.externalId ?? null,
+                storedMT5Server:
+                  fallbackVerdict.identity?.server ?? null,
+              }
+            );
+
+            return null;
+          }
+        }
+
+        const existingById =
+          sameIdAccount ?? null;
       
         if (!existingById) {
+          if (!requestIsCurrent()) {
+            return null;
+          }
+
           const newMT5Account = {
             id: newAccountId,
       
@@ -2831,10 +3229,12 @@ useCallback(
               "🆕 NEW MT5 ACCOUNT AUTOMATICALLY CREATED:",
               newMT5Account
             );
-            
-            setSelectedAccountId(
-              newAccountId
-            );
+
+            // The account is recorded and announced, not activated: the user
+            // decides which account is active. This response describes that
+            // new account, so it must not restamp the state the current
+            // selection rendered with.
+            return null;
           } catch (error) {
             console.error(
               "❌ FAILED TO CREATE MT5 ACCOUNT:",
@@ -2842,14 +3242,19 @@ useCallback(
             );
           }
         } else {
+          if (!requestIsCurrent()) {
+            return null;
+          }
+
           console.log(
             "ℹ️ MT5 ACCOUNT ALREADY EXISTS BY ID:",
             newAccountId
           );
-      
-          setSelectedAccountId(
-            newAccountId
-          );
+
+          // A record already carries this id, so there is nothing to create
+          // and nothing to select; this response describes another account
+          // and must not restamp the current selection's state.
+          return null;
         }
       }
 
@@ -2900,6 +3305,33 @@ useCallback(
       // UPDATE LIVE ACCOUNT STATE
       // ======================================================
 
+      // getBrokerNumber reports 0 for a payload that carried no balance at
+      // all, so freshness is only claimed when a numeric balance really came
+      // back from the broker.
+      const balanceWasReported = [
+        brokerAccount?.balance,
+        data?.balance,
+      ].some(
+        (value) =>
+          value !== undefined &&
+          value !== null &&
+          value !== "" &&
+          Number.isFinite(Number(value)) &&
+          Number(value) >= 0
+      );
+
+      const balanceWasRefreshed =
+        balanceWasReported &&
+        Number.isFinite(brokerBalance) &&
+        brokerBalance >= 0;
+
+      const balanceRefreshedAt =
+        new Date().toISOString();
+
+      if (!requestIsCurrent()) {
+        return null;
+      }
+
       setAccount(
         (prev) => ({
           ...prev,
@@ -2935,6 +3367,20 @@ useCallback(
 
           mt5Server:
             liveMT5Server,
+
+          //
+          // Only a response that actually delivered a usable balance can
+          // claim freshness; otherwise the remembered stamp stays so the
+          // balance ages out instead of pretending to be current.
+          balanceRefreshedAt:
+            balanceWasRefreshed
+              ? balanceRefreshedAt
+              : prev.balanceRefreshedAt ?? null,
+
+          balanceRefreshedAccountId:
+            balanceWasRefreshed
+              ? balanceOwnerAccountId
+              : prev.balanceRefreshedAccountId ?? null,
         })
       );
 
@@ -2978,12 +3424,34 @@ useCallback(
   },
   [
     selectedAccountId,
-    setSelectedAccountId,
   ]
 );
 
+useEffect(() => {
+  const handleSyncRequest = (event) => {
+    if (
+      normalizeAccountId(event?.detail?.accountId) !==
+      normalizeAccountId(selectedAccountId)
+    ) {
+      return;
+    }
 
-      
+    syncMT5Account();
+  };
+
+  window.addEventListener(
+    "requestMT5AccountSync",
+    handleSyncRequest
+  );
+
+  return () => {
+    window.removeEventListener(
+      "requestMT5AccountSync",
+      handleSyncRequest
+    );
+  };
+}, [selectedAccountId, syncMT5Account]);
+
   // ==========================================================
   // MT5 ACCOUNT POLLING
   // ==========================================================
@@ -3035,6 +3503,19 @@ useCallback(
   const syncMT5Positions =
     useCallback(
       async () => {
+        // Independent of the account generation: one request outliving a
+        // switch must not cancel the other kind of sync, and vice versa.
+        const requestAccountId =
+          normalizeAccountId(selectedAccountIdRef.current);
+
+        const requestGeneration =
+          ++mt5PositionsGenerationRef.current;
+
+        const requestIsCurrent = () =>
+          mt5PositionsGenerationRef.current === requestGeneration &&
+          normalizeAccountId(selectedAccountIdRef.current) ===
+            requestAccountId;
+
         try {
           const activeAccountId =
           normalizeAccountId(
@@ -3056,6 +3537,10 @@ useCallback(
           }
         );
 
+          if (!requestIsCurrent()) {
+            return [];
+          }
+
           if (
             !response.ok
           ) {
@@ -3066,6 +3551,10 @@ useCallback(
 
           const data =
             await response.json();
+
+          if (!requestIsCurrent()) {
+            return [];
+          }
 
             const liveMT5Login = normalizeAccountId(
               data.mt5Login ??
@@ -3083,91 +3572,41 @@ useCallback(
               normalizeAccountId(
                 selectedAccountId
               );
-            
-              const storedTradingAccounts =
-              (() => {
-                try {
-                  const raw =
-                    localStorage.getItem(
-                      "tradingAccounts"
-                    );
-            
-                  const parsed =
-                    raw ? JSON.parse(raw) : [];
-            
-                  return Array.isArray(parsed)
-                    ? parsed
-                    : [];
-                } catch (error) {
-                  console.error(
-                    "❌ Failed to read trading accounts:",
-                    error
-                  );
-                  return [];
-                }
-              })();
-            
-            const selectedTradingAccount =
-              storedTradingAccounts.find(
-                (account) =>
-                  normalizeAccountId(
-                    account?.id
-                  ) === selectedAccount
-              ) ?? null;
-            
-            const selectedMT5Login =
-              normalizeAccountId(
-                selectedTradingAccount?.mt5Login ??
-                  selectedTradingAccount?.login ??
-                  null
-              );
-            
-            const selectedMT5Server =
-              String(
-                selectedTradingAccount?.mt5Server ??
-                  selectedTradingAccount?.server ??
-                  ""
-              )
-                .trim()
-                .toLowerCase();
 
-                if (
-                  selectedMT5Login &&
-                  liveMT5Login &&
-                  selectedMT5Login !== liveMT5Login
-                ) {
-                  console.warn(
-                    "🚫 MT5 ACCOUNT MISMATCH — IGNORING LIVE POSITIONS:",
-                    {
-                      selectedAccount,
-                      selectedMT5Login,
-                      liveMT5Login,
-                      selectedMT5Server,
-                      liveMT5Server,
-                    }
-                  );
-                
-                  return [];
+            const verdict =
+              resolveActiveAccountData({
+                accounts: readStoredTradingAccounts(),
+                selectedAccountId,
+                liveIdentity: {
+                  broker: "mt5",
+                  externalId: liveMT5Login,
+                  server: liveMT5Server,
+                },
+              });
+
+            const selectedTradingAccount =
+              verdict.account;
+
+            if (!verdict.ok) {
+              recoveryClockRef.current = null;
+
+              console.warn(
+                "🚫 MT5 IDENTITY CHECK FAILED — IGNORING LIVE POSITIONS:",
+                {
+                  status: verdict.status,
+                  reason: verdict.reason,
+                  selectedAccount,
+                  selectedMT5Login:
+                    verdict.identity?.externalId ?? null,
+                  selectedMT5Server:
+                    verdict.identity?.server ?? null,
+                  liveMT5Login,
+                  liveMT5Server,
                 }
-                
-                if (
-                  selectedMT5Server &&
-                  liveMT5Server &&
-                  selectedMT5Server !== liveMT5Server
-                ) {
-                  console.warn(
-                    "🚫 MT5 SERVER MISMATCH — IGNORING LIVE POSITIONS:",
-                    {
-                      selectedAccount,
-                      selectedMT5Login,
-                      liveMT5Login,
-                      selectedMT5Server,
-                      liveMT5Server,
-                    }
-                  );
-                
-                  return [];
-                }
+              );
+
+              return [];
+            }
 
           if (
             !data ||
@@ -3185,6 +3624,10 @@ useCallback(
           // BROKER CLOCK SAMPLE
           // ======================================================
 
+          if (!requestIsCurrent()) {
+            return [];
+          }
+
           const responseBrokerTimeMsc =
             getBrokerNumber(
               data.broker_time_msc,
@@ -3198,6 +3641,15 @@ useCallback(
               responseBrokerTimeMsc
             );
           }
+
+          // The UI clock above accepts whatever the bridge reported;
+          // recovery may not, so this sample is only remembered when the
+          // source marker is a tick and the response's own MT5 identity
+          // matches the selected account.
+          rememberRecoveryClockSample(
+            data,
+            selectedTradingAccount
+          );
 
           // ======================================================
           // MT5 POSITIONS
@@ -3244,6 +3696,12 @@ useCallback(
 
           const previousMT5Positions =
             previousMT5PositionsRef.current;
+
+          // Notifications, the closed-trade list and the journal are all
+          // written from this loop, so it is one mutation group.
+          if (!requestIsCurrent()) {
+            return [];
+          }
 
           previousMT5Positions.forEach(
             (
@@ -3438,6 +3896,10 @@ const closedTime =
           // SAVE CURRENT MT5 POSITIONS
           // ======================================================
 
+          if (!requestIsCurrent()) {
+            return [];
+          }
+
           previousMT5PositionsRef.current =
             currentMT5PositionsMap;
 
@@ -3462,6 +3924,10 @@ const closedTime =
           // ======================================================
           // UPDATE OPEN TRADES
           // ======================================================
+
+          if (!requestIsCurrent()) {
+            return [];
+          }
 
           setOpenTrades(
             (prevTrades) => {
@@ -3503,6 +3969,7 @@ const closedTime =
     [
   getCurrentBrokerTimeMsc,
   updateBrokerClock,
+  rememberRecoveryClockSample,
   addTrade,
   showTradeNotification,
   selectedAccountId,
@@ -3814,10 +4281,37 @@ const closedTime =
 
   const addBrokerPosition =
     useCallback(
-      (position) => {
+      (
+        position,
+        authenticatedAccountId = null
+      ) => {
+        const verdict =
+          resolveActiveAccountData({
+            accounts: readStoredTradingAccounts(),
+            selectedAccountId,
+            liveIdentity: {
+              broker: "ctrader",
+              externalId: authenticatedAccountId,
+            },
+          });
+
+        if (!verdict.ok) {
+          console.warn(
+            "🚫 IGNORING cTRADER POSITION — the selected account is not this cTrader account:",
+            {
+              status: verdict.status,
+              reason: verdict.reason,
+              selectedAccountId,
+            }
+          );
+
+          return null;
+        }
+
         const normalizedPosition =
           normalizeBrokerPosition(
-            position
+            position,
+            selectedAccountId
           );
 
         if (
@@ -3929,6 +4423,7 @@ const closedTime =
         return normalizedPosition;
       },
       [
+        selectedAccountId,
         showTradeNotification,
       ]
     );
@@ -4000,7 +4495,9 @@ const closedTime =
             )
         );
       },
-      []
+      [
+        selectedAccountId,
+      ]
     );
 
   // ==========================================================
@@ -4010,7 +4507,8 @@ const closedTime =
   const syncBrokerPositions =
     useCallback(
       (
-        positions = []
+        positions = [],
+        authenticatedAccountId = null
       ) => {
         if (
           !Array.isArray(
@@ -4020,10 +4518,41 @@ const closedTime =
           return [];
         }
 
+        // ======================================================
+        // cTRADER POSITIONS MAY ONLY LAND ON A cTRADER ACCOUNT
+        // ======================================================
+
+        const verdict =
+          resolveActiveAccountData({
+            accounts: readStoredTradingAccounts(),
+            selectedAccountId,
+            liveIdentity: {
+              broker: "ctrader",
+              externalId: authenticatedAccountId,
+            },
+          });
+
+        if (!verdict.ok) {
+          console.warn(
+            "🚫 IGNORING cTRADER POSITIONS — the selected account is not this cTrader account:",
+            {
+              status: verdict.status,
+              reason: verdict.reason,
+              selectedAccountId,
+            }
+          );
+
+          return [];
+        }
+
         const normalizedPositions =
           positions
             .map(
-              normalizeBrokerPosition
+              (position) =>
+                normalizeBrokerPosition(
+                  position,
+                  selectedAccountId
+                )
             )
             .filter(
               Boolean
@@ -4103,8 +4632,21 @@ const closedTime =
 
         return brokerOpenPositions;
       },
-      []
+      [
+        selectedAccountId,
+      ]
     );
+
+  useEffect(() => {
+    syncBrokerPositions(
+      cTraderPositions,
+      cTraderAccountId
+    );
+  }, [
+    cTraderPositions,
+    cTraderAccountId,
+    syncBrokerPositions,
+  ]);
 
   // ==========================================================
   // ADD PENDING ORDER
@@ -4865,126 +5407,27 @@ const cancelPendingOrder = useCallback(
 
     const getDailyGuardrailStatus = useCallback(
       (guardrailsOverride = null) => {
-        let guardrails = guardrailsOverride;
-    
-        // Always try to read the latest saved guardrails
-        // so executeTrade cannot bypass the latest settings.
-        if (!guardrails) {
-          try {
-            const saved = localStorage.getItem("tradingGuardrails");
-            guardrails = saved ? JSON.parse(saved) : {};
-          } catch (error) {
-            console.error("Failed to read trading guardrails:", error);
-            guardrails = {};
-          }
-        }
-    
-        if (guardrails?.enabled === false) {
-          return {
-            locked: false,
-            reason: "",
-            dailyPnL: 0,
-            dailyTradeCount: 0,
-          };
-        }
-    
-        const maxDailyLoss = Number(guardrails?.maxDailyLoss || 0);
-        const maxDailyProfit = Number(guardrails?.maxDailyProfit || 0);
-        const maxTradesPerDay = Number(guardrails?.maxTradesPerDay || 0);
-    
-        const today = new Date().toISOString().slice(0, 10);
-    
-        const getTradeDate = (trade) => {
-          const rawDate =
-            trade?.closedAt ??
-            trade?.closedTime ??
-            trade?.openedAt ??
-            trade?.openTime ??
-            trade?.createdAt ??
-            trade?.timestamp ??
-            trade?.time;
-    
-          if (!rawDate) return null;
-    
-          const date = new Date(rawDate);
-    
-          if (Number.isNaN(date.getTime())) return null;
-    
-          return date.toISOString().slice(0, 10);
-        };
-    
-        // Realized P&L for today
-        const dailyPnL = closedTrades
-          .filter((trade) => getTradeDate(trade) === today)
-          .reduce((total, trade) => {
-            const pnl = Number(
-              trade?.netProfit ??
-              trade?.pnl ??
-              trade?.profit ??
-              0
-            );
-    
-            return total + (Number.isFinite(pnl) ? pnl : 0);
-          }, 0);
-    
-        // Actual trades opened/executed today
-        const todayOpenTrades = openTrades.filter(
-          (trade) => getTradeDate(trade) === today
-        );
-    
-        const todayClosedTrades = closedTrades.filter(
-          (trade) => getTradeDate(trade) === today
-        );
-    
-        const dailyTradeCount =
-          todayOpenTrades.length + todayClosedTrades.length;
-    
-        if (maxDailyLoss > 0 && dailyPnL <= -Math.abs(maxDailyLoss)) {
-          return {
-            locked: true,
-            reason: `Maximum daily loss reached. Your P&L is ${
-              dailyPnL < 0
-                ? `-$${Math.abs(dailyPnL).toFixed(2)}`
-                : `$${dailyPnL.toFixed(2)}`
-            } and your limit is -$${Math.abs(maxDailyLoss).toFixed(2)}.`,
-            dailyPnL,
-            dailyTradeCount,
-          };
-        }
-    
-        if (maxDailyProfit > 0 && dailyPnL >= Math.abs(maxDailyProfit)) {
-          return {
-            locked: true,
-            reason: `Daily profit target reached. Your P&L is ${
-              dailyPnL >= 0
-                ? `+$${dailyPnL.toFixed(2)}`
-                : `-$${Math.abs(dailyPnL).toFixed(2)}`
-            } and your target is +$${Math.abs(maxDailyProfit).toFixed(2)}.`,
-            dailyPnL,
-            dailyTradeCount,
-          };
-        }
-    
-        if (
-          maxTradesPerDay > 0 &&
-          dailyTradeCount >= maxTradesPerDay
-        ) {
-          return {
-            locked: true,
-            reason: `Daily trade limit reached. You have taken ${dailyTradeCount} of ${maxTradesPerDay} allowed trades today.`,
-            dailyPnL,
-            dailyTradeCount,
-          };
-        }
-    
-        return {
-          locked: false,
-          reason: "",
-          dailyPnL,
-          dailyTradeCount,
-        };
+        // One merged, validated configuration for every reader: the override the
+        // order panel passes, or whatever is stored. Both are normalized against
+        // DEFAULT_GUARDRAILS here, so a missing or corrupt key can no longer
+        // resolve to a limit of zero and silently remove daily loss protection.
+        const config =
+          guardrailsOverride ??
+          readStoredGuardrails().guardrails;
+
+        // Realized results only, bucketed on the trader's local calendar day —
+        // the same day the panels display.
+        return evaluateDailyGuardrail({
+          guardrails: config,
+          closedTrades,
+          openTrades,
+          now: new Date(),
+        });
       },
-      [closedTrades, openTrades]
+      [
+        closedTrades,
+        openTrades,
+      ]
     );
 
  // ==========================================================
@@ -5025,12 +5468,16 @@ const executeTrade = useCallback(
       trade.symbol || currentSymbol
     );
 
+    // A missing level has to stay null: 0 reaches the bridge as a real
+    // price and the broker rejects the whole order.
     const stopLoss = normalizeNumber(
-      trade.stopLoss ?? trade.sl
+      trade.stopLoss ?? trade.sl,
+      null
     );
 
     const takeProfit = normalizeNumber(
-      trade.takeProfit ?? trade.tp
+      trade.takeProfit ?? trade.tp,
+      null
     );
 
     const entryPrice =
@@ -6304,9 +6751,12 @@ console.log(
     // Broker clock
     brokerTimeMsc,
     getCurrentBrokerTimeMsc,
+    getRecoveryClockSample,
+    planAccountRecoveryPreview,
 
     // Account
     account,
+    selectedAccountId,
     updateAccount,
     balance,
     equity,

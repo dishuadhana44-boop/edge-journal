@@ -1,6 +1,5 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
+import process from "node:process";
 
 import {
   startCTraderService,
@@ -8,18 +7,32 @@ import {
   placeMarketOrder,
   closePosition,
   amendPositionSLTP,
+  getOpenPositions,
+  resolvePositionSymbolId,
+  getAvailableSymbols,
+  resolveOrderSymbolTarget,
   getCTraderServiceStatus,
+  buildExecutionBroadcastMessage,
 } from "../services/ctraderService.js";
 
 import { broadcast } from "../services/websocketService.js";
 
+import {
+  normalizeAccountKey,
+  planAccountRemoval,
+  selectAccountById,
+  verifySessionAccountIdentity,
+} from "../services/ctraderAccountSelection.js";
+
+import { createCtraderStore } from "../services/ctraderStore.js";
+import { migrateLegacyAccounts } from "../services/ctraderAccountMigration.js";
+
+import { AUTH_FILE } from "../runtimePaths.js";
+
 const router = express.Router();
 
-// ============================================================
-// LOCAL AUTH STORAGE
-// ============================================================
-
-const AUTH_FILE = path.join(process.cwd(), "ctrader-auth.json");
+const FRONTEND_URL =
+  process.env.FRONTEND_URL || "http://localhost:5174";
 
 // ============================================================
 // cTRADER AUTH + MULTI ACCOUNT STATE
@@ -35,141 +48,45 @@ let ctraderAuth = {
 };
 
 // ============================================================
-// NORMALIZE SAVED ACCOUNT
+// PERSISTENCE
 // ============================================================
 
-function normalizeAccount(account) {
-  return {
-    id:
-      account.id ||
-      `account-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`,
+/* Reading, writing and deleting the saved session lives in
+   services/ctraderStore.js. The route keeps the in-memory state and
+   names the file it came from, which is what lets a test point the
+   same storage code at a temporary directory.
 
-    accountId: String(account.accountId).trim(),
+   A handler that changes the saved session writes before it adopts:
+   it builds the whole next state, persists that, and only then makes
+   it the module's state. If the store refuses, the throw reaches the
+   handler's own catch, the response says so, and the state in memory
+   is still the state on disk. The order is the point — a handler
+   that updated ctraderAuth first would go on telling the rest of the
+   process about a session nobody persisted, and the next boot would
+   load a different one. */
 
-    name: account.name || "Trading Account",
-
-    createdAt:
-      account.createdAt || new Date().toISOString(),
-  };
-}
+const authStore = createCtraderStore({ filePath: AUTH_FILE });
 
 // ============================================================
 // LOAD SAVED AUTH
 // ============================================================
 
 function loadSavedAuth() {
-  try {
-    if (!fs.existsSync(AUTH_FILE)) {
-      console.log("ℹ️ No saved cTrader authentication found.");
-      return;
-    }
+  const saved = authStore.load();
 
-    const savedData = fs.readFileSync(AUTH_FILE, "utf8");
-    const parsed = JSON.parse(savedData);
-
-    let accounts = [];
-
-    // Multi-account format
-    if (Array.isArray(parsed.accounts)) {
-      accounts = parsed.accounts
-        .filter(
-          (account) =>
-            account &&
-            account.accountId !== undefined &&
-            account.accountId !== null &&
-            String(account.accountId).trim() !== ""
-        )
-        .map(normalizeAccount);
-    }
-
-    // Backward compatibility with old single-account format
-    if (
-      accounts.length === 0 &&
-      parsed.accountId !== undefined &&
-      parsed.accountId !== null &&
-      String(parsed.accountId).trim() !== ""
-    ) {
-      accounts.push(
-        normalizeAccount({
-          accountId: parsed.accountId,
-          name: "Imported Trading Account",
-          createdAt: new Date().toISOString(),
-        })
-      );
-
-      console.log(
-        "🔄 Migrated old single account to multi-account system."
-      );
-    }
-
-    const requestedActiveAccountId =
-      parsed.activeAccountId ||
-      parsed.accountId ||
-      accounts[0]?.accountId ||
-      null;
-
-    const activeExists = accounts.some(
-      (account) =>
-        String(account.accountId) ===
-        String(requestedActiveAccountId)
-    );
-
-    const activeAccountId = activeExists
-      ? String(requestedActiveAccountId)
-      : accounts[0]?.accountId || null;
-
-    ctraderAuth = {
-      connected: Boolean(parsed.connected),
-      accessToken: parsed.accessToken || null,
-      refreshToken: parsed.refreshToken || null,
-      expiresIn: parsed.expiresIn || null,
-      accounts,
-      activeAccountId,
-    };
-
-    console.log("");
-    console.log("====================================");
-    console.log("✅ SAVED cTRADER AUTH LOADED");
-    console.log("====================================");
-
-    console.log({
-      connected: ctraderAuth.connected,
-      hasAccessToken: Boolean(ctraderAuth.accessToken),
-      hasRefreshToken: Boolean(ctraderAuth.refreshToken),
-      savedAccounts: ctraderAuth.accounts.length,
-      activeAccountId: ctraderAuth.activeAccountId,
-    });
-
-    console.log("====================================");
-  } catch (error) {
-    console.error(
-      "❌ Failed to load saved cTrader auth:",
-      error.message
-    );
+  // A file that is missing or unreadable leaves the state the route
+  // started with, exactly as the inline loader did.
+  if (saved !== null) {
+    ctraderAuth = saved;
   }
 }
 
 // ============================================================
-// SAVE AUTH
+// SAVE A STATE THAT HAS NOT ADOPTED ANYTHING YET
 // ============================================================
 
-function saveAuth() {
-  try {
-    fs.writeFileSync(
-      AUTH_FILE,
-      JSON.stringify(ctraderAuth, null, 2),
-      "utf8"
-    );
-
-    console.log("💾 cTrader auth saved locally.");
-  } catch (error) {
-    console.error(
-      "❌ Failed to save cTrader auth:",
-      error.message
-    );
-  }
+function saveAuth(state) {
+  authStore.save(state);
 }
 
 // ============================================================
@@ -177,18 +94,7 @@ function saveAuth() {
 // ============================================================
 
 function clearSavedAuth() {
-  try {
-    if (fs.existsSync(AUTH_FILE)) {
-      fs.unlinkSync(AUTH_FILE);
-    }
-
-    console.log("🗑️ Saved cTrader auth removed.");
-  } catch (error) {
-    console.error(
-      "❌ Failed to remove saved auth:",
-      error.message
-    );
-  }
+  authStore.clear();
 }
 
 // ============================================================
@@ -213,6 +119,7 @@ function getActiveAccount() {
 // LOAD AUTH ON SERVER START
 // ============================================================
 
+migrateLegacyAccounts();
 loadSavedAuth();
 
 // ============================================================
@@ -289,21 +196,8 @@ function broadcastLivePrice(price) {
 function broadcastExecution(execution) {
   if (!execution) return;
 
-  const activeAccount = getActiveAccount();
-
-  const message = {
-    type: execution.type || "execution",
-
-    accountId:
-      execution.accountId ||
-      execution.data?.accountId ||
-      activeAccount?.accountId ||
-      null,
-
-    data: execution.data || execution,
-
-    timestamp: Date.now(),
-  };
+  const message =
+    buildExecutionBroadcastMessage(execution);
 
   const clientsReached = broadcast(message);
 
@@ -313,8 +207,110 @@ function broadcastExecution(execution) {
 }
 
 // ============================================================
+// TRADING ENDPOINT ACCOUNT IDENTITY
+// ============================================================
+
+/* A trading request is the one place where being wrong about the
+   account costs money, so it has to prove all three identities before
+   a single frame is forwarded:
+
+     1. an account is selected and the selection is a usable id;
+     2. that exact account is one of the saved authorized accounts;
+     3. the ready service session belongs to that exact account.
+
+   Each proof is the same shared rule the service and the selection
+   routes already use, so the three of them cannot drift into agreeing
+   with different accounts. A refusal changes nothing: it does not
+   start, stop or replace a session, does not pick a different account,
+   and does not persist anything.
+
+   The service has to already be authenticated and ready. A trading
+   endpoint no longer brings a session up on the way to a trade,
+   because "start a session for the account in the file" is exactly the
+   decision this rule exists to refuse when the file and the session
+   disagree. POST /start-service still brings the session up, and the
+   identity proofs there are the service's own. */
+function tradingEndpointIdentity() {
+  const selection = selectAccountById({
+    accountIds: (
+      Array.isArray(ctraderAuth.accounts) ? ctraderAuth.accounts : []
+    ).map((account) => account?.accountId),
+
+    requestedAccountId: ctraderAuth.activeAccountId,
+  });
+
+  if (!selection.ok) {
+    /* Nothing usable was ever asked for, which is the caller's
+       question to answer; a request that named an account and was
+       refused is a disagreement inside this process. */
+    const nothingSelected =
+      normalizeAccountKey(ctraderAuth.activeAccountId) === null;
+
+    return {
+      ok: false,
+      status: nothingSelected ? 400 : 409,
+      code: selection.code,
+      message: selection.message,
+    };
+  }
+
+  const status = getCTraderServiceStatus();
+
+  if (
+    !status.running ||
+    !status.connected ||
+    !status.authenticated ||
+    !status.ready
+  ) {
+    return {
+      ok: false,
+      status: 409,
+      code: "service_not_ready",
+      message:
+        "The cTrader trading service is not authenticated and ready, so the request was not forwarded.",
+    };
+  }
+
+  const session = verifySessionAccountIdentity({
+    requestedAccountId: selection.accountId,
+    sessionId: status.tradingAccountId,
+  });
+
+  if (!session.ok) {
+    return {
+      ok: false,
+      status: 409,
+      code: session.code,
+      message: session.message,
+    };
+  }
+
+  return {
+    ok: true,
+    accountId: selection.accountId,
+  };
+}
+
+// ============================================================
 // START cTRADER SERVICE
 // ============================================================
+
+/* A service that reports itself ready is only usable by this route if
+   it is ready for the account the route asked for. The route holds the
+   selected account, the service holds the session, and only the shared
+   rule may say whether they are the same account. */
+function verifiedReadyStatus(status) {
+  const verification = verifySessionAccountIdentity({
+    requestedAccountId: ctraderAuth.activeAccountId,
+    sessionId: status.tradingAccountId,
+  });
+
+  if (!verification.ok) {
+    throw new Error(verification.message);
+  }
+
+  return status;
+}
 
 async function startService() {
   if (
@@ -353,7 +349,7 @@ async function startService() {
       "✅ cTrader service is already running."
     );
 
-    return currentStatus;
+    return verifiedReadyStatus(currentStatus);
   }
 
   console.log("");
@@ -404,7 +400,7 @@ async function ensureServiceRunning() {
     status.authenticated &&
     status.ready
   ) {
-    return status;
+    return verifiedReadyStatus(status);
   }
 
   console.log(
@@ -428,7 +424,7 @@ async function ensureServiceRunning() {
     );
   }
 
-  return newStatus;
+  return verifiedReadyStatus(newStatus);
 }
 
 // ============================================================
@@ -522,14 +518,14 @@ router.get("/callback", async (req, res) => {
       );
 
       return res.redirect(
-        `http://localhost:5173/settings?ctrader=error&message=${message}`
+        `${FRONTEND_URL}/settings?ctrader=error&message=${message}`
       );
     }
 
     // No authorization code
     if (!code) {
       return res.redirect(
-        "http://localhost:5173/settings?ctrader=error&message=no_code"
+        `${FRONTEND_URL}/settings?ctrader=error&message=no_code`
       );
     }
 
@@ -548,7 +544,7 @@ router.get("/callback", async (req, res) => {
       !redirectUri
     ) {
       return res.redirect(
-        "http://localhost:5173/settings?ctrader=error&message=server_config_missing"
+        `${FRONTEND_URL}/settings?ctrader=error&message=server_config_missing`
       );
     }
 
@@ -609,13 +605,13 @@ router.get("/callback", async (req, res) => {
       );
 
       return res.redirect(
-        `http://localhost:5173/settings?ctrader=error&message=${message}`
+        `${FRONTEND_URL}/settings?ctrader=error&message=${message}`
       );
     }
 
     // Save authentication
     // Keep existing accounts
-    ctraderAuth = {
+    const next = {
       connected: true,
 
       accessToken:
@@ -638,7 +634,9 @@ router.get("/callback", async (req, res) => {
         null,
     };
 
-    saveAuth();
+    saveAuth(next);
+
+    ctraderAuth = next;
 
     console.log("");
     console.log("====================================");
@@ -647,32 +645,11 @@ router.get("/callback", async (req, res) => {
     );
     console.log("====================================");
 
-    // Start service if account exists
-    if (ctraderAuth.activeAccountId) {
-      try {
-        console.log(
-          "🚀 Starting cTrader trading service..."
-        );
-
-        await startService();
-
-        console.log(
-          "✅ cTrader service started successfully"
-        );
-      } catch (serviceError) {
-        console.error(
-          "⚠️ OAuth connected, but service failed to start:",
-          serviceError.message
-        );
-      }
-    } else {
-      console.log(
-        "⚠️ OAuth connected. Waiting for account selection."
-      );
-    }
+    /* Authorization is not selection: only POST /accounts/select may
+       activate a trading session. */
 
     return res.redirect(
-      "http://localhost:5173/settings?ctrader=connected"
+      `${FRONTEND_URL}/settings?ctrader=connected`
     );
   } catch (error) {
     console.error(
@@ -686,7 +663,7 @@ router.get("/callback", async (req, res) => {
     );
 
     return res.redirect(
-      `http://localhost:5173/settings?ctrader=error&message=${message}`
+      `${FRONTEND_URL}/settings?ctrader=error&message=${message}`
     );
   }
 });
@@ -785,7 +762,7 @@ router.get("/debug", (req, res) => {
 });
 
 // ============================================================
-// ADD / SAVE TRADING ACCOUNT
+// ADD / SAVE TRADING ACCOUNT (SAVES, NEVER ACTIVATES)
 // ============================================================
 
 router.post("/account", async (req, res) => {
@@ -803,10 +780,16 @@ router.post("/account", async (req, res) => {
       });
     }
 
+    /* The id of a saved record has to be an id, so it is read through
+       the same rule that decides every other cTrader account question.
+       A blank, an object, or anything that prints as "[object Object]"
+       names no account, and writing one down would leave a record no
+       selection can ever ask for. */
+    const newAccountId =
+      normalizeAccountKey(accountId);
+
     if (
-      accountId === undefined ||
-      accountId === null ||
-      String(accountId).trim() === ""
+      newAccountId === null
     ) {
       return res.status(400).json({
         success: false,
@@ -815,18 +798,22 @@ router.post("/account", async (req, res) => {
       });
     }
 
-    const newAccountId =
-      String(accountId).trim();
-
-    let savedAccount =
+    const storedAccount =
       ctraderAuth.accounts.find(
         (account) =>
-          String(account.accountId) ===
+          normalizeAccountKey(account.accountId) ===
           newAccountId
       );
 
+    /* Nothing here is written into the state the route is holding.
+       The candidate carries a new array, so a store that refuses the
+       write leaves the account list the caller was shown before the
+       request as well as the one on disk. */
+    let savedAccount;
+    let accounts;
+
     // Add new account
-    if (!savedAccount) {
+    if (!storedAccount) {
       savedAccount = {
         id:
           `account-${Date.now()}-${Math.random()
@@ -846,22 +833,34 @@ router.post("/account", async (req, res) => {
           new Date().toISOString(),
       };
 
-      ctraderAuth.accounts.push(
-        savedAccount
-      );
+      accounts = [
+        ...ctraderAuth.accounts,
+        savedAccount,
+      ];
 
       console.log(
         "➕ New trading account added:",
         savedAccount
       );
     } else {
-      if (
+      savedAccount =
         accountName &&
         String(accountName).trim()
-      ) {
-        savedAccount.name =
-          String(accountName).trim();
-      }
+          ? {
+              ...storedAccount,
+
+              name:
+                String(accountName).trim(),
+            }
+          : storedAccount;
+
+      accounts =
+        ctraderAuth.accounts.map(
+          (account) =>
+            account === storedAccount
+              ? savedAccount
+              : account
+        );
 
       console.log(
         "ℹ️ Trading account already exists:",
@@ -869,54 +868,45 @@ router.post("/account", async (req, res) => {
       );
     }
 
-    const accountChanged =
-      String(ctraderAuth.activeAccountId) !==
-      newAccountId;
+    /* Saving a record and activating an account are different
+       decisions, and only one of them is made here. The selection is
+       carried over verbatim — including a stored id that names no
+       record, which the loader, not this route, decides what to do
+       with on the next boot — and no session is stopped, started or
+       restarted for an account that has only been written down.
+       Activating an account is POST /accounts/select. */
+    const next = {
+      ...ctraderAuth,
 
-    ctraderAuth.activeAccountId =
-      newAccountId;
+      accounts,
 
-    saveAuth();
+      activeAccountId:
+        ctraderAuth.activeAccountId,
+    };
+
+    saveAuth(next);
+
+    ctraderAuth = next;
 
     console.log(
-      "✅ Active cTrader account:",
-      ctraderAuth.activeAccountId
+      "✅ Saved cTrader account:",
+      savedAccount.accountId
     );
 
-    // Stop previous service
-    if (accountChanged) {
-      try {
-        console.log(
-          "🔄 Stopping previous cTrader service..."
-        );
-
-        await stopCTraderService();
-      } catch {
-        console.log(
-          "⚠️ Previous service was not running."
-        );
-      }
-    }
-
-    // Start service
-    let service =
-      getCTraderServiceStatus();
-
-    try {
-      service =
-        await startService();
-    } catch (error) {
-      console.error(
-        "⚠️ Account saved but service failed to start:",
-        error.message
-      );
-    }
+    console.log(
+      `ℹ️ No account was activated. Active account: ${
+        ctraderAuth.activeAccountId ?? "none"
+      }`
+    );
 
     return res.json({
       success: true,
 
       message:
         "Trading account saved successfully",
+
+      activated:
+        false,
 
       account:
         savedAccount,
@@ -926,8 +916,6 @@ router.post("/account", async (req, res) => {
 
       activeAccountId:
         ctraderAuth.activeAccountId,
-
-      service,
     });
   } catch (error) {
     console.error(
@@ -943,7 +931,7 @@ router.post("/account", async (req, res) => {
 });
 
 // ============================================================
-// SELECT / SWITCH ACCOUNT
+// SELECT / SWITCH ACCOUNT (THE ONLY EXPLICIT ACTIVATION)
 // ============================================================
 
 router.post(
@@ -952,40 +940,59 @@ router.post(
     try {
       const { accountId } = req.body;
 
-      if (
-        accountId === undefined ||
-        accountId === null ||
-        String(accountId).trim() === ""
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Account ID is required",
-        });
+      /* What may be activated is decided by the shared rule, so a
+         missing, blank or unusable id, and an id that names no saved
+         account, are refusals rather than invitations to pick some
+         other account. */
+      const selection = selectAccountById({
+        accountIds: (
+          Array.isArray(ctraderAuth.accounts)
+            ? ctraderAuth.accounts
+            : []
+        ).map((account) => account?.accountId),
+
+        requestedAccountId:
+          accountId,
+      });
+
+      if (!selection.ok) {
+        return res
+          .status(
+            selection.code === "explicit_selection_required"
+              ? 400
+              : 404
+          )
+          .json({
+            success: false,
+
+            code:
+              selection.code,
+
+            message:
+              selection.message,
+          });
       }
 
       const selectedAccount =
         ctraderAuth.accounts.find(
           (account) =>
-            String(account.accountId) ===
-            String(accountId).trim()
+            normalizeAccountKey(account.accountId) ===
+            selection.accountId
         );
-
-      if (!selectedAccount) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Account not found",
-        });
-      }
 
       const previousAccountId =
         ctraderAuth.activeAccountId;
 
-      ctraderAuth.activeAccountId =
-        selectedAccount.accountId;
+      const next = {
+        ...ctraderAuth,
 
-      saveAuth();
+        activeAccountId:
+          selection.accountId,
+      };
+
+      saveAuth(next);
+
+      ctraderAuth = next;
 
       console.log("");
       console.log(
@@ -1000,15 +1007,15 @@ router.post(
 
       console.log({
         from: previousAccountId,
-        to: selectedAccount.accountId,
+        to: selection.accountId,
         accountName:
           selectedAccount.name,
       });
 
       // Stop old service
       if (
-        previousAccountId !==
-        selectedAccount.accountId
+        normalizeAccountKey(previousAccountId) !==
+        selection.accountId
       ) {
         try {
           await stopCTraderService();
@@ -1023,8 +1030,60 @@ router.post(
         }
       }
 
-      const service =
-        await startService();
+      /* Bringing the session up is the activation. A write to the
+         store is not, so a session this route could not start is
+         answered as a failure that says what was saved and what was
+         not running. */
+      let service;
+
+      try {
+        service =
+          await startService();
+      } catch (error) {
+        console.error(
+          "❌ Account selected but no session was started:",
+          error.message
+        );
+
+        return res.status(500).json({
+          success: false,
+
+          code:
+            "session_not_started",
+
+          message:
+            `The account selection was saved, but no cTrader session is active for it: ${error.message}`,
+        });
+      }
+
+      /* And the session that is up has to be the session for the
+         account that was selected — the same identity proof the
+         trading endpoints answer with. Without it, "switched" would
+         be a claim about a session this process cannot attribute. */
+      const identity = verifySessionAccountIdentity({
+        requestedAccountId:
+          selection.accountId,
+
+        sessionId:
+          getCTraderServiceStatus().tradingAccountId,
+      });
+
+      if (!identity.ok) {
+        console.error(
+          "🚫 Account activation refused:",
+          identity.message
+        );
+
+        return res.status(409).json({
+          success: false,
+
+          code:
+            identity.code,
+
+          message:
+            identity.message,
+        });
+      }
 
       return res.json({
         success: true,
@@ -1036,7 +1095,7 @@ router.post(
           selectedAccount,
 
         activeAccountId:
-          selectedAccount.accountId,
+          selection.accountId,
 
         service,
       });
@@ -1067,32 +1126,24 @@ router.delete(
           req.params.accountId
         ).trim();
 
-      const accountIndex =
-        ctraderAuth.accounts.findIndex(
-          (account) =>
-            String(account.accountId) ===
-            accountId
-        );
+      const plan = planAccountRemoval({
+        accounts: ctraderAuth.accounts,
 
-      if (accountIndex === -1) {
+        activeAccountId:
+          ctraderAuth.activeAccountId,
+
+        accountId,
+      });
+
+      if (!plan.ok) {
         return res.status(404).json({
           success: false,
           message: "Account not found",
         });
       }
 
-      const accountToDelete =
-        ctraderAuth.accounts[
-          accountIndex
-        ];
-
-      const isActiveAccount =
-        String(
-          ctraderAuth.activeAccountId
-        ) === accountId;
-
-      // Stop service if active account is deleted
-      if (isActiveAccount) {
+      // Stop service if the removed account was the active one
+      if (plan.mustStopService) {
         try {
           await stopCTraderService();
         } catch {
@@ -1102,39 +1153,27 @@ router.delete(
         }
       }
 
-      ctraderAuth.accounts.splice(
-        accountIndex,
-        1
-      );
+      /* Removal activates no successor: the accounts left behind were
+         never authenticated by the session that was just torn down. */
+      const next = {
+        ...ctraderAuth,
 
-      // Select another account
-      if (isActiveAccount) {
-        ctraderAuth.activeAccountId =
-          ctraderAuth.accounts[0]
-            ?.accountId || null;
-      }
+        accounts: plan.accounts,
 
-      saveAuth();
+        activeAccountId:
+          plan.activeAccountId,
+      };
 
-      // Start next account automatically
-      if (
-        isActiveAccount &&
-        ctraderAuth.activeAccountId
-      ) {
-        try {
-          await startService();
-        } catch (error) {
-          console.error(
-            "⚠️ Next account service failed to start:",
-            error.message
-          );
-        }
-      }
+      saveAuth(next);
+
+      ctraderAuth = next;
 
       console.log(
         "🗑️ Trading account removed:",
-        accountToDelete.accountId
+        plan.removedAccount.accountId
       );
+
+      console.log(`ℹ️ ${plan.message}`);
 
       return res.json({
         success: true,
@@ -1225,11 +1264,13 @@ router.post("/order", async (req, res) => {
       });
     }
 
-    if (!ctraderAuth.activeAccountId) {
-      return res.status(400).json({
+    const identity = tradingEndpointIdentity();
+
+    if (!identity.ok) {
+      return res.status(identity.status).json({
         success: false,
-        message:
-          "No active trading account selected",
+        code: identity.code,
+        message: identity.message,
       });
     }
 
@@ -1259,13 +1300,29 @@ router.post("/order", async (req, res) => {
 
     await ensureServiceRunning();
 
+    const target =
+      resolveOrderSymbolTarget({
+        symbols:
+          getAvailableSymbols(),
+
+        symbol,
+      });
+
+    if (!target.ok) {
+      return res.status(409).json({
+        success: false,
+        code: target.code,
+        message: target.message,
+      });
+    }
+
     console.log(
       `📈 Placing order on account: ${ctraderAuth.activeAccountId}`
     );
 
     const result =
       await placeMarketOrder({
-        symbol,
+        symbol: target.symbolId,
         side,
         lots,
         stopLoss,
@@ -1274,8 +1331,20 @@ router.post("/order", async (req, res) => {
         comment,
       });
 
-    return res.json({
+    const httpStatus =
+      result.status === "accepted"
+        ? 200
+        : result.status === "rejected"
+          ? 409
+          : result.status === "unconfirmed"
+            ? 504
+            : 502;
+
+    return res.status(httpStatus).json({
       ...result,
+
+      success:
+        result.status === "accepted",
 
       activeAccountId:
         ctraderAuth.activeAccountId,
@@ -1320,11 +1389,13 @@ router.post(
         });
       }
 
-      if (!ctraderAuth.activeAccountId) {
-        return res.status(400).json({
+      const identity = tradingEndpointIdentity();
+
+      if (!identity.ok) {
+        return res.status(identity.status).json({
           success: false,
-          message:
-            "No active trading account selected",
+          code: identity.code,
+          message: identity.message,
         });
       }
 
@@ -1338,9 +1409,30 @@ router.post(
 
       await ensureServiceRunning();
 
+      const target =
+        resolvePositionSymbolId({
+          positions:
+            getOpenPositions(),
+
+          positionId,
+        });
+
+      if (!target.ok) {
+        return res.status(409).json({
+          success: false,
+          code: target.code,
+          message: target.message,
+        });
+      }
+
       const result =
         await closePosition({
-          positionId,
+          positionId:
+            target.positionId,
+
+          symbolId:
+            target.symbolId,
+
           lots,
         });
 
@@ -1381,11 +1473,13 @@ router.post(
         });
       }
 
-      if (!ctraderAuth.activeAccountId) {
-        return res.status(400).json({
+      const identity = tradingEndpointIdentity();
+
+      if (!identity.ok) {
+        return res.status(identity.status).json({
           success: false,
-          message:
-            "No active trading account selected",
+          code: identity.code,
+          message: identity.message,
         });
       }
 
@@ -1459,7 +1553,7 @@ router.post(
         );
       }
 
-      ctraderAuth = {
+      const next = {
         connected: false,
         accessToken: null,
         refreshToken: null,
@@ -1468,9 +1562,15 @@ router.post(
         activeAccountId: null,
       };
 
-      livePrices.clear();
-
+      /* The saved session goes first. Until the store has given it up
+         the process still holds a token it has not released, and
+         dropping it from memory anyway would leave the next boot
+         finding a connection the caller was told was closed. */
       clearSavedAuth();
+
+      ctraderAuth = next;
+
+      livePrices.clear();
 
       console.log(
         "🔌 cTrader disconnected successfully."
@@ -1495,6 +1595,31 @@ router.post(
     }
   }
 );
+
+// ============================================================
+// BROKER AUTH SUMMARY
+// ============================================================
+
+// Read-only projection of the in-process cTrader auth state for the broker
+// adapters. Token values are never included — only their presence.
+
+export function getBrokerAuthSummary() {
+  return {
+    connected: Boolean(ctraderAuth.connected),
+
+    hasAccessToken: Boolean(ctraderAuth.accessToken),
+
+    hasRefreshToken: Boolean(ctraderAuth.refreshToken),
+
+    activeAccountId: ctraderAuth.activeAccountId,
+
+    accounts: ctraderAuth.accounts.map((account) => ({
+      accountId: account.accountId,
+      name: account.name,
+      createdAt: account.createdAt,
+    })),
+  };
+}
 
 // ============================================================
 // EXPORT

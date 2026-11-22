@@ -1,429 +1,230 @@
-import { MoreVertical } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { ChevronDown } from "lucide-react";
+
+import {
+  formatDateTime,
+  formatDurationText,
+  formatLots,
+  formatMoney,
+  formatPercent,
+  formatPrice,
+  formatSignedMoney,
+} from "../shared";
+
+// ============================================================
+// CLOSED POSITION ROW
+// Pure presentation from the derived row model. Details live
+// in the expandable row, so there is no action menu here.
+// ============================================================
+
+function alignClass(align) {
+  if (align === "left") return "text-left";
+  if (align === "right") return "text-right tabular-nums";
+  return "text-center";
+}
+
+function pnlClass(value) {
+  if (value > 0) return "text-emerald-600 dark:text-emerald-400";
+  if (value < 0) return "text-red-600 dark:text-red-400";
+  return "text-gray-700 dark:text-gray-300";
+}
+
+// The chevron owns its own click, so its cell must not double-toggle.
+const STOP_PROPAGATION_KEYS = new Set(["expand"]);
+
+function brokerBadge(broker) {
+  const upper = String(broker || "").toUpperCase();
+
+  const tone =
+    upper === "MT5"
+      ? "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+      : upper === "CTRADER"
+      ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
+      : upper
+      ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+      : "";
+
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+        tone || "text-gray-400 dark:text-gray-500"
+      }`}
+    >
+      {upper || "—"}
+    </span>
+  );
+}
 
 export default function ClosedPositionRow({
-  trade,
-  demo = false,
+  row,
+  columns = [],
+  visibleKeys = new Set(),
+  expanded = false,
+  onToggleExpand,
+  currency = "USD",
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
+  const visibleColumns = columns.filter((column) =>
+    visibleKeys.has(column.key)
+  );
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(event.target)
-      ) {
-        setMenuOpen(false);
-      }
-    };
+  const durationLabel =
+    row.durationLabel ||
+    (row.openedAtMs && row.closedAtMs
+      ? formatDurationText((row.closedAtMs - row.openedAtMs) / 1000)
+      : "—");
 
-    document.addEventListener(
-      "mousedown",
-      handleClickOutside
-    );
+  const renderCell = (column) => {
+    switch (column.key) {
+      case "expand":
+        return (
+          <button
+            type="button"
+            onClick={() => onToggleExpand?.(row.key)}
+            title={expanded ? "Hide details" : "Show details"}
+            className={`
+              rounded-md
+              p-1
+              text-gray-400
+              transition
+              hover:bg-gray-200
+              hover:text-gray-600
+              dark:hover:bg-gray-700
+              ${
+                expanded
+                  ? "rotate-180 text-violet-600 dark:text-violet-400"
+                  : ""
+              }
+            `}
+          >
+            <ChevronDown size={14} />
+          </button>
+        );
 
-    return () => {
-      document.removeEventListener(
-        "mousedown",
-        handleClickOutside
-      );
-    };
-  }, []);
+      case "ticket":
+        return (
+          <span className="font-mono text-[11px] font-medium text-gray-600 dark:text-gray-400">
+            {row.ticket || "—"}
+          </span>
+        );
 
-  if (!trade) return null;
+      case "symbol":
+        return (
+          <span className="font-semibold text-gray-900 dark:text-gray-100">
+            {row.symbol}
+          </span>
+        );
 
-  // ==========================================================
-  // BASIC VALUES
-  // ==========================================================
+      case "side":
+        return (
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+              row.side === "SELL"
+                ? "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400"
+                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+            }`}
+          >
+            {row.side || "—"}
+          </span>
+        );
 
-  const symbol =
-    trade.symbol ||
-    trade.instrument ||
-    trade.symbolName ||
-    "UNKNOWN";
+      case "lots":
+        return formatLots(row.lots);
 
-  const rawSide =
-    trade.side ??
-    trade.direction ??
-    trade.tradeSide ??
-    trade.type ??
-    trade.positionType ??
-    "";
+      case "entry":
+        return formatPrice(row.entry);
 
-  const normalizeSide = (value) => {
-    const numericValue = Number(value);
+      case "exit":
+        return formatPrice(row.exit);
 
-    if (numericValue === 0) return "BUY";
-    if (numericValue === 1) return "SELL";
+      case "takeProfit":
+        return (
+          <span className="text-emerald-600 dark:text-emerald-400">
+            {formatPrice(row.takeProfit)}
+          </span>
+        );
 
-    const normalized = String(value).toLowerCase();
+      case "stopLoss":
+        return (
+          <span className="text-red-600 dark:text-red-400">
+            {formatPrice(row.stopLoss)}
+          </span>
+        );
 
-    if (
-      normalized === "buy" ||
-      normalized === "long"
-    ) {
-      return "BUY";
+      case "pnl":
+        return (
+          <span className={`font-semibold ${pnlClass(row.pnl)}`}>
+            {formatSignedMoney(row.pnl, currency)}
+          </span>
+        );
+
+      case "pnlPercent":
+        return (
+          <span className={pnlClass(row.pnlPercent)}>
+            {row.pnlPercent === null || row.pnlPercent === undefined
+              ? "—"
+              : formatPercent(row.pnlPercent)}
+          </span>
+        );
+
+      case "commission":
+        return formatMoney(row.commission, currency);
+
+      case "swap":
+        return formatMoney(row.swap, currency);
+
+      case "duration":
+        return durationLabel;
+
+      case "closedAt":
+        return (
+          <span className="text-gray-500 dark:text-gray-400">
+            {formatDateTime(row.closedAtMs)}
+          </span>
+        );
+
+      case "broker":
+        return brokerBadge(row.broker);
+
+      default:
+        return "—";
     }
-
-    if (
-      normalized === "sell" ||
-      normalized === "short"
-    ) {
-      return "SELL";
-    }
-
-    return String(value || "-").toUpperCase();
   };
-
-  const side = normalizeSide(rawSide);
-
-  const quantity = Number(
-    trade.quantity ??
-    trade.lots ??
-    trade.volumeLots ??
-    trade.volume ??
-    0
-  );
-
-  const entry = Number(
-    trade.entry ??
-    trade.entryPrice ??
-    trade.priceOpen ??
-    trade.price_open ??
-    trade.openPrice ??
-    0
-  );
-
-  const exit = Number(
-    trade.exit ??
-    trade.exitPrice ??
-    trade.closePrice ??
-    trade.priceClose ??
-    trade.price_close ??
-    0
-  );
-
-  const takeProfit = Number(
-    trade.takeProfit ??
-    trade.tp ??
-    0
-  );
-
-  const stopLoss = Number(
-    trade.stopLoss ??
-    trade.sl ??
-    0
-  );
-
-  const pnl = Number(
-    trade.netProfit ??
-    trade.netPnL ??
-    trade.netPnl ??
-    trade.profit ??
-    trade.pnl ??
-    trade.grossProfit ??
-    0
-  );
-
-  const commission = Number(
-    trade.commission ??
-    trade.commissions ??
-    0
-  );
-
-  const tradeId =
-    trade.positionId ??
-    trade.brokerPositionId ??
-    trade.ticket ??
-    trade.orderId ??
-    trade.id ??
-    "-";
-
-  // ==========================================================
-  // DURATION
-  // ==========================================================
-
-  const duration =
-    trade.duration ||
-    trade.tradeDuration ||
-    "-";
-
-  // ==========================================================
-  // FORMAT PRICE
-  // ==========================================================
-
-  const formatPrice = (value) => {
-    if (
-      !Number.isFinite(value) ||
-      value <= 0
-    ) {
-      return "-";
-    }
-
-    return value.toFixed(5);
-  };
-
-  // ==========================================================
-  // FORMAT MONEY
-  // ==========================================================
-
-  const formatMoney = (value) => {
-    if (!Number.isFinite(value)) {
-      return "$0.00";
-    }
-
-    return `${value >= 0 ? "+" : ""}$${value.toFixed(2)}`;
-  };
-
-  // ==========================================================
-  // UI
-  // ==========================================================
 
   return (
     <tr
-      className="
-        border-t
+      onClick={() => onToggleExpand?.(row.key)}
+      title={expanded ? "Hide trade details" : "Show trade details"}
+      className={`
+        cursor-pointer
+        border-b
         border-gray-100
-        hover:bg-gray-50
         transition
-      "
+        hover:bg-gray-50
+        dark:border-gray-800
+        dark:hover:bg-gray-800/50
+      `}
     >
-
-      {/* ====================================================
-          INSTRUMENT
-      ==================================================== */}
-
-      <td className="w-[110px] px-6 py-4 text-left whitespace-nowrap">
-
-        <span className="font-semibold text-gray-900">
-          {symbol}
-        </span>
-
-      </td>
-
-      {/* ====================================================
-          SIDE
-      ==================================================== */}
-
-      <td className="w-[90px] text-center whitespace-nowrap">
-
-        <span
+      {visibleColumns.map((column) => (
+        <td
+          key={column.key}
+          onClick={
+            STOP_PROPAGATION_KEYS.has(column.key)
+              ? (event) => event.stopPropagation()
+              : undefined
+          }
           className={`
-            px-2
-            py-1
-            rounded-lg
+            whitespace-nowrap
+            px-3
+            py-2.5
             text-xs
-            font-semibold
-            ${
-              side === "BUY"
-                ? "bg-emerald-100 text-emerald-700"
-                : side === "SELL"
-                ? "bg-red-100 text-red-700"
-                : "bg-gray-100 text-gray-700"
-            }
+            text-gray-700
+            dark:text-gray-300
+            ${column.width}
+            ${alignClass(column.align)}
           `}
         >
-          {side}
-        </span>
-
-      </td>
-
-      {/* ====================================================
-          LOTS
-      ==================================================== */}
-
-      <td className="w-[90px] text-center whitespace-nowrap">
-
-        {Number.isFinite(quantity)
-          ? quantity.toFixed(2)
-          : "0.00"}
-
-      </td>
-
-      {/* ====================================================
-          ENTRY
-      ==================================================== */}
-
-      <td className="w-[100px] text-right whitespace-nowrap">
-
-        {formatPrice(entry)}
-
-      </td>
-
-      {/* ====================================================
-          EXIT
-      ==================================================== */}
-
-      <td className="w-[100px] text-right whitespace-nowrap">
-
-        {formatPrice(exit)}
-
-      </td>
-
-      {/* ====================================================
-          TAKE PROFIT
-      ==================================================== */}
-
-      <td className="w-[110px] text-right text-emerald-600 whitespace-nowrap">
-
-        {formatPrice(takeProfit)}
-
-      </td>
-
-      {/* ====================================================
-          STOP LOSS
-      ==================================================== */}
-
-      <td className="w-[110px] text-right text-red-600 whitespace-nowrap">
-
-        {formatPrice(stopLoss)}
-
-      </td>
-
-      {/* ====================================================
-          P/L
-      ==================================================== */}
-
-      <td className="w-[100px] text-right whitespace-nowrap">
-
-        <span
-          className={`
-            font-semibold
-            ${
-              pnl >= 0
-                ? "text-emerald-600"
-                : "text-red-600"
-            }
-          `}
-        >
-          {formatMoney(pnl)}
-        </span>
-
-      </td>
-
-      {/* ====================================================
-          COMMISSION
-      ==================================================== */}
-
-      <td className="w-[110px] text-right whitespace-nowrap">
-
-        <span className="font-medium text-gray-700">
-          $
-          {Number.isFinite(commission)
-            ? commission.toFixed(2)
-            : "0.00"}
-        </span>
-
-      </td>
-
-      {/* ====================================================
-          DURATION
-      ==================================================== */}
-
-      <td className="w-[100px] text-right whitespace-nowrap">
-
-        <span className="font-medium text-gray-700">
-          {duration}
-        </span>
-
-      </td>
-
-      {/* ====================================================
-          ACTIONS
-      ==================================================== */}
-
-      <td className="w-[100px] text-center relative">
-
-        <div
-          ref={menuRef}
-          className="relative inline-block"
-        >
-
-          {/* THREE DOT BUTTON */}
-
-          <button
-            type="button"
-            onClick={() =>
-              setMenuOpen(
-                (prev) => !prev
-              )
-            }
-            className="
-              w-9
-              h-9
-              rounded-lg
-              border
-              border-gray-300
-              bg-white
-              hover:bg-gray-100
-              flex
-              items-center
-              justify-center
-              transition
-            "
-          >
-            <MoreVertical
-              size={18}
-              className="text-gray-700"
-            />
-          </button>
-
-          {/* DROPDOWN */}
-
-          {menuOpen && (
-
-            <div
-              className="
-                absolute
-                right-0
-                top-11
-                z-[100]
-                w-[180px]
-                overflow-hidden
-                rounded-xl
-                border
-                border-gray-200
-                bg-white
-                shadow-xl
-              "
-            >
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-
-                  console.log(
-                    "📕 CLOSED TRADE DETAILS:",
-                    {
-                      tradeId,
-                      trade,
-                    }
-                  );
-                }}
-                className="
-                  w-full
-                  px-4
-                  py-3
-                  text-left
-                  text-sm
-                  text-gray-700
-                  hover:bg-gray-50
-                  transition
-                "
-              >
-                View Details
-              </button>
-
-            </div>
-
-          )}
-
-        </div>
-
-      </td>
-
+          {renderCell(column)}
+        </td>
+      ))}
     </tr>
   );
 }

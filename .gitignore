@@ -37,6 +37,9 @@ build/
 
 # cTrader authentication secrets - NEVER PUSH
 server/ctrader-auth.json
+server/ctrader-accounts.json
+server/ctrader-auth.json.tmp-*
+server/ctrader-accounts.json.tmp-*
 
 # Backup files
 server/*-backup.js

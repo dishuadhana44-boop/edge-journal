@@ -1,11 +1,14 @@
 import {
   calculateCurrentBalance,
   calculateNetPnL,
+  calculateTotalTrades,
   calculateWinRate,
   calculateAverageRR,
   calculateProfitFactor,
   calculateExpectancy,
 } from "../../utils/statisticsEngine";
+
+import { selectRealizedTrades } from "../../utils/dashboardCurveEngine";
 
 import {
   Wallet,
@@ -14,36 +17,67 @@ import {
   BarChart3,
   PieChart,
   Activity,
+  Layers,
 } from "lucide-react";
 
+import { useDashboardFilter } from "../../context/DashboardFilterContext";
 
+import { useMemo } from "react";
 
   
+
 function StatCards({
   account,
   trades = [],
 }) {
 
-  const allTrades = trades || [];
+  const {
+    sections,
+    startDate,
+    endDate,
+  } = useDashboardFilter();
+
+  // Closed trades that realised inside the applied date range — the one slice every
+  // Dashboard metric and chart is built from.
+  const periodTrades = useMemo(
+    () =>
+      selectRealizedTrades(trades, { startDate, endDate }).map(
+        (entry) => entry.trade
+      ),
+    [trades, startDate, endDate]
+  );
+
+  // The balance is a current snapshot over the whole closed history. Restricting it
+  // to the selected period would present a period result as the account's worth.
+  const allTimeClosedTrades = useMemo(
+    () => selectRealizedTrades(trades).map((entry) => entry.trade),
+    [trades]
+  );
 
   const accountBalance = calculateCurrentBalance(
     account?.startingBalance || 0,
-    allTrades
+    allTimeClosedTrades
   );
     
-  const netPnL = calculateNetPnL(allTrades);
+  const netPnL = calculateNetPnL(periodTrades);
     
-  const winRate = calculateWinRate(allTrades);
+  const winRate = calculateWinRate(periodTrades);
     
-  const averageRR = calculateAverageRR(allTrades);
+  const averageRR = calculateAverageRR(periodTrades);
     
-  const profitFactor = calculateProfitFactor(allTrades);
+  const profitFactor = calculateProfitFactor(periodTrades);
     
-  const expectancy = calculateExpectancy(allTrades);
+  const expectancy = calculateExpectancy(periodTrades);
+
+  const totalTrades = calculateTotalTrades(periodTrades);
     
     const cards = [
       {
-        title: "Account Balance",
+        section: "accountOverview",
+        title: "Balance (All Time)",
+        hint: `Current snapshot, not limited to the selected range: starting balance $${(
+          Number(account?.startingBalance) || 0
+        ).toLocaleString()} plus all ${allTimeClosedTrades.length} closed trades in the journal.`,
         value: accountBalance,
         display: `$${accountBalance.toLocaleString()}`,
         valueColor: "text-green-600",
@@ -53,7 +87,9 @@ function StatCards({
       },
     
       {
+        section: "netPnl",
         title: "Total Closed P&L",
+        hint: "Realised P&L of trades that closed inside the selected date range.",
         value: netPnL,
         display: `${netPnL >= 0 ? "+" : "-"}$${Math.abs(netPnL).toLocaleString()}`,
         valueColor:
@@ -66,7 +102,9 @@ function StatCards({
       },
     
       {
+        section: "winRate",
         title: "Win Rate",
+        hint: "Share of closed trades in the selected date range that finished in profit.",
         value: winRate,
         display: `${winRate}%`,
         valueColor:
@@ -79,7 +117,9 @@ function StatCards({
       },
     
       {
+        section: "avgRisk",
         title: "Avg R Per Trade",
+        hint: "Average planned risk-to-reward of closed trades in the selected date range.",
         value: averageRR,
         display: `${averageRR}R`,
         valueColor:
@@ -92,7 +132,9 @@ function StatCards({
       },
     
       {
+        section: "profitFactor",
         title: "Profit Factor",
+        hint: "Gross profit divided by gross loss over the closed trades in the selected date range.",
         value: profitFactor,
         display: `${profitFactor}`,
         valueColor:
@@ -105,7 +147,9 @@ function StatCards({
       },
     
       {
+        section: "expectancy",
         title: "Expectancy",
+        hint: "Average realised result per closed trade in the selected date range.",
         value: expectancy,
         display: `${expectancy >= 0 ? "+" : "-"}$${Math.abs(expectancy)}`,
         valueColor:
@@ -116,10 +160,23 @@ function StatCards({
         bg: "bg-red-100",
         iconColor: "text-red-600",
       },
-    ];
+      {
+        section: "totalTrades",
+        title: "Total Trades",
+        hint: "Closed trades in the selected date range. Open positions and pending orders are counted separately.",
+        value: totalTrades,
+        display: `${totalTrades}`,
+        valueColor: "text-gray-900",
+        icon: Layers,
+        bg: "bg-indigo-100",
+        iconColor: "text-indigo-600",
+      },
+    ].filter((card) => sections[card.section]);
+
+    if (cards.length === 0) return null;
 
     return (
-      <div className="grid grid-cols-6 gap-1 max-w-[1320px] mx-auto">
+      <div className="grid w-full grid-cols-2 sm:grid-cols-6 lg:grid-cols-6 2xl:grid-cols-7 gap-3">
     
         {cards.map((card) => {
     
@@ -129,21 +186,23 @@ function StatCards({
     
             <div
               key={card.title}
-              className="bg-white rounded-xl border border-gray-200 px-3 py-3 h-[90px]"
+              className="flex min-h-[68px] min-w-0 items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-3.5 py-3"
             >
     
-              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
     
-                <div>
-    
-                  <p className="text-[12px] font-bold uppercase tracking-wide text-gray-900">
+                  <p
+                    className="truncate text-[11px] font-semibold uppercase tracking-wide text-gray-500"
+                    title={card.hint || card.title}
+                  >
                     {card.title}
                   </p>
     
                   <h2
-                    className={`text-[18px] font-bold mt-1 ${
-                      card.valueColor || "text-black"
+                    className={`mt-1.5 truncate text-[16px] font-bold leading-tight ${
+                      card.valueColor || "text-gray-900"
                     }`}
+                    title={card.display}
                   >
                     {card.display}
                   </h2>
@@ -151,15 +210,13 @@ function StatCards({
                 </div>
     
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${card.bg}`}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${card.bg}`}
                 >
                   <Icon
                     className={card.iconColor}
-                    size={16}
+                    size={15}
                   />
                 </div>
-    
-              </div>
     
             </div>
     

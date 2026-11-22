@@ -1,8 +1,8 @@
 import logo from "../assets/logo.png";
 
-import { useEffect, useState } from "react";
-
 import { useNavigate } from "react-router-dom";
+
+import { useTheme } from "../context/ThemeContext";
 
 import {
   LayoutDashboard,
@@ -28,35 +28,11 @@ function Sidebar({ collapsed, setCollapsed }) {
   const navigate = useNavigate();
 
   /* ==========================================================
-     THEME STATE
+     THEME
   ========================================================== */
 
-  const [darkMode, setDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem("edgeflo-theme");
-    return savedTheme === "dark";
-  });
-
-  /* ==========================================================
-     APPLY THEME
-  ========================================================== */
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("edgeflo-theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("edgeflo-theme", "light");
-    }
-  }, [darkMode]);
-
-  /* ==========================================================
-     TOGGLE THEME
-  ========================================================== */
-
-  const toggleTheme = () => {
-    setDarkMode((prev) => !prev);
-  };
+  const { isDark, toggleTheme } = useTheme();
+  const darkMode = isDark;
 
   return (
     <div

@@ -7,7 +7,6 @@ export default function BacktestingOverview({
     onNewSession,
     onOpenSession,
     onAnalytics,
-    onDeleteSession,
     refreshKey,
   }) {
 
@@ -165,10 +164,13 @@ export default function BacktestingOverview({
 
           const balance = Number(session.balance || 0);
 
+          const riskValue =
+            session.settings?.riskPercent ?? session.riskPercent;
+
           const risk =
-            session.riskPerTrade !== undefined &&
-            session.riskPerTrade !== null
-              ? `${session.riskPerTrade}%`
+            riskValue !== undefined &&
+            riskValue !== null
+              ? `${riskValue}%`
               : "—";
 
           return (

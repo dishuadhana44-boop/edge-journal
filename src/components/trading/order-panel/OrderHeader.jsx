@@ -1,65 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, X, Search } from "lucide-react";
 import { useMarket } from "../../../context/MarketContext";
-
-const SYMBOLS = [
-  "EURUSD",
-  "GBPUSD",
-  "GBPJPY",
-  "USDJPY",
-  "USDCHF",
-  "AUDUSD",
-  "USDCAD",
-  "NZDUSD",
-  "XAUUSD",
-];
-
-const SYMBOL_INFO = {
-  EURUSD: {
-    icon: "https://flagcdn.com/w40/eu.png",
-    alt: "EUR",
-  },
-
-  GBPUSD: {
-    icon: "https://flagcdn.com/w40/gb.png",
-    alt: "GBP",
-  },
-
-  GBPJPY: {
-    icon: "https://flagcdn.com/w40/gb.png",
-    alt: "GBP",
-  },
-
-  USDJPY: {
-    icon: "https://flagcdn.com/w40/us.png",
-    alt: "USD",
-  },
-
-  USDCHF: {
-    icon: "https://flagcdn.com/w40/us.png",
-    alt: "USD",
-  },
-
-  AUDUSD: {
-    icon: "https://flagcdn.com/w40/au.png",
-    alt: "AUD",
-  },
-
-  USDCAD: {
-    icon: "https://flagcdn.com/w40/us.png",
-    alt: "USD",
-  },
-
-  NZDUSD: {
-    icon: "https://flagcdn.com/w40/nz.png",
-    alt: "NZD",
-  },
-
-  XAUUSD: {
-    icon: "https://flagcdn.com/w40/us.png",
-    alt: "XAU",
-  },
-};
+import { SYMBOLS, SYMBOL_INFO } from "./symbols";
 
 export default function OrderHeader({ setOrderOpen }) {
   const { symbol, setSymbol } = useMarket();

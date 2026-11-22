@@ -4,13 +4,24 @@ import {
     DollarSign,
     Activity,
   } from "lucide-react";
+import { useJournal } from "../../../context/JournalContext";
+import {
+  JOURNAL_PERSISTENCE_STATUS,
+  describeJournalPersistence,
+} from "../../../lib/journalPersistenceStatus.js";
   
 
   
   export default function PerformanceTable({ plan }) {
 
-    const allTrades =
-    JSON.parse(localStorage.getItem("trades")) || [];
+    // Read the journal through the context, which already parsed and
+    // normalized the trusted rows, so a malformed journal cannot throw here.
+    const { trades, journalPersistence } = useJournal();
+
+    const allTrades = Array.isArray(trades) ? trades : [];
+
+    const persistenceView =
+      describeJournalPersistence(journalPersistence);
   
   const planTrades = allTrades.filter(
     (trade) =>
@@ -154,7 +165,25 @@ import {
         },
       
       ];
-    
+
+    // An unreadable saved journal has unknown contents, not empty ones, so
+    // explaining it beats printing zeros as if they were measured.
+    if (persistenceView.status === JOURNAL_PERSISTENCE_STATUS.UNREADABLE) {
+      return (
+        <div className="bg-white rounded-2xl border border-amber-300 shadow-sm p-6">
+  
+          <p className="font-semibold text-amber-900">
+            {persistenceView.title}
+          </p>
+  
+          <p className="text-sm text-gray-600 mt-1">
+            {persistenceView.detail}
+          </p>
+  
+        </div>
+      );
+    }
+
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
   

@@ -4,10 +4,19 @@ from flask_cors import CORS
 import MetaTrader5 as mt5
 
 from datetime import datetime, timedelta, timezone
+from decimal import (
+    Decimal,
+    InvalidOperation,
+    ROUND_FLOOR,
+    ROUND_HALF_UP,
+)
 
 import traceback
+import json
 import math
+import threading
 import time
+import uuid
 
 
 # ==========================================================
@@ -36,6 +45,45 @@ EDGEFLO_MAGIC = 2026001
 
 BRIDGE_HOST = "127.0.0.1"
 BRIDGE_PORT = 5001
+
+
+# ==========================================================
+# CONNECTION SERIALIZATION
+# ==========================================================
+#
+# Every MT5 connection mutation and every reconciliation read takes this one
+# reentrant lock, so a scan can never observe an account switch in flight.
+# Each attempted mutation bumps CONNECTION_GENERATION first: a page taken
+# before any mutation, successful or not, belongs to a dead generation.
+
+MT5_CONNECTION_LOCK = threading.RLock()
+
+BRIDGE_BOOT_ID = uuid.uuid4().hex
+
+CONNECTION_GENERATION = 0
+
+
+def current_connection_generation():
+    return CONNECTION_GENERATION
+
+
+def _mt5_connection_mutation(func, *args, **kwargs):
+    """
+    Run an MT5 call that changes the bridge connection.
+
+    The generation is invalidated before the call, so even a failing
+    initialize/shutdown strands earlier scan pages.
+    """
+
+    global CONNECTION_GENERATION
+
+    with MT5_CONNECTION_LOCK:
+        CONNECTION_GENERATION += 1
+
+        return func(
+            *args,
+            **kwargs
+        )
 
 
 # ==========================================================
@@ -105,6 +153,11 @@ def mt5_error():
 # ==========================================================
 
 def initialize_mt5():
+    with MT5_CONNECTION_LOCK:
+        return _initialize_mt5_locked()
+
+
+def _initialize_mt5_locked():
     global MT5_CONNECTED
 
     try:
@@ -120,7 +173,9 @@ def initialize_mt5():
         )
         print("====================================")
 
-        initialized = mt5.initialize()
+        initialized = _mt5_connection_mutation(
+            mt5.initialize
+        )
 
         if not initialized:
             MT5_CONNECTED = False
@@ -206,6 +261,19 @@ def initialize_mt5():
 # ==========================================================
 
 def switch_mt5_account(
+    login,
+    password=None,
+    server=None,
+):
+    with MT5_CONNECTION_LOCK:
+        return _switch_mt5_account_locked(
+            login,
+            password=password,
+            server=server
+        )
+
+
+def _switch_mt5_account_locked(
     login,
     password=None,
     server=None,
@@ -302,7 +370,9 @@ def switch_mt5_account(
         # --------------------------------------------------
 
         try:
-            mt5.shutdown()
+            _mt5_connection_mutation(
+                mt5.shutdown
+            )
         except Exception:
             pass
 
@@ -316,20 +386,23 @@ def switch_mt5_account(
             password is not None
             and server
         ):
-            initialized = mt5.initialize(
+            initialized = _mt5_connection_mutation(
+                mt5.initialize,
                 login=login,
                 password=password,
                 server=server
             )
 
         elif server:
-            initialized = mt5.initialize(
+            initialized = _mt5_connection_mutation(
+                mt5.initialize,
                 login=login,
                 server=server
             )
 
         else:
-            initialized = mt5.initialize(
+            initialized = _mt5_connection_mutation(
+                mt5.initialize,
                 login=login
             )
 
@@ -437,6 +510,11 @@ def switch_mt5_account(
 # ==========================================================
 
 def ensure_mt5_connection():
+    with MT5_CONNECTION_LOCK:
+        return _ensure_mt5_connection_locked()
+
+
+def _ensure_mt5_connection_locked():
     global MT5_CONNECTED
 
     try:
@@ -446,7 +524,9 @@ def ensure_mt5_connection():
         if terminal is None or account is None:
             MT5_CONNECTED = False
 
-            initialized = mt5.initialize()
+            initialized = _mt5_connection_mutation(
+                mt5.initialize
+            )
 
             if not initialized:
                 return False
@@ -566,6 +646,494 @@ def normalize_price(symbol, price):
 
 
 # ==========================================================
+# DECIMAL VOLUME GRID
+#
+# Volume is a grid quantity, not a free float: the broker only accepts
+# volume_min + k * volume_step. Floats cannot express that grid reliably
+# (0.01 + 0.02 is not 0.03, and 0.1 * 3 is not 0.3), so every grid decision is
+# taken in Decimal arithmetic built from the decimal *string* of the value, and
+# equality is decided on Decimal values and integer grid indices rather than on
+# float equality.
+#
+# Nothing here invents a grid: if the broker does not report a usable
+# volume_min / volume_max / volume_step the symbol has no grid and every volume
+# is refused. A requested volume is never raised to the minimum, because that
+# raises the risk the trader sized the trade for.
+# ==========================================================
+
+VOLUME_DECIMAL_PLACES = 8
+
+
+def decimal_or_none(value):
+    """
+    Strict Decimal conversion. Accepts only real, finite, non-boolean numbers.
+    """
+
+    try:
+        if value is None:
+            return None
+
+        if isinstance(value, bool):
+            return None
+
+        if isinstance(value, Decimal):
+            decimal_value = value
+
+        elif isinstance(value, (int, float)):
+            decimal_value = Decimal(
+                repr(float(value))
+            )
+
+        elif isinstance(value, str):
+            text = value.strip()
+
+            if text == "":
+                return None
+
+            decimal_value = Decimal(
+                text
+            )
+
+        else:
+            return None
+
+        if not decimal_value.is_finite():
+            return None
+
+        return decimal_value
+
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def symbol_volume_grid(symbol):
+    """
+    Return the broker's own volume grid for a symbol, or a refusal with reason.
+    """
+
+    info = ensure_symbol(symbol)
+
+    if info is None:
+        return {
+            "ok": False,
+            "code": "SYMBOL_NOT_FOUND",
+            "message":
+                f"MT5 symbol not found: {symbol}",
+        }
+
+    volume_min = decimal_or_none(
+        getattr(
+            info,
+            "volume_min",
+            None,
+        )
+    )
+
+    volume_max = decimal_or_none(
+        getattr(
+            info,
+            "volume_max",
+            None,
+        )
+    )
+
+    volume_step = decimal_or_none(
+        getattr(
+            info,
+            "volume_step",
+            None,
+        )
+    )
+
+    missing = [
+        name
+        for name, value in (
+            ("volume_min", volume_min),
+            ("volume_max", volume_max),
+            ("volume_step", volume_step),
+        )
+        if value is None
+    ]
+
+    if missing:
+        return {
+            "ok": False,
+            "code": "INVALID_VOLUME_SPEC",
+            "message":
+                "The broker did not report a usable volume grid for "
+                f"{symbol} (missing {', '.join(missing)}), so no volume "
+                "can be validated for it.",
+        }
+
+    if volume_min <= 0 or volume_step <= 0 or volume_max <= 0:
+        return {
+            "ok": False,
+            "code": "INVALID_VOLUME_SPEC",
+            "message":
+                f"The broker reported a non-positive volume grid for {symbol} "
+                f"(volume_min {volume_min}, volume_max {volume_max}, "
+                f"volume_step {volume_step}), so no volume can be validated "
+                "for it.",
+        }
+
+    if volume_max < volume_min:
+        return {
+            "ok": False,
+            "code": "INVALID_VOLUME_SPEC",
+            "message":
+                f"The broker reported volume_max below volume_min for {symbol}, "
+                "so no volume can be validated for it.",
+        }
+
+    return {
+        "ok": True,
+        "symbol": symbol,
+        "volume_min": volume_min,
+        "volume_max": volume_max,
+        "volume_step": volume_step,
+    }
+
+
+# A volume counts as sitting on the grid when it is within this fraction of one
+# step of a grid value. Binary floats cannot hold 0.03 or 0.3 exactly, and a
+# trader's own 0.01 * 3 arrives as 0.030000000000000002; refusing that would be
+# refusing a valid broker volume over representation noise. The tolerance is far
+# too small to ever accept a genuinely wrong volume: half a step is 500000x it.
+GRID_SNAP_STEPS = Decimal("0.000001")
+
+
+def volume_grid_index(volume, volume_min, volume_step):
+    """
+    Integer grid index k with volume == volume_min + k * volume_step, or None.
+
+    Decided on the step index rather than on raw decimals so float noise snaps,
+    while a real off-grid request (0.015 on a 0.01 step) stays rejected.
+    """
+
+    if volume < volume_min:
+        return None
+
+    steps = (
+        volume - volume_min
+    ) / volume_step
+
+    nearest = steps.to_integral_value(
+        rounding=ROUND_HALF_UP
+    )
+
+    if abs(steps - nearest) <= GRID_SNAP_STEPS:
+        return int(nearest)
+
+    return None
+
+
+def floor_volume_to_grid(volume, volume_min, volume_step):
+    """
+    Largest permitted grid volume that is <= the requested volume.
+
+    Returns None when the requested volume is below the broker minimum: the
+    caller refuses, it does not raise. Raising a sub-minimum volume to the
+    minimum silently increases the risk of the trade.
+    """
+
+    steps = (
+        volume - volume_min
+    ) / volume_step
+
+    if steps < 0:
+        return None
+
+    index = volume_grid_index(
+        volume,
+        volume_min,
+        volume_step,
+    )
+
+    if index is None:
+        index = int(
+            steps.to_integral_value(
+                rounding=ROUND_FLOOR
+            )
+        )
+
+    if index < 0:
+        return None
+
+    floored = (
+        volume_min
+        + index * volume_step
+    )
+
+    if floored < volume_min:
+        return None
+
+    return floored
+
+
+def is_volume_on_grid(volume, volume_min, volume_step):
+    """
+    Exact grid membership, decided on integer step counts in Decimal space.
+    """
+
+    return (
+        volume_grid_index(
+            volume,
+            volume_min,
+            volume_step,
+        )
+        is not None
+    )
+
+
+def normalize_open_volume(symbol, volume):
+    """
+    Normalize volume for new market/pending orders.
+
+    The grid is aligned from the broker's volume_min and floored, never rounded:
+    rounding up through the grid spends more of the risk budget than the trader
+    asked for. A volume below volume_min returns None instead of being raised to
+    it.
+    """
+
+    try:
+        requested = decimal_or_none(volume)
+
+        if requested is None or requested <= 0:
+            return None
+
+        grid = symbol_volume_grid(symbol)
+
+        if not grid.get("ok"):
+            return None
+
+        volume_min = grid["volume_min"]
+        volume_max = grid["volume_max"]
+        volume_step = grid["volume_step"]
+
+        if requested > volume_max:
+            return None
+
+        floored = floor_volume_to_grid(
+            requested,
+            volume_min,
+            volume_step,
+        )
+
+        if floored is None:
+            return None
+
+        if floored > volume_max:
+            return None
+
+        return float(
+            round(
+                floored,
+                VOLUME_DECIMAL_PLACES,
+            )
+        )
+
+    except Exception as error:
+        print(
+            "⚠️ OPEN VOLUME NORMALIZATION ERROR:",
+            error
+        )
+
+        return None
+
+
+def reconcile_requested_volume(
+    requested,
+    normalized,
+    volume_min=None,
+    volume_step=None,
+):
+    """
+    Confirm that normalizing did not move the order to a different grid volume.
+
+    Both sides are Decimal, and the comparison is on integer grid indices rather
+    than on raw decimals, so float representation noise (0.01 * 3 arriving as
+    0.030000000000000002) is not reported as a changed volume while a real
+    change (0.03 against 0.04) still is. No float equality is involved.
+    """
+
+    requested_d = decimal_or_none(requested)
+    normalized_d = decimal_or_none(normalized)
+
+    if requested_d is None or normalized_d is None:
+        return False
+
+    if requested_d == normalized_d:
+        return True
+
+    if volume_min is None or volume_step is None:
+        return False
+
+    if volume_min <= 0 or volume_step <= 0:
+        return False
+
+    requested_index = volume_grid_index(
+        requested_d,
+        volume_min,
+        volume_step,
+    )
+
+    normalized_index = volume_grid_index(
+        normalized_d,
+        volume_min,
+        volume_step,
+    )
+
+    if requested_index is None or normalized_index is None:
+        return False
+
+    return requested_index == normalized_index
+
+
+def validate_requested_open_volume(symbol, requested_volume):
+    """
+    Single gate used by every order path: the requested volume must already be a
+    valid broker volume. Nothing is adjusted, so the volume that reaches MT5 is
+    exactly the volume the trader sized the trade with.
+    """
+
+    requested = decimal_or_none(requested_volume)
+
+    if requested is None or requested <= 0:
+        return {
+            "ok": False,
+            "code": "INVALID_VOLUME",
+            "message":
+                "The requested volume is missing, not a number, or not greater "
+                "than zero.",
+        }
+
+    grid = symbol_volume_grid(symbol)
+
+    if not grid.get("ok"):
+        return {
+            "ok": False,
+            "code": grid["code"],
+            "message": grid["message"],
+            "requested_volume": float(requested),
+        }
+
+    volume_min = grid["volume_min"]
+    volume_max = grid["volume_max"]
+    volume_step = grid["volume_step"]
+
+    result = {
+        "requested_volume": float(requested),
+        "volume_min": float(volume_min),
+        "volume_max": float(volume_max),
+        "volume_step": float(volume_step),
+    }
+
+    if requested < volume_min:
+        return {
+            **result,
+            "ok": False,
+            "code": "BELOW_BROKER_MINIMUM",
+            "message":
+                f"The requested volume {requested} is below the broker minimum "
+                f"{volume_min} for {symbol}. It was not raised to the minimum, "
+                "because that would increase the risk of the order.",
+        }
+
+    if requested > volume_max:
+        return {
+            **result,
+            "ok": False,
+            "code": "ABOVE_BROKER_MAXIMUM",
+            "message":
+                f"The requested volume {requested} is above the broker maximum "
+                f"{volume_max} for {symbol}.",
+        }
+
+    if not is_volume_on_grid(
+        requested,
+        volume_min,
+        volume_step,
+    ):
+        floored = floor_volume_to_grid(
+            requested,
+            volume_min,
+            volume_step,
+        )
+
+        return {
+            **result,
+            "ok": False,
+            "code": "OFF_GRID_VOLUME",
+            "message":
+                f"The requested volume {requested} is not on the broker volume "
+                f"grid for {symbol} (volume_min {volume_min}, volume_step "
+                f"{volume_step}).",
+            "nearest_valid_volume": (
+                float(floored)
+                if floored is not None
+                else None
+            ),
+        }
+
+    normalized = normalize_open_volume(
+        symbol,
+        requested,
+    )
+
+    if normalized is None:
+        return {
+            **result,
+            "ok": False,
+            "code": "VOLUME_NORMALIZATION_FAILED",
+            "message":
+                f"The broker volume grid for {symbol} rejected the requested "
+                f"volume {requested}.",
+        }
+
+    if not reconcile_requested_volume(
+        requested,
+        normalized,
+        volume_min,
+        volume_step,
+    ):
+        return {
+            **result,
+            "ok": False,
+            "code": "VOLUME_MISMATCH",
+            "message":
+                f"Normalizing the requested volume {requested} for {symbol} "
+                f"would change it to {normalized}, so the order was rejected "
+                "instead of silently adjusting the volume.",
+            "normalized_volume": normalized,
+        }
+
+    return {
+        **result,
+        "ok": True,
+        "code": "OK",
+        "message": "",
+        "volume": normalized,
+    }
+
+
+def volume_error_payload(symbol, validation):
+    """
+    JSON body for a refused volume.
+    """
+
+    return {
+        "success": False,
+        "symbol": symbol,
+        "error": validation.get("code"),
+        "message": validation.get("message"),
+        "requested_volume": validation.get("requested_volume"),
+        "volume_min": validation.get("volume_min"),
+        "volume_max": validation.get("volume_max"),
+        "volume_step": validation.get("volume_step"),
+    }
+
+
+# ==========================================================
 # VOLUME NORMALIZATION
 # ==========================================================
 
@@ -638,88 +1206,6 @@ def normalize_volume(symbol, volume):
     except Exception as error:
         print(
             "⚠️ CLOSE VOLUME NORMALIZATION ERROR:",
-            error
-        )
-
-        return None
-
-
-def normalize_open_volume(symbol, volume):
-    """
-    Normalize volume for new market/pending orders.
-    """
-
-    try:
-        volume = float(volume)
-
-        if volume <= 0:
-            return None
-
-        info = ensure_symbol(symbol)
-
-        if info is None:
-            return None
-
-        volume_min = float(
-            getattr(
-                info,
-                "volume_min",
-                0.01
-            ) or 0.01
-        )
-
-        volume_max = float(
-            getattr(
-                info,
-                "volume_max",
-                volume
-            ) or volume
-        )
-
-        volume_step = float(
-            getattr(
-                info,
-                "volume_step",
-                0.01
-            ) or 0.01
-        )
-
-        # Clamp to broker limits.
-        volume = max(
-            volume_min,
-            min(
-                volume,
-                volume_max
-            )
-        )
-
-        if volume_step > 0:
-            steps = round(
-                (
-                    volume -
-                    volume_min
-                ) / volume_step
-            )
-
-            volume = (
-                volume_min +
-                steps * volume_step
-            )
-
-        if volume < volume_min:
-            volume = volume_min
-
-        if volume > volume_max:
-            volume = volume_max
-
-        return round(
-            volume,
-            8
-        )
-
-    except Exception as error:
-        print(
-            "⚠️ OPEN VOLUME NORMALIZATION ERROR:",
             error
         )
 
@@ -956,9 +1442,63 @@ def get_position_time_msc(
 # BROKER CLOCK
 # ==========================================================
 
-def get_broker_time_msc(positions=None):
+def broker_clock_from_tick(symbol, fallback_symbol=False):
     """
-    Get MT5 broker/server time in milliseconds.
+    Read one symbol's tick time, or None when the tick carries no time at all.
+
+    `fallback_symbol` only chooses the label. Both readings are broker time, but
+    a symbol taken from a fixed list is not a symbol the trader holds, and the
+    timestamp alone cannot show that difference.
+    """
+
+    tick = mt5.symbol_info_tick(
+        symbol
+    )
+
+    if tick is None:
+        return None
+
+    prefix = (
+        "fallback_symbol_tick."
+        if fallback_symbol
+        else "tick."
+    )
+
+    tick_time_msc = getattr(
+        tick,
+        "time_msc",
+        None
+    )
+
+    if tick_time_msc:
+        return {
+            "time_msc": int(tick_time_msc),
+            "source": f"{prefix}time_msc"
+        }
+
+    tick_time = getattr(
+        tick,
+        "time",
+        None
+    )
+
+    if tick_time:
+        return {
+            "time_msc": int(tick_time) * 1000,
+            "source": f"{prefix}time"
+        }
+
+    return None
+
+
+def get_broker_clock(positions=None):
+    """
+    Get MT5 broker/server time and say where the number came from.
+
+    `time_msc` on its own cannot tell the broker's clock from this machine's, so
+    every path labels itself: a tick from a held symbol, a tick from a common
+    symbol, or the local wall clock when no tick was usable or reading one
+    raised. A caller that needs broker time must check the label.
     """
 
     try:
@@ -982,44 +1522,19 @@ def get_broker_time_msc(positions=None):
             if not symbol:
                 continue
 
-            tick = mt5.symbol_info_tick(
-                symbol
-            )
+            clock = broker_clock_from_tick(symbol)
 
-            if tick is None:
-                continue
-
-            tick_time_msc = getattr(
-                tick,
-                "time_msc",
-                None
-            )
-
-            if tick_time_msc:
+            if clock:
                 print(
                     "🕒 MT5 BROKER CLOCK:",
                     {
                         "symbol": symbol,
-                        "source": "tick.time_msc",
-                        "broker_time_msc":
-                            int(tick_time_msc)
+                        "source": clock["source"],
+                        "broker_time_msc": clock["time_msc"]
                     }
                 )
 
-                return int(
-                    tick_time_msc
-                )
-
-            tick_time = getattr(
-                tick,
-                "time",
-                None
-            )
-
-            if tick_time:
-                return int(
-                    tick_time
-                ) * 1000
+                return clock
 
         # Fallback: use a known common symbol.
         common_symbols = [
@@ -1033,34 +1548,13 @@ def get_broker_time_msc(positions=None):
 
         for symbol in common_symbols:
 
-            tick = mt5.symbol_info_tick(
-                symbol
+            clock = broker_clock_from_tick(
+                symbol,
+                fallback_symbol=True
             )
 
-            if tick is None:
-                continue
-
-            tick_time_msc = getattr(
-                tick,
-                "time_msc",
-                None
-            )
-
-            if tick_time_msc:
-                return int(
-                    tick_time_msc
-                )
-
-            tick_time = getattr(
-                tick,
-                "time",
-                None
-            )
-
-            if tick_time:
-                return int(
-                    tick_time
-                ) * 1000
+            if clock:
+                return clock
 
     except Exception as error:
         print(
@@ -1068,9 +1562,22 @@ def get_broker_time_msc(positions=None):
             error
         )
 
-    return int(
-        time.time() * 1000
-    )
+    return {
+        "time_msc": int(
+            time.time() * 1000
+        ),
+        "source": "local_wall_clock"
+    }
+
+
+def get_broker_time_msc(positions=None):
+    """
+    Get MT5 broker/server time in milliseconds.
+    """
+
+    return get_broker_clock(
+        positions
+    )["time_msc"]
 
 
 # ==========================================================
@@ -1830,6 +2337,600 @@ def mt5_price():
                 str(error)
         }), 500
 
+# ==========================================================
+# SYMBOL SPECIFICATION
+# GET /mt5/symbol-info?symbol=EURUSD
+#
+# Automatic sizing needs the broker's own contract metadata. Every field is
+# reported exactly as the broker gave it, or marked unusable: this route never
+# substitutes a default, because an invented volume_step, contract size or tick
+# value would silently change a position size.
+#
+# `fields_present` is the list of keys this MT5 build actually exposes on the
+# symbol record, so a caller can prove a field is absent instead of mistaking a
+# placeholder 0.0 for a real value.
+# ==========================================================
+
+SYMBOL_INFO_NUMBER_FIELDS = [
+    "volume_min",
+    "volume_max",
+    "volume_step",
+    "trade_contract_size",
+    "trade_tick_size",
+    "trade_tick_value",
+    "trade_tick_value_profit",
+    "trade_tick_value_loss",
+]
+
+SYMBOL_INFO_TEXT_FIELDS = [
+    "currency_profit",
+    "currency_margin",
+    "currency_base",
+]
+
+
+def spec_field_status(value):
+    """
+    Classify one broker specification value without repairing it.
+    """
+
+    if value is None:
+        return "missing"
+
+    if isinstance(value, bool):
+        return "not_a_number"
+
+    if isinstance(value, (int, float)):
+        if not math.isfinite(float(value)):
+            return "non_finite"
+
+        if float(value) <= 0:
+            return "non_positive"
+
+        return "ok"
+
+    if isinstance(value, str):
+        text = value.strip()
+
+        if text == "":
+            return "missing"
+
+        return "not_a_number"
+
+    return "not_a_number"
+
+
+@app.route(
+    "/mt5/symbol-info",
+    methods=["GET"]
+)
+def mt5_symbol_info():
+    try:
+        if not ensure_mt5_connection():
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "MT5 is not connected."
+            }), 503
+
+        symbol = str(
+            request.args.get(
+                "symbol",
+                ""
+            )
+        ).upper().strip()
+
+        if symbol == "":
+            return jsonify({
+                "success": False,
+                "message":
+                    "A symbol is required."
+            }), 400
+
+        info = ensure_symbol(
+            symbol
+        )
+
+        if info is None:
+            return jsonify({
+                "success": False,
+                "connected": True,
+                "symbol": symbol,
+                "message":
+                    f"MT5 symbol not found: {symbol}"
+            }), 404
+
+        try:
+            record = (
+                info._asdict()
+                if hasattr(info, "_asdict")
+                else {
+                    key: getattr(info, key, None)
+                    for key in dir(info)
+                    if not key.startswith("_")
+                }
+            )
+
+        except Exception:
+            record = {}
+
+        fields_present = sorted(
+            str(key)
+            for key in record.keys()
+        )
+
+        specification = {}
+        status = {}
+
+        for field in SYMBOL_INFO_NUMBER_FIELDS:
+            value = record.get(
+                field,
+                None
+            )
+
+            field_status = spec_field_status(value)
+
+            status[field] = field_status
+            specification[field] = (
+                float(value)
+                if field_status == "ok"
+                else None
+            )
+
+        for field in SYMBOL_INFO_TEXT_FIELDS:
+            value = record.get(
+                field,
+                None
+            )
+
+            text = (
+                str(value).strip().upper()
+                if value is not None
+                else ""
+            )
+
+            if text == "":
+                status[field] = "missing"
+                specification[field] = None
+
+            else:
+                status[field] = "ok"
+                specification[field] = text
+
+        digits_raw = record.get(
+            "digits",
+            None
+        )
+
+        digits = (
+            int(digits_raw)
+            if isinstance(digits_raw, int)
+            and not isinstance(digits_raw, bool)
+            else None
+        )
+
+        status["digits"] = (
+            "ok"
+            if digits is not None and digits >= 0
+            else "missing"
+        )
+
+        calc_mode_raw = record.get(
+            "trade_calc_mode",
+            None
+        )
+
+        calc_mode = (
+            int(calc_mode_raw)
+            if isinstance(calc_mode_raw, int)
+            and not isinstance(calc_mode_raw, bool)
+            else None
+        )
+
+        status["trade_calc_mode"] = (
+            "ok"
+            if calc_mode is not None
+            else "missing"
+        )
+
+        required_ok = all(
+            status[field] == "ok"
+            for field in (
+                "volume_min",
+                "volume_max",
+                "volume_step",
+            )
+        )
+
+        return jsonify({
+            "success": True,
+            "connected": True,
+            "symbol": symbol,
+
+            "digits": digits,
+            "spec": specification,
+            "spec_status": status,
+            "fields_present": fields_present,
+
+            "volume_grid_usable": required_ok,
+            "recorded_at": int(
+                time.time() * 1000
+            ),
+        })
+
+    except Exception as error:
+        print(
+            "❌ MT5 SYMBOL INFO ERROR:",
+            error
+        )
+
+        return jsonify({
+            "success": False,
+            "message":
+                "MT5 symbol info error.",
+            "error":
+                str(error)
+        }), 500
+
+
+# ==========================================================
+# ESTIMATED PROFIT / LOSS (READ ONLY)
+# GET /mt5/calc-profit?symbol&action&volume&price_open&price_close
+#
+# MetaTrader documents this calculation as returning "profit in the account
+# currency" for the current account, which makes it the only broker figure whose
+# monetary unit is stated rather than inferred. The tick-value fields carry no
+# documented currency or volume basis, so risk is measured here instead of being
+# derived from them.
+#
+# This handler performs a calculation only.
+# ==========================================================
+
+@app.route(
+    "/mt5/calc-profit",
+    methods=["GET"]
+)
+def mt5_calc_profit():
+    try:
+        if not ensure_mt5_connection():
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "MT5 is not connected."
+            }), 503
+
+        symbol = str(
+            request.args.get(
+                "symbol",
+                ""
+            )
+        ).upper().strip()
+
+        if symbol == "":
+            return jsonify({
+                "success": False,
+                "error": "MISSING_SYMBOL",
+                "message":
+                    "A symbol is required."
+            }), 400
+
+        raw_action = str(
+            request.args.get(
+                "action",
+                ""
+            )
+        ).upper().strip()
+
+        if raw_action in ("BUY", "0"):
+            action = mt5.ORDER_TYPE_BUY
+            action_name = "BUY"
+
+        elif raw_action in ("SELL", "1"):
+            action = mt5.ORDER_TYPE_SELL
+            action_name = "SELL"
+
+        else:
+            return jsonify({
+                "success": False,
+                "error": "INVALID_ACTION",
+                "message":
+                    "action must be BUY or SELL.",
+                "symbol": symbol,
+            }), 400
+
+        volume = decimal_or_none(
+            request.args.get(
+                "volume"
+            )
+        )
+
+        if volume is None or volume <= 0:
+            return jsonify({
+                "success": False,
+                "error": "INVALID_VOLUME",
+                "message":
+                    "volume must be a finite number greater than zero.",
+                "symbol": symbol,
+            }), 400
+
+        price_open = normalize_price(
+            symbol,
+            request.args.get(
+                "price_open"
+            )
+        )
+
+        price_close = normalize_price(
+            symbol,
+            request.args.get(
+                "price_close"
+            )
+        )
+
+        if price_open is None or price_close is None:
+            return jsonify({
+                "success": False,
+                "error": "INVALID_PRICE",
+                "message":
+                    "price_open and price_close must be finite positive "
+                    "prices for this symbol.",
+                "symbol": symbol,
+            }), 400
+
+        if price_open == price_close:
+            return jsonify({
+                "success": False,
+                "error": "INVALID_PRICE",
+                "message":
+                    "price_open and price_close must differ.",
+                "symbol": symbol,
+            }), 400
+
+        # The same gate the order paths use. A volume the broker would refuse for
+        # an order is refused here too, so a risk measurement can never be taken
+        # at a volume that cannot actually be traded, and the volume measured is
+        # the exact volume that would be submitted.
+        volume_gate = validate_requested_open_volume(
+            symbol,
+            volume,
+        )
+
+        if not volume_gate.get("ok"):
+            return jsonify({
+                "success": False,
+                "error": volume_gate["code"],
+                "message": volume_gate["message"],
+                "symbol": symbol,
+                "volume": float(volume),
+                "volume_min": volume_gate.get("volume_min"),
+                "volume_max": volume_gate.get("volume_max"),
+                "volume_step": volume_gate.get("volume_step"),
+            }), 400
+
+        trade_volume = volume_gate["volume"]
+
+        profit = mt5.order_calc_profit(
+            action,
+            symbol,
+            float(trade_volume),
+            float(price_open),
+            float(price_close),
+        )
+
+        if profit is None:
+            return jsonify({
+                "success": False,
+                "error": "BROKER_RISK_UNAVAILABLE",
+                "message":
+                    "The broker could not calculate this position's profit, "
+                    "so no monetary risk can be established for it.",
+                "symbol": symbol,
+                "volume": trade_volume,
+                "price_open": price_open,
+                "price_close": price_close,
+                "error_detail": mt5_error(),
+            }), 502
+
+        profit_value = float(profit)
+
+        if not math.isfinite(profit_value):
+            return jsonify({
+                "success": False,
+                "error": "BROKER_RISK_INVALID",
+                "message":
+                    "The broker returned a profit figure that is not a finite "
+                    "number, so it cannot be used for risk sizing.",
+                "symbol": symbol,
+                "volume": trade_volume,
+            }), 502
+
+        account = mt5.account_info()
+
+        account_currency = (
+            str(
+                getattr(
+                    account,
+                    "currency",
+                    ""
+                ) or ""
+            ).strip().upper()
+            if account is not None
+            else ""
+        )
+
+        if account_currency == "":
+            return jsonify({
+                "success": False,
+                "error": "ACCOUNT_CURRENCY_UNAVAILABLE",
+                "message":
+                    "The account currency could not be read, so the broker's "
+                    "profit figure cannot be attributed to a currency.",
+                "symbol": symbol,
+                "volume": trade_volume,
+                "profit": profit_value,
+            }), 502
+
+        if profit_value == 0.0:
+            return jsonify({
+                "success": False,
+                "error": "ZERO_RISK_RESPONSE",
+                "message":
+                    "The broker reports no monetary result for a non-zero "
+                    "price difference on this symbol, so its risk cannot be "
+                    "measured.",
+                "symbol": symbol,
+                "volume": trade_volume,
+                "price_open": price_open,
+                "price_close": price_close,
+                "profit": profit_value,
+                "account_currency": account_currency,
+            }), 422
+
+        return jsonify({
+            "success": True,
+            "connected": True,
+
+            "symbol": symbol,
+            "action": int(action),
+            "action_name": action_name,
+            "volume": trade_volume,
+            "price_open": price_open,
+            "price_close": price_close,
+
+            "profit": profit_value,
+            "loss_abs": abs(
+                profit_value
+            ),
+
+            "account_currency": account_currency,
+            "currency_source": "account_info().currency",
+            "calculation": "mt5.order_calc_profit",
+
+            "volume_min": volume_gate["volume_min"],
+            "volume_max": volume_gate["volume_max"],
+            "volume_step": volume_gate["volume_step"],
+
+            "recorded_at": int(
+                time.time() * 1000
+            ),
+        })
+
+    except Exception as error:
+        print(
+            "❌ MT5 CALC PROFIT ERROR:",
+            error
+        )
+
+        return jsonify({
+            "success": False,
+            "error": "CALC_PROFIT_ERROR",
+            "message":
+                "MT5 profit calculation error.",
+            "error_detail":
+                str(error),
+        }), 500
+
+
+# ==========================================================
+# CANDLES
+# GET /mt5/candles?symbol=EURUSD&timeframe=H1&count=100
+# ==========================================================
+
+@app.route(
+    "/mt5/candles",
+    methods=["GET"]
+)
+def mt5_candles():
+
+    try:
+
+        if not ensure_mt5_connection():
+            return jsonify({
+                "success": False,
+                "message": "MT5 is not connected."
+            }), 503
+
+        symbol = str(
+            request.args.get(
+                "symbol",
+                "EURUSD"
+            )
+        ).upper().strip()
+
+        timeframe_name = str(
+            request.args.get(
+                "timeframe",
+                "H1"
+            )
+        ).upper()
+
+        count = int(
+            request.args.get(
+                "count",
+                100
+            )
+        )
+
+        timeframe_map = {
+            "M1": mt5.TIMEFRAME_M1,
+            "M5": mt5.TIMEFRAME_M5,
+            "M15": mt5.TIMEFRAME_M15,
+            "M30": mt5.TIMEFRAME_M30,
+            "H1": mt5.TIMEFRAME_H1,
+            "H4": mt5.TIMEFRAME_H4,
+            "D1": mt5.TIMEFRAME_D1,
+        }
+
+        timeframe = timeframe_map.get(
+            timeframe_name,
+            mt5.TIMEFRAME_H1
+        )
+
+        ensure_symbol(symbol)
+
+        rates = mt5.copy_rates_from_pos(
+            symbol,
+            timeframe,
+            0,
+            count
+        )
+
+        if rates is None:
+            return jsonify({
+                "success": False,
+                "message": "Unable to fetch candles.",
+                "error": mt5_error()
+            }), 500
+
+        candles = []
+
+        for row in rates:
+
+            candles.append({
+                "time": int(row["time"]),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": int(row["tick_volume"])
+            })
+
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe_name,
+            "count": len(candles),
+            "candles": candles
+        })
+
+    except Exception as error:
+
+        return jsonify({
+            "success": False,
+            "message": str(error)
+        }), 500
 
 # ==========================================================
 # OPEN POSITIONS
@@ -1882,10 +2983,18 @@ def mt5_positions():
             ) or ""
         )
 
-        broker_time_msc = (
-            get_broker_time_msc(
+        broker_clock = (
+            get_broker_clock(
                 positions
             )
+        )
+
+        broker_time_msc = (
+            broker_clock["time_msc"]
+        )
+
+        broker_time_source = (
+            broker_clock["source"]
         )
 
         print(
@@ -1895,6 +3004,11 @@ def mt5_positions():
         print(
             "broker_time_msc:",
             broker_time_msc
+        )
+
+        print(
+            "broker_time_source:",
+            broker_time_source
         )
 
         print(
@@ -2147,7 +3261,10 @@ def mt5_positions():
                 result,
 
             "broker_time_msc":
-                broker_time_msc
+                broker_time_msc,
+
+            "broker_time_source":
+                broker_time_source
         })
 
     except Exception as error:
@@ -2298,21 +3415,28 @@ def mt5_order():
 
         # --------------------------------------------------
         # NORMALIZE VOLUME
+        #
+        # The requested volume is validated against the broker grid, never
+        # adjusted: an order whose volume the broker would move is refused
+        # instead of being sent with more risk than the trader sized.
         # --------------------------------------------------
 
-        normalized_volume = (
-            normalize_open_volume(
+        volume_validation = (
+            validate_requested_open_volume(
                 symbol,
                 lots
             )
         )
 
-        if normalized_volume is None:
-            return jsonify({
-                "success": False,
-                "message":
-                    "Unable to normalize volume."
-            }), 400
+        if not volume_validation.get("ok"):
+            return jsonify(
+                volume_error_payload(
+                    symbol,
+                    volume_validation
+                )
+            ), 400
+
+        normalized_volume = volume_validation["volume"]
 
         # --------------------------------------------------
         # PRICE
@@ -2925,19 +4049,27 @@ def create_pending_order():
 
         # --------------------------------------------------
         # VOLUME
+        #
+        # Validated against the broker grid and never adjusted, so a pending
+        # order cannot be placed at a larger volume than was requested.
         # --------------------------------------------------
 
-        volume = normalize_open_volume(
-            symbol,
-            lots
+        volume_validation = (
+            validate_requested_open_volume(
+                symbol,
+                lots
+            )
         )
 
-        if volume is None:
-            return jsonify({
-                "success": False,
-                "message":
-                    "Unable to normalize volume."
-            }), 400
+        if not volume_validation.get("ok"):
+            return jsonify(
+                volume_error_payload(
+                    symbol,
+                    volume_validation
+                )
+            ), 400
+
+        volume = volume_validation["volume"]
 
         # --------------------------------------------------
         # PRICE
@@ -4480,8 +5612,1037 @@ def modify_pending_order():
 
 # ==========================================================
 # HISTORY
-# GET /mt5/history?days=30
+# GET /mt5/history
+#
+# Reconciliation read contract:
+#   * the caller must state the MT5 login AND server it expects
+#   * the bridge never initializes, switches or reconnects here
+#   * verified empty, failed and incomplete are three different answers
+#   * every broker identifier is a string and every volume is decimal
 # ==========================================================
+
+HISTORY_MAX_PAGE_DAYS = 365
+
+HISTORY_MIN_UTC = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+HISTORY_MAX_UTC = datetime(2200, 1, 1, tzinfo=timezone.utc)
+
+HISTORY_DEAL_REQUIRED_FIELDS = (
+    "ticket",
+    "order",
+    "position_id",
+    "symbol",
+    "type",
+    "entry",
+    "volume",
+    "price",
+    "profit",
+    "commission",
+    "swap",
+    "fee",
+    "time",
+    "time_msc",
+    "comment",
+    "magic",
+)
+
+HISTORY_POSITION_REQUIRED_FIELDS = (
+    "ticket",
+    "identifier",
+    "symbol",
+    "type",
+    "volume",
+)
+
+# DEAL_TYPE_BUY / DEAL_TYPE_SELL: these open or close a position.
+HISTORY_TRADE_DEAL_TYPES = (
+    0,
+    1,
+)
+
+# DEAL_TYPE_BALANCE, DEAL_TYPE_CREDIT, DEAL_TYPE_CURRENCY_BUY and
+# DEAL_TYPE_CURRENCY_SELL: real broker records that carry no position.
+HISTORY_FINANCIAL_DEAL_TYPES = (
+    2,
+    3,
+    4,
+    5,
+)
+
+HISTORY_DEAL_TYPES = (
+    HISTORY_TRADE_DEAL_TYPES
+    + HISTORY_FINANCIAL_DEAL_TYPES
+)
+
+
+class HistoryQueryError(Exception):
+    """
+    A request the bridge must refuse before touching MT5.
+    """
+
+    def __init__(self, code, message):
+        super().__init__(message)
+
+        self.code = code
+        self.message = message
+
+
+class MalformedBrokerRecord(Exception):
+    """
+    A broker record the bridge cannot hand over exactly as reported.
+    """
+
+    pass
+
+
+class HistoryScanInterrupted(Exception):
+    """
+    A reconciliation page that must stop where it is.
+
+    Raised by the guarded reads: the scan's generation, identity, or a native
+    call made the page untrustworthy, so nothing is handed over.
+    """
+
+    def __init__(self, status, code, message):
+        super().__init__(message)
+
+        self.status = status
+        self.code = code
+        self.message = message
+
+
+def history_failure(status, code, message):
+    return jsonify(
+        {
+            "success": False,
+            "page_query_complete": False,
+            "history": None,
+            "positions": None,
+            "code": code,
+            "message": message,
+        }
+    ), status
+
+
+def parse_history_utc(value):
+    """
+    Parse an exact UTC timestamp.
+
+    Only 'YYYY-MM-DDTHH:MM:SSZ' (optionally to millisecond precision) is
+    accepted. Naive timestamps, offsets and sub-millisecond values are refused
+    rather than guessed: a wrong second silently drops deals.
+    """
+
+    if not isinstance(value, str):
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "Timestamps must be UTC ISO-8601 strings ending in Z"
+        )
+
+    text = value.strip()
+
+    if not text.endswith("Z"):
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            f"{value!r} is not a UTC timestamp ending in Z"
+        )
+
+    try:
+        parsed = datetime.fromisoformat(text[:-1])
+    except ValueError:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            f"{value!r} is not an ISO-8601 timestamp"
+        )
+
+    if parsed.tzinfo is not None:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            f"{value!r} must not carry a UTC offset"
+        )
+
+    if parsed.microsecond % 1000 != 0:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            f"{value!r} is more precise than one millisecond"
+        )
+
+    moment = parsed.replace(tzinfo=timezone.utc)
+
+    if not (HISTORY_MIN_UTC <= moment <= HISTORY_MAX_UTC):
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            f"{value!r} is outside the supported history range"
+        )
+
+    return moment
+
+
+def canonical_utc(moment):
+    return moment.isoformat().replace("+00:00", "Z")
+
+
+def parse_decimal_digits(value):
+    """
+    Parse an integer written with ASCII digits only, or return None.
+
+    str.isdigit() also accepts Arabic-Indic digits, which int() silently
+    converts into a different number, and superscripts, which make int() raise
+    straight out of the query parser and answer with an HTML 500 instead of the
+    JSON refusal contract.
+    """
+
+    if not isinstance(value, str) or not value:
+        return None
+
+    if any(character not in "0123456789" for character in value):
+        return None
+
+    try:
+        return int(value)
+
+    except ValueError:
+        # Only reachable past CPython's integer conversion limit.
+        return None
+
+
+def parse_history_login(value):
+    """
+    Digits only, leading zeros allowed, zero refused.
+
+    There is deliberately no fallback to accountId, a display name, or the
+    currently connected login: a request without an explicit login is never
+    answered.
+    """
+
+    if not isinstance(value, str):
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "expected_mt5_login is required"
+        )
+
+    number = parse_decimal_digits(value.strip())
+
+    if number is None:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "expected_mt5_login must be a positive MT5 login number"
+        )
+
+    if number <= 0:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "expected_mt5_login must be a positive MT5 login number"
+        )
+
+    return str(number)
+
+
+def parse_history_server(value):
+    if not isinstance(value, str):
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "expected_mt5_server is required"
+        )
+
+    text = value.strip().lower()
+
+    if not text:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "expected_mt5_server is required"
+        )
+
+    if any(ord(character) < 32 for character in text):
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "expected_mt5_server is not a valid server name"
+        )
+
+    return text
+
+
+def single_argument(args, name):
+    values = args.getlist(name)
+
+    if len(values) > 1:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            f"{name} must appear exactly once"
+        )
+
+    if not values:
+        return None
+
+    return values[0]
+
+
+def parse_history_query(args):
+    """
+    Validate the whole request without touching MT5.
+    """
+
+    login = parse_history_login(
+        single_argument(args, "expected_mt5_login")
+    )
+
+    server = parse_history_server(
+        single_argument(args, "expected_mt5_server")
+    )
+
+    date_from = parse_history_utc(
+        single_argument(args, "from_utc")
+    )
+
+    date_to = parse_history_utc(
+        single_argument(args, "to_utc")
+    )
+
+    if date_to <= date_from:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "to_utc must be after from_utc"
+        )
+
+    if date_to - date_from > timedelta(days=HISTORY_MAX_PAGE_DAYS):
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            f"A history page may not exceed {HISTORY_MAX_PAGE_DAYS} days"
+        )
+
+    scan_from = date_from
+    scan_to = date_to
+
+    raw_scan_from = single_argument(args, "scan_from_utc")
+    raw_scan_to = single_argument(args, "scan_to_utc")
+
+    if raw_scan_from is not None:
+        scan_from = parse_history_utc(raw_scan_from)
+
+    if raw_scan_to is not None:
+        scan_to = parse_history_utc(raw_scan_to)
+
+    if scan_to < scan_from:
+        raise HistoryQueryError(
+            "INVALID_HISTORY_QUERY",
+            "scan_to_utc must not be before scan_from_utc"
+        )
+
+    boot_id = single_argument(args, "bridge_boot_id")
+    raw_generation = single_argument(args, "connection_generation")
+
+    continuation = None
+
+    if boot_id is not None or raw_generation is not None:
+        if boot_id is None or raw_generation is None:
+            raise HistoryQueryError(
+                "INVALID_HISTORY_QUERY",
+                "bridge_boot_id and connection_generation "
+                "must be sent together"
+            )
+
+        generation = parse_decimal_digits(raw_generation)
+
+        if generation is None:
+            raise HistoryQueryError(
+                "INVALID_HISTORY_QUERY",
+                "connection_generation must be a non-negative integer"
+            )
+
+        continuation = (boot_id, generation)
+
+    return {
+        "login": login,
+        "server": server,
+        "from_utc": date_from,
+        "to_utc": date_to,
+        "scan_from_utc": scan_from,
+        "scan_to_utc": scan_to,
+        "continuation": continuation,
+    }
+
+
+def connected_mt5_identity():
+    """
+    Read the identity the terminal actually reports.
+
+    Returns ('ok', login, server) or a refusal reason. No connection is opened
+    and none is repaired here.
+    """
+
+    terminal = mt5.terminal_info()
+
+    account = mt5.account_info()
+
+    if terminal is None or account is None:
+        return ("MT5_NOT_CONNECTED", None, None)
+
+    login = getattr(account, "login", None)
+    server = getattr(account, "server", None)
+
+    login_text = str(login).strip() if login is not None else ""
+    server_text = str(server).strip() if server is not None else ""
+
+    login_number = parse_decimal_digits(login_text)
+
+    if login_number is None or login_number <= 0 or not server_text:
+        return ("MT5_IDENTITY_UNAVAILABLE", None, None)
+
+    return ("ok", str(login_number), server_text.lower())
+
+
+def history_decimal(value):
+    """
+    Exact decimal string; floats go through their shortest repr.
+    """
+
+    if isinstance(value, bool) or value is None:
+        raise MalformedBrokerRecord(
+            f"{value!r} is not a number"
+        )
+
+    if isinstance(value, Decimal):
+        number = value
+    elif isinstance(value, int):
+        number = Decimal(value)
+    elif isinstance(value, float):
+        if not math.isfinite(value):
+            raise MalformedBrokerRecord(
+                f"{value!r} is not a finite number"
+            )
+
+        number = Decimal(str(value))
+    else:
+        raise MalformedBrokerRecord(
+            f"{value!r} is not a number"
+        )
+
+    if not number.is_finite():
+        raise MalformedBrokerRecord(
+            f"{value!r} is not a finite number"
+        )
+
+    text = format(number.normalize(), "f")
+
+    if text == "-0":
+        text = "0"
+
+    return text
+
+
+def history_identifier(value, name):
+    """
+    Broker identifiers become strings: they can exceed JavaScript's safe
+    integer range, and a rounded ticket cannot be reconciled.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise MalformedBrokerRecord(
+            f"{name} must be an integer"
+        )
+
+    if value < 0:
+        raise MalformedBrokerRecord(
+            f"{name} must not be negative"
+        )
+
+    return str(value)
+
+
+def history_small_int(value, name, maximum=None):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise MalformedBrokerRecord(
+            f"{name} must be an integer"
+        )
+
+    if value < 0:
+        raise MalformedBrokerRecord(
+            f"{name} must not be negative"
+        )
+
+    if maximum is not None and value > maximum:
+        raise MalformedBrokerRecord(
+            f"{name} must not exceed {maximum}"
+        )
+
+    return value
+
+
+def positive_int(value, name):
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise MalformedBrokerRecord(
+            f"{name} must be a positive integer"
+        )
+
+    return value
+
+
+def json_safe(value, path):
+    """
+    Strict JSON-safety oracle.
+
+    Anything the bridge cannot hand over exactly (an arbitrary object, NaN, an
+    exotic type) fails the batch instead of being str()-coerced, because a
+    silently mangled field would corrupt reconciliation downstream.
+    """
+
+    if value is None or isinstance(value, bool):
+        return value
+
+    if isinstance(value, int):
+        return str(value)
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise MalformedBrokerRecord(
+                f"{path} is not a finite number"
+            )
+
+        return history_decimal(value)
+
+    if isinstance(value, Decimal):
+        return history_decimal(value)
+
+    if isinstance(value, str):
+        return value
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    if isinstance(value, dict):
+        return {
+            str(key): json_safe(item, f"{path}.{key}")
+            for key, item in value.items()
+        }
+
+    if isinstance(value, (list, tuple)):
+        return [
+            json_safe(item, f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+
+    raise MalformedBrokerRecord(
+        f"{path} has unsupported type {type(value).__name__}"
+    )
+
+
+def record_fields(record, error_label):
+    """
+    Return a field mapping for a broker record, or refuse.
+    """
+
+    if isinstance(record, dict):
+        return dict(record)
+
+    as_dict = getattr(record, "_asdict", None)
+
+    if not callable(as_dict):
+        raise MalformedBrokerRecord(
+            f"{error_label} has type {type(record).__name__}"
+        )
+
+    try:
+        fields = as_dict()
+    except Exception as error:
+        raise MalformedBrokerRecord(
+            f"{error_label} cannot be serialized: {error}"
+        )
+
+    if not isinstance(fields, dict):
+        raise MalformedBrokerRecord(
+            f"{error_label} _asdict() did not return a mapping"
+        )
+
+    return dict(fields)
+
+
+def require_fields(fields, required):
+    missing = [
+        name
+        for name in required
+        if name not in fields
+    ]
+
+    if missing:
+        raise MalformedBrokerRecord(
+            f"missing fields: {', '.join(missing)}"
+        )
+
+
+def validate_history_deal(fields, from_ms, to_ms):
+    """
+    Validate one deal exactly as the broker reported it.
+
+    Nothing is repaired: an unusable record fails the page, because a partial
+    scan can never prove that a position closed.
+    """
+
+    require_fields(
+        fields,
+        HISTORY_DEAL_REQUIRED_FIELDS
+    )
+
+    deal_type = history_small_int(
+        fields["type"],
+        "type"
+    )
+
+    if deal_type not in HISTORY_DEAL_TYPES:
+        raise MalformedBrokerRecord(
+            f"unsupported deal type {deal_type}"
+        )
+
+    entry = history_small_int(
+        fields["entry"],
+        "entry",
+        maximum=3
+    )
+
+    ticket = history_identifier(fields["ticket"], "ticket")
+
+    if ticket == "0":
+        raise MalformedBrokerRecord(
+            "deal ticket must not be zero"
+        )
+
+    order = history_identifier(fields["order"], "order")
+
+    position_id = history_identifier(
+        fields["position_id"],
+        "position_id"
+    )
+
+    symbol = fields["symbol"]
+
+    if not isinstance(symbol, str):
+        raise MalformedBrokerRecord(
+            "symbol must be a string"
+        )
+
+    volume = history_decimal(fields["volume"])
+
+    price = history_decimal(fields["price"])
+
+    profit = history_decimal(fields["profit"])
+
+    commission = history_decimal(fields["commission"])
+
+    swap = history_decimal(fields["swap"])
+
+    fee = history_decimal(fields["fee"])
+
+    if float(volume) < 0:
+        raise MalformedBrokerRecord(
+            "volume must not be negative"
+        )
+
+    if float(price) < 0:
+        raise MalformedBrokerRecord(
+            "price must not be negative"
+        )
+
+    # A financial deal is handed over as evidence exactly as reported: it has
+    # no position, no volume and no symbol, so the trade rules must not judge
+    # it, and downstream must not read it as a closed position.
+    if deal_type in HISTORY_TRADE_DEAL_TYPES:
+        if position_id == "0":
+            raise MalformedBrokerRecord(
+                "a trade deal must reference a position"
+            )
+
+        if float(volume) <= 0:
+            raise MalformedBrokerRecord(
+                "a trade deal must have a positive volume"
+            )
+
+        if not symbol:
+            raise MalformedBrokerRecord(
+                "a trade deal must have a symbol"
+            )
+
+    moment = history_small_int(fields["time"], "time")
+
+    time_msc = history_small_int(fields["time_msc"], "time_msc")
+
+    if time_msc // 1000 != moment:
+        raise MalformedBrokerRecord(
+            "time and time_msc disagree"
+        )
+
+    if not (from_ms <= time_msc <= to_ms):
+        raise MalformedBrokerRecord(
+            "deal is outside the requested page"
+        )
+
+    comment = fields["comment"]
+
+    if not isinstance(comment, str):
+        raise MalformedBrokerRecord(
+            "comment must be a string"
+        )
+
+    magic = history_small_int(fields["magic"], "magic")
+
+    raw = json_safe(fields, "deal")
+
+    return {
+        "ticket": ticket,
+        "order": order,
+        "position_id": position_id,
+        "symbol": symbol,
+        "type": deal_type,
+        "entry": entry,
+        "volume": volume,
+        "price": price,
+        "profit": profit,
+        "commission": commission,
+        "swap": swap,
+        "fee": fee,
+        "time": moment,
+        "time_msc": time_msc,
+        "comment": comment,
+        "magic": magic,
+        "raw": raw,
+    }
+
+
+def validate_live_position(fields):
+    """
+    A live position is reported as-is, with its stable identifier kept apart
+    from the execution ticket.
+    """
+
+    require_fields(
+        fields,
+        HISTORY_POSITION_REQUIRED_FIELDS
+    )
+
+    ticket = positive_int(fields["ticket"], "position ticket")
+
+    identifier = positive_int(
+        fields["identifier"],
+        "position identifier"
+    )
+
+    symbol = fields["symbol"]
+
+    if not isinstance(symbol, str) or not symbol:
+        raise MalformedBrokerRecord(
+            "position symbol must be a non-empty string"
+        )
+
+    deal_type = history_small_int(
+        fields["type"],
+        "position type"
+    )
+
+    volume = history_decimal(fields["volume"])
+
+    if float(volume) <= 0:
+        raise MalformedBrokerRecord(
+            "position volume must be positive"
+        )
+
+    return {
+        "ticket": str(ticket),
+        "position_id": str(identifier),
+        "identifier": str(identifier),
+        "symbol": symbol,
+        "type": deal_type,
+        "volume": volume,
+        "raw": json_safe(fields, "position"),
+    }
+
+
+def collect_history_page(deals, from_utc, to_utc):
+    """
+    Validate and serialize the whole page, or refuse it.
+
+    Identical duplicates are preserved, conflicting duplicates are refused: a
+    broker that reports the same ticket twice with different contents cannot
+    tell us which P&L was real.
+    """
+
+    if deals is None:
+        return None
+
+    if not isinstance(deals, (list, tuple)):
+        raise MalformedBrokerRecord(
+            f"history is {type(deals).__name__}, not a collection"
+        )
+
+    from_ms = int(from_utc.timestamp()) * 1000
+    to_ms = int(to_utc.timestamp()) * 1000
+
+    history = []
+    signatures = {}
+
+    for index, deal in enumerate(deals):
+        try:
+            row = validate_history_deal(
+                record_fields(deal, f"deal {index}"),
+                from_ms,
+                to_ms
+            )
+        except MalformedBrokerRecord as error:
+            raise MalformedBrokerRecord(
+                f"deal {index}: {error}"
+            )
+
+        signature = json.dumps(
+            row["raw"],
+            sort_keys=True,
+            separators=(",", ":")
+        )
+
+        previous = signatures.get(row["ticket"])
+
+        if previous is not None and previous != signature:
+            raise MalformedBrokerRecord(
+                f"deal ticket {row['ticket']} appears twice with "
+                "different contents"
+            )
+
+        signatures[row["ticket"]] = signature
+
+        history.append(row)
+
+    return history
+
+
+def collect_live_positions(positions):
+    if positions is None:
+        return None
+
+    if not isinstance(positions, (list, tuple)):
+        raise MalformedBrokerRecord(
+            f"positions is {type(positions).__name__}, not a collection"
+        )
+
+    rows = []
+    identifiers = {}
+
+    for index, position in enumerate(positions):
+        try:
+            row = validate_live_position(
+                record_fields(position, f"position {index}")
+            )
+        except MalformedBrokerRecord as error:
+            raise MalformedBrokerRecord(
+                f"position {index}: {error}"
+            )
+
+        previous = identifiers.get(row["identifier"])
+
+        if previous is not None and previous != row["ticket"]:
+            raise MalformedBrokerRecord(
+                f"position identifier {row['identifier']} maps to more "
+                "than one ticket"
+            )
+
+        identifiers[row["identifier"]] = row["ticket"]
+
+        rows.append(row)
+
+    return rows
+
+
+def history_hold(query, generation, stage):
+    """
+    Re-verify a scan's right to continue, with MT5_CONNECTION_LOCK held.
+
+    The generation is checked before the identity: a connection mutation that
+    lands between two guarded reads must strand the page as
+    MT5_CONNECTION_CHANGED, not be reported as an identity problem. On the
+    first hold generation is None, so the scan adopts the live counter and
+    validates any continuation token against it.
+
+    Returns (generation, login, server).
+    """
+
+    if generation is None:
+        generation = CONNECTION_GENERATION
+
+        continuation = query["continuation"]
+
+        if continuation is not None and (
+            continuation[0] != BRIDGE_BOOT_ID
+            or continuation[1] != generation
+        ):
+            raise HistoryScanInterrupted(
+                409,
+                "MT5_CONNECTION_CHANGED",
+                "The MT5 connection changed since this scan started."
+            )
+
+    elif CONNECTION_GENERATION != generation:
+        raise HistoryScanInterrupted(
+            409,
+            "MT5_CONNECTION_CHANGED",
+            f"The MT5 connection changed during the {stage} read."
+        )
+
+    state, login, server = connected_mt5_identity()
+
+    if state != "ok":
+        raise HistoryScanInterrupted(
+            503,
+            state,
+            "MT5 has no confirmed connected identity."
+            if state == "MT5_IDENTITY_UNAVAILABLE"
+            else "MT5 is not connected."
+        )
+
+    if login != query["login"] or server != query["server"]:
+        raise HistoryScanInterrupted(
+            409,
+            "MT5_IDENTITY_MISMATCH",
+            f"The connected MT5 account is not the requested one ({stage})."
+        )
+
+    return generation, login, server
+
+
+def guarded_mt5_read(
+    query,
+    generation,
+    stage,
+    read,
+    failure_code,
+    failure_message,
+):
+    """
+    Run one native MT5 call while the connection lock is held.
+
+    Nothing else stays in the critical section. Validating and serializing a
+    full page happens outside the lock, so a long reconciliation can no longer
+    make every other MT5 endpoint wait for it, and no native call is ever
+    reached without the lock. Each hold checks the generation and identity
+    before and after the call, which is what allows a mutation to run in the
+    gap between reads without the page mixing two accounts together.
+
+    Returns (value, generation, login, server).
+    """
+
+    with MT5_CONNECTION_LOCK:
+        generation, login, server = history_hold(
+            query,
+            generation,
+            stage
+        )
+
+        try:
+            value = read()
+
+        except Exception as error:
+            raise HistoryScanInterrupted(
+                503,
+                failure_code,
+                f"{failure_message}: {error}"
+            )
+
+        generation, login, server = history_hold(
+            query,
+            generation,
+            stage
+        )
+
+    return value, generation, login, server
+
+
+def run_history_scan(query):
+    """
+    Collect one verified history page, or refuse it.
+    """
+
+    deals, generation, _, _ = guarded_mt5_read(
+        query=query,
+        generation=None,
+        stage="history",
+        read=lambda: mt5.history_deals_get(
+            query["from_utc"],
+            query["to_utc"]
+        ),
+        failure_code="MT5_HISTORY_READ_FAILED",
+        failure_message="MT5 history read failed",
+    )
+
+    try:
+        history = collect_history_page(
+            deals,
+            query["from_utc"],
+            query["to_utc"]
+        )
+
+    except MalformedBrokerRecord as error:
+        raise HistoryScanInterrupted(
+            502,
+            "MALFORMED_HISTORY",
+            f"MT5 returned an unusable history page: {error}"
+        )
+
+    if history is None:
+        raise HistoryScanInterrupted(
+            503,
+            "MT5_HISTORY_READ_FAILED",
+            "MT5 returned no history page."
+        )
+
+    positions, generation, login, server = guarded_mt5_read(
+        query=query,
+        generation=generation,
+        stage="positions",
+        read=mt5.positions_get,
+        failure_code="MT5_POSITIONS_READ_FAILED",
+        failure_message="MT5 positions read failed",
+    )
+
+    try:
+        live_positions = collect_live_positions(positions)
+
+    except MalformedBrokerRecord as error:
+        raise HistoryScanInterrupted(
+            502,
+            "MALFORMED_POSITIONS",
+            f"MT5 returned unusable open positions: {error}"
+        )
+
+    if live_positions is None:
+        raise HistoryScanInterrupted(
+            503,
+            "MT5_POSITIONS_READ_FAILED",
+            "MT5 returned no position list."
+        )
+
+    return {
+        "success": True,
+        "page_query_complete": True,
+        "source_scan_complete": False,
+        "identity": {
+            "mt5Login": login,
+            "mt5Server": server,
+        },
+        "utc_range": {
+            "from_utc": canonical_utc(query["from_utc"]),
+            "to_utc": canonical_utc(query["to_utc"]),
+        },
+        "scan_range": {
+            "from_utc": canonical_utc(query["scan_from_utc"]),
+            "to_utc": canonical_utc(query["scan_to_utc"]),
+        },
+        "coverage": {
+            "boundaries": "inclusive",
+            "returned_deal_count": len(deals),
+            "serialized_deal_count": len(history),
+        },
+        "retention_verified": False,
+        "bridge_boot_id": BRIDGE_BOOT_ID,
+        "connection_generation": generation,
+        "count": len(history),
+        "history": history,
+        "positions": live_positions,
+    }
+
 
 @app.route(
     "/mt5/history",
@@ -4490,235 +6651,28 @@ def modify_pending_order():
 def mt5_history():
 
     try:
+        query = parse_history_query(request.args)
 
-        if not ensure_mt5_connection():
-            return jsonify({
-                "success": False,
-                "history": [],
-                "message":
-                    "MT5 is not connected."
-            }), 503
+        return jsonify(run_history_scan(query))
 
-        days = int(
-            request.args.get(
-                "days",
-                30
-            )
+    except HistoryQueryError as error:
+        return history_failure(400, error.code, error.message)
+
+    except HistoryScanInterrupted as error:
+        return history_failure(
+            error.status,
+            error.code,
+            error.message
         )
-
-        if days <= 0:
-            days = 30
-
-        if days > 3650:
-            days = 3650
-
-        date_to = datetime.now()
-
-        date_from = (
-            date_to -
-            timedelta(days=days)
-        )
-
-        deals = mt5.history_deals_get(
-            date_from,
-            date_to
-        )
-
-        if deals is None:
-            deals = []
-
-        history = []
-
-        for deal in deals:
-
-            try:
-
-                raw = serialize_value(
-                    deal
-                )
-
-                deal_data = {
-                    "ticket":
-                        int(
-                            getattr(
-                                deal,
-                                "ticket",
-                                0
-                            ) or 0
-                        ),
-
-                    "order":
-                        int(
-                            getattr(
-                                deal,
-                                "order",
-                                0
-                            ) or 0
-                        ),
-
-                    "position_id":
-                        int(
-                            getattr(
-                                deal,
-                                "position_id",
-                                0
-                            ) or 0
-                        ),
-
-                    "symbol":
-                        str(
-                            getattr(
-                                deal,
-                                "symbol",
-                                ""
-                            ) or ""
-                        ).upper(),
-
-                    "type":
-                        int(
-                            getattr(
-                                deal,
-                                "type",
-                                0
-                            ) or 0
-                        ),
-
-                    "entry":
-                        int(
-                            getattr(
-                                deal,
-                                "entry",
-                                0
-                            ) or 0
-                        ),
-
-                    "volume":
-                        float(
-                            getattr(
-                                deal,
-                                "volume",
-                                0
-                            ) or 0
-                        ),
-
-                    "price":
-                        float(
-                            getattr(
-                                deal,
-                                "price",
-                                0
-                            ) or 0
-                        ),
-
-                    "profit":
-                        float(
-                            getattr(
-                                deal,
-                                "profit",
-                                0
-                            ) or 0
-                        ),
-
-                    "commission":
-                        float(
-                            getattr(
-                                deal,
-                                "commission",
-                                0
-                            ) or 0
-                        ),
-
-                    "swap":
-                        float(
-                            getattr(
-                                deal,
-                                "swap",
-                                0
-                            ) or 0
-                        ),
-
-                    "fee":
-                        float(
-                            getattr(
-                                deal,
-                                "fee",
-                                0
-                            ) or 0
-                        ),
-
-                    "time":
-                        getattr(
-                            deal,
-                            "time",
-                            None
-                        ),
-
-                    "time_msc":
-                        getattr(
-                            deal,
-                            "time_msc",
-                            None
-                        ),
-
-                    "comment":
-                        str(
-                            getattr(
-                                deal,
-                                "comment",
-                                ""
-                            ) or ""
-                        ),
-
-                    "magic":
-                        int(
-                            getattr(
-                                deal,
-                                "magic",
-                                0
-                            ) or 0
-                        ),
-
-                    "raw":
-                        raw
-                }
-
-                history.append(
-                    deal_data
-                )
-
-            except Exception as error:
-                print(
-                    "⚠️ HISTORY ITEM ERROR:",
-                    error
-                )
-
-        return jsonify({
-            "success": True,
-            "count":
-                len(history),
-            "days":
-                days,
-            "history":
-                history
-        })
 
     except Exception as error:
-
-        print(
-            "❌ MT5 HISTORY ERROR:",
-            error
-        )
-
         traceback.print_exc()
 
-        return jsonify({
-            "success": False,
-            "history": [],
-            "message":
-                "Failed to fetch MT5 history.",
-            "error":
-                str(error)
-        }), 500
+        return history_failure(
+            500,
+            "MT5_HISTORY_READ_FAILED",
+            f"Unexpected MT5 history error: {error}"
+        )
 
 
 # ==========================================================
@@ -5676,36 +7630,40 @@ def mt5_disconnect():
 
     global MT5_CONNECTED
 
-    try:
+    with MT5_CONNECTION_LOCK:
 
-        if MT5_CONNECTED:
-            mt5.shutdown()
+        try:
 
-        MT5_CONNECTED = False
+            if MT5_CONNECTED:
+                _mt5_connection_mutation(
+                    mt5.shutdown
+                )
 
-        print(
-            "🔌 MT5 DISCONNECTED"
-        )
+            MT5_CONNECTED = False
 
-        return jsonify({
-            "success": True,
-            "connected": False,
-            "message":
-                "MT5 disconnected."
-        })
+            print(
+                "🔌 MT5 DISCONNECTED"
+            )
 
-    except Exception as error:
+            return jsonify({
+                "success": True,
+                "connected": False,
+                "message":
+                    "MT5 disconnected."
+            })
 
-        MT5_CONNECTED = False
+        except Exception as error:
 
-        return jsonify({
-            "success": False,
-            "connected": False,
-            "message":
-                "MT5 disconnect error.",
-            "error":
-                str(error)
-        }), 500
+            MT5_CONNECTED = False
+
+            return jsonify({
+                "success": False,
+                "connected": False,
+                "message":
+                    "MT5 disconnect error.",
+                "error":
+                    str(error)
+            }), 500
 
 
 # ==========================================================

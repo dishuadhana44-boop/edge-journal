@@ -14,6 +14,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import logo from "../assets/logo.png";
+import GoogleLoginButton from "../components/GoogleLoginButton";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -184,6 +185,35 @@ function LoginPage() {
     setSuccess("");
     setPassword("");
     setConfirmPassword("");
+  };
+
+  const handleGoogleSuccess = (profile) => {
+    setError("");
+
+    const session = {
+      id: `google-${profile.sub}`,
+      name:
+        profile.name ||
+        profile.given_name ||
+        profile.email.split("@")[0],
+      email: profile.email.toLowerCase(),
+      loggedInAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(
+      "edgeflo_current_user",
+      JSON.stringify(session)
+    );
+
+    setSuccess("Login successful. Redirecting...");
+
+    setTimeout(() => {
+      navigate("/dashboard", { replace: true });
+    }, 500);
+  };
+
+  const handleGoogleError = (message) => {
+    setError(message);
   };
 
   return (
@@ -479,6 +509,19 @@ function LoginPage() {
                 )}
               </button>
             </form>
+
+            {/* OR DIVIDER */}
+            <div className="flex items-center gap-4 my-6">
+              <div className="h-px flex-1 bg-white/10" />
+              <span className="text-xs text-gray-600">OR</span>
+              <div className="h-px flex-1 bg-white/10" />
+            </div>
+
+            {/* GOOGLE SIGN-IN */}
+            <GoogleLoginButton
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+            />
 
             <div className="flex items-center gap-4 my-7">
               <div className="h-px flex-1 bg-white/10" />

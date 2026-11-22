@@ -1,124 +1,79 @@
+import PositionsTableShell from "./PositionsTableShell";
 import ClosedPositionRow from "../rows/ClosedPositionRow";
+import ExpandedDetailsRow from "../rows/ExpandedDetailsRow";
 
-import { useTrade } from "../../../../context/TradeContext";
+// ============================================================
+// CLOSED POSITIONS TABLE
+// Presentational wrapper around the shared shell. Details are
+// shown by expanding a row — closed trades have no actions.
+// ============================================================
 
-export default function ClosedPositionsTable({ demo = false }) {
+export default function ClosedPositionsTable({
+  columns = [],
+  visibleKeys = new Set(),
+  sort = null,
+  onSortChange,
+  rows = [],
+  totalRows = 0,
+  loading = false,
+  error = null,
+  onRetry,
+  hasActiveFilters = false,
+  onClearFilters,
+  expandedKeys = new Set(),
+  onToggleExpand,
+  currency = "USD",
+}) {
+  const columnCount = columns.filter((column) =>
+    visibleKeys.has(column.key)
+  ).length;
 
-  // ==========================================================
-  // GET REAL CLOSED POSITIONS FROM TRADE CONTEXT
-  // ==========================================================
+  const renderRow = (row) => {
+    const expanded = expandedKeys.has(row.key);
 
-  const { closedTrades = [] } = useTrade();
+    const nodes = [
+      <ClosedPositionRow
+        key={row.key}
+        row={row}
+        columns={columns}
+        visibleKeys={visibleKeys}
+        expanded={expanded}
+        onToggleExpand={onToggleExpand}
+        currency={currency}
+      />,
+    ];
 
-  // Debug
-  console.log("📕 CLOSED POSITIONS TABLE:", closedTrades);
+    if (expanded) {
+      nodes.push(
+        <ExpandedDetailsRow
+          key={`${row.key}-details`}
+          row={row}
+          tab="closed"
+          columnCount={columnCount}
+          currency={currency}
+        />
+      );
+    }
+
+    return nodes;
+  };
 
   return (
-
-    <div className="h-[340px] overflow-y-auto overflow-x-hidden">
-
-      <table className="w-full min-w-[1100px] text-sm">
-
-        {/* ==================================================
-            TABLE HEADER
-        ================================================== */}
-
-        <thead className="bg-gray-50 border-b border-gray-200">
-
-          <tr>
-
-            <th className="w-[110px] px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Instrument
-            </th>
-
-            <th className="w-[80px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Side
-            </th>
-
-            <th className="w-[80px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Lots
-            </th>
-
-            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Entry
-            </th>
-
-            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Exit
-            </th>
-
-            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Take Profit
-            </th>
-
-            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Stop Loss
-            </th>
-
-            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              P/L
-            </th>
-
-            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Commission
-            </th>
-
-            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Duration
-            </th>
-
-            <th className="w-[100px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Actions
-            </th>
-
-          </tr>
-
-        </thead>
-
-        {/* ==================================================
-            TABLE BODY
-        ================================================== */}
-
-        <tbody className="bg-white">
-
-          {closedTrades.length > 0 ? (
-
-            closedTrades.map((trade, index) => (
-
-              <ClosedPositionRow
-                key={
-                  trade.positionId ??
-                  trade.brokerPositionId ??
-                  trade.ticket ??
-                  trade.id ??
-                  index
-                }
-                trade={trade}
-                demo={demo}
-              />
-
-            ))
-
-          ) : (
-
-            <tr>
-
-              <td
-                colSpan={11}
-                className="py-12 text-center text-gray-500"
-              >
-                No closed positions
-              </td>
-
-            </tr>
-
-          )}
-
-        </tbody>
-
-      </table>
-
-    </div>
-
+    <PositionsTableShell
+      columns={columns}
+      visibleKeys={visibleKeys}
+      sort={sort}
+      onSortChange={onSortChange}
+      rows={rows}
+      totalRows={totalRows}
+      loading={loading}
+      error={error}
+      onRetry={onRetry}
+      hasActiveFilters={hasActiveFilters}
+      onClearFilters={onClearFilters}
+      renderRow={renderRow}
+      emptyLabel="No closed positions"
+      emptyHint="Closed trades appear here once they are settled by the broker."
+    />
   );
 }

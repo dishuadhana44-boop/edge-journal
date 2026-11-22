@@ -33,8 +33,10 @@ export default function QuickOrderPanel({ setQuickOrderOpen }) {
           setQuickOrderOpen={setQuickOrderOpen}
         />
   
-        <div className="p-3 space-y-4">
-          <QuickTradeGrid />
+        <div className="p-3">
+          <QuickTradeGrid
+            onExecuted={() => setQuickOrderOpen?.(false)}
+          />
         </div>
   
       </motion.div>

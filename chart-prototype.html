@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>EdgeFinder — SL/TP drag prototype (synthetic data)</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #05060a;
+        color: #a1a1aa;
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      #prototype-shell {
+        position: fixed;
+        inset: 0;
+        padding: 12px;
+        box-sizing: border-box;
+        display: flex;
+      }
+
+      #prototype-root {
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="prototype-shell">
+      <div id="prototype-root"></div>
+    </div>
+    <script
+      type="module"
+      src="/src/components/trading/chart/prototype/prototypeEntry.jsx"
+    ></script>
+  </body>
+</html>

@@ -1,11 +1,13 @@
 import DisciplineBreakdown from "./DisciplineBreakdown";
 
-function DisciplineCard({ trades = [] }) {
-  console.log("DisciplineCard trades:", trades);
-
+function DisciplineCard({ trades = [], startDate, endDate }) {
   return (
     <div className="h-full">
-      <DisciplineBreakdown trades={trades} />
+      <DisciplineBreakdown
+        trades={trades}
+        startDate={startDate}
+        endDate={endDate}
+      />
     </div>
   );
 }

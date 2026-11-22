@@ -1,12 +1,28 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
 } from "react";
 
+import {
+  PRICE_SOURCE_CTRADER,
+  PRICE_SOURCE_MT5,
+  canApplyPrice,
+  normalizePriceSource,
+  shouldPollMt5Price,
+} from "../lib/marketPriceSource";
+
 const MarketContext = createContext(null);
+
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:4000";
+
+const WS_URL =
+  API_URL.replace(/^http/, "ws") + "/ws";
 
 export function MarketProvider({ children }) {
   // ==========================================================
@@ -24,10 +40,81 @@ export function MarketProvider({ children }) {
   const [spread, setSpread] = useState(null);
 
   // ==========================================================
+  // WHO MAY WRITE THESE PRICES
+  // ==========================================================
+  //
+  // Two producers have always written this one bid/ask pair: the cTrader frame
+  // pushed over the socket (the price branch of ws.onmessage) and the MT5 quote
+  // polled once a second (the MT5 live price polling effect). They knew nothing
+  // about each other, so an IC Markets account was repriced by the MT5 demo
+  // bridge every second.
+  //
+  // The account the user selected declares which of the two may write, and this
+  // provider refuses the other. TradeContext makes the declaration because
+  // JournalContext owns the selection; the provider never infers an account and
+  // never chooses a source for itself.
+  //
+  // null means nothing has been declared, which is deliberately today's
+  // behaviour: an unreadable selection must not switch a working feed off.
+  // Handlers read the ref, not the state, because several messages can arrive
+  // inside one React batch and a closure would still describe the previous
+  // declaration - the same reason cTraderAccountIdRef exists.
+
+  const [priceSource, setPriceSourceState] =
+    useState(null);
+
+  const priceSourceRef = useRef(null);
+
+  // Stable on purpose: the only things it closes over are a ref and the state
+  // setter, so the account-selection effect can list it as a dependency without
+  // re-declaring the source on every render.
+  const setPriceSource = useCallback(
+    (rawSource) => {
+      const source =
+        normalizePriceSource(rawSource);
+
+      priceSourceRef.current = source;
+      setPriceSourceState(source);
+    },
+    []
+  );
+
+  // ==========================================================
   // POSITIONS
   // ==========================================================
 
   const [positions, setPositions] = useState([]);
+  const [cTraderAccountId, setCTraderAccountId] = useState(null);
+
+  // ==========================================================
+  // ONE ACCOUNT OWNS THE EXPOSED POSITIONS CACHE
+  // ==========================================================
+  //
+  // Every pushed cTrader event carries the account it was read from, and only
+  // that account's rows may be exposed. The ref is updated synchronously
+  // because several events can arrive inside one React batch, and a state value
+  // read from a closure would still describe the previous account.
+  //
+  // A transition to a different account, or to no account at all, empties the
+  // cache before the caller applies the new event. An event that repeats the
+  // current account keeps its cache, so a position update is not lost.
+
+  const cTraderAccountIdRef = useRef(null);
+
+  function acceptPositionEventAccount(rawAccountId) {
+    const accountId = getString(rawAccountId) || null;
+
+    const previousAccountId = cTraderAccountIdRef.current;
+
+    cTraderAccountIdRef.current = accountId;
+    setCTraderAccountId(accountId);
+
+    if (!accountId || previousAccountId !== accountId) {
+      setPositions([]);
+    }
+
+    return accountId;
+  }
 
   // ==========================================================
   // LAST EXECUTION
@@ -854,6 +941,22 @@ export function MarketProvider({ children }) {
     };
   }
 
+  function replacePositions(rawPositions) {
+    if (!Array.isArray(rawPositions)) {
+      setPositions([]);
+      return;
+    }
+
+    const normalizedPositions = rawPositions
+      .map((position) => normalizePosition(position))
+      .filter(
+        (position) =>
+          position && !isPositionClosed(position)
+      );
+
+    setPositions(normalizedPositions);
+  }
+
   // ==========================================================
   // HANDLE EXECUTION
   // ==========================================================
@@ -869,7 +972,19 @@ export function MarketProvider({ children }) {
       webSocketMessage?.execution ||
       webSocketMessage;
 
-    setLastExecution(execution);
+    const accountId =
+      acceptPositionEventAccount(
+        webSocketMessage?.accountId
+      );
+
+    if (!accountId) {
+      return;
+    }
+
+    setLastExecution({
+      ...execution,
+      accountId,
+    });
 
     const executionType =
       String(
@@ -920,7 +1035,19 @@ export function MarketProvider({ children }) {
   // HANDLE PRICE
   // ==========================================================
 
-  function handlePrice(data) {
+  function handlePrice(data, source) {
+    // The source gate runs before anything is read off the frame: a quote from
+    // the feed the selection did not choose may not move bid, ask, spread, the
+    // connection flag or the cached P&L.
+    if (
+      !canApplyPrice(
+        priceSourceRef.current,
+        source
+      )
+    ) {
+      return;
+    }
+
     const receivedSymbol =
       normalizeSymbol(data.symbol);
 
@@ -1033,9 +1160,7 @@ export function MarketProvider({ children }) {
         "🔌 Connecting to EdgeFlo WebSocket..."
       );
 
-      ws = new WebSocket(
-        "ws://localhost:4000/ws"
-      );
+      ws = new WebSocket(WS_URL);
 
       wsRef.current = ws;
 
@@ -1081,7 +1206,27 @@ export function MarketProvider({ children }) {
           if (
             data.type === "price"
           ) {
-            handlePrice(data);
+            handlePrice(
+              data,
+              PRICE_SOURCE_CTRADER
+            );
+            return;
+          }
+
+          // POSITION SNAPSHOT
+          if (data.type === "positions_update") {
+            const accountId =
+              acceptPositionEventAccount(data.accountId);
+
+            if (!accountId) {
+              return;
+            }
+
+            const snapshot = Array.isArray(data.positions)
+              ? data.positions
+              : data.data?.positions;
+
+            replacePositions(snapshot);
             return;
           }
 
@@ -1091,6 +1236,13 @@ export function MarketProvider({ children }) {
             data.type === "positionUpdate" ||
             data.type === "position_update"
           ) {
+            // Only the event's own account identity may decide whose cache this
+            // is. The previously authenticated account, and the account carried
+            // by an earlier execution, are both other accounts' data here.
+            if (!acceptPositionEventAccount(data.accountId)) {
+              return;
+            }
+
             const position =
               data.position ||
               data.data?.position ||
@@ -1118,6 +1270,10 @@ export function MarketProvider({ children }) {
             data.type === "positionClosed" ||
             data.type === "position_closed"
           ) {
+            if (!acceptPositionEventAccount(data.accountId)) {
+              return;
+            }
+
             removePosition(
               data.positionId ||
                 data.data?.positionId ||
@@ -1216,10 +1372,21 @@ export function MarketProvider({ children }) {
   //
   // Python:
   // GET /mt5/price?symbol=EURUSD
+  //
+  // This is one of the two writers of bid/ask, so it asks before starting:
+  // while a cTrader account holds the declaration the poll is not merely
+  // ignored, it is never issued. priceSource is a dependency because the
+  // declaration, not the symbol, is what starts and stops it.
   // ==========================================================
 
   useEffect(() => {
     if (!symbol) return;
+
+    if (
+      !shouldPollMt5Price(priceSourceRef.current)
+    ) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -1227,7 +1394,7 @@ export function MarketProvider({ children }) {
       try {
         const response =
           await fetch(
-            `http://localhost:4000/api/mt5/price?symbol=${encodeURIComponent(
+            `${API_URL}/api/mt5/price?symbol=${encodeURIComponent(
               symbol
             )}`
           );
@@ -1259,18 +1426,21 @@ export function MarketProvider({ children }) {
             }
           );
 
-          handlePrice({
-            symbol:
-              data.symbol ||
-              symbol,
+          handlePrice(
+            {
+              symbol:
+                data.symbol ||
+                symbol,
 
-            bid: Number(data.bid),
-            ask: Number(data.ask),
+              bid: Number(data.bid),
+              ask: Number(data.ask),
 
-            timestamp:
-              data.timestamp ||
-              Date.now(),
-          });
+              timestamp:
+                data.timestamp ||
+                Date.now(),
+            },
+            PRICE_SOURCE_MT5
+          );
         }
       } catch (error) {
         if (!cancelled) {
@@ -1296,7 +1466,7 @@ export function MarketProvider({ children }) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [symbol]);
+  }, [symbol, priceSource]);
 
   // ==========================================================
   // SYMBOL CHANGE
@@ -1354,9 +1524,14 @@ export function MarketProvider({ children }) {
     ask,
     spread,
 
+    // PRICE SOURCE
+    priceSource,
+    setPriceSource,
+
     // POSITIONS
     positions,
     setPositions,
+    cTraderAccountId,
 
     // EXECUTION
     lastExecution,

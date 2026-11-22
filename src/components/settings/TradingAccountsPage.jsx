@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 import { Pencil, RefreshCw, Link2 } from "lucide-react";
 
@@ -11,6 +11,17 @@ import AddTradingAccountModal from "./AddTradingAccountModal";
 import MT5ConnectionModal from "./MT5ConnectionModal";
 
 import { useJournal } from "../../context/JournalContext";
+
+import {
+  BACKEND_URL_NOT_CONFIGURED_MESSAGE,
+  ctraderConnectUrl,
+} from "../../services/brokerApi";
+
+import {
+  findAccountIndex,
+  makeAccountIdentity,
+  migrateTradingAccounts,
+} from "../../lib/brokerAccountIdentity.js";
 
 // ============================================================
 // HELPERS
@@ -73,8 +84,11 @@ function normalizeConnectionStatus(value) {
     return "connected";
   }
 
-  if (status === "connecting") {
-    return "connecting";
+  if (
+    status === "connecting" ||
+    status === "authenticating"
+  ) {
+    return "authenticating";
   }
 
   if (
@@ -82,6 +96,10 @@ function normalizeConnectionStatus(value) {
     status === "offline"
   ) {
     return "disconnected";
+  }
+
+  if (status === "error") {
+    return "error";
   }
 
   return "manual";
@@ -102,6 +120,8 @@ const isBrokerAccount =
   isMT5Connected;
 
   return {
+    ...account,
+
     id:
       normalizeAccountId(
         account.id ??
@@ -175,9 +195,11 @@ const isBrokerAccount =
     connectionStatus:
       normalizeConnectionStatus(
         account.connectionStatus ??
-          (isBrokerAccount
+          (isMT5Connected
             ? "connected"
-            : "manual")
+            : isBrokerAccount
+              ? "disconnected"
+              : "manual")
       ),
 
     lastSynced:
@@ -319,6 +341,9 @@ export default function TradingAccountsPage() {
   // LOAD ACCOUNTS
   // ==========================================================
 
+  const initialMigrationChanged = useRef(false);
+  const skipInitialAccountSave = useRef(true);
+
   const [accounts, setAccounts] = useState(() => {
     try {
       const saved =
@@ -331,7 +356,13 @@ export default function TradingAccountsPage() {
           JSON.parse(saved);
 
         if (Array.isArray(parsed)) {
-          return parsed.map(
+          const migration =
+            migrateTradingAccounts(parsed);
+
+          initialMigrationChanged.current =
+            migration.changed;
+
+          return migration.accounts.map(
             (account) =>
               normalizeTradingAccount(
                 account
@@ -397,6 +428,14 @@ export default function TradingAccountsPage() {
   // ==========================================================
 
   useEffect(() => {
+    if (skipInitialAccountSave.current) {
+      skipInitialAccountSave.current = false;
+
+      if (!initialMigrationChanged.current) {
+        return;
+      }
+    }
+
     try {
       localStorage.setItem(
         "tradingAccounts",
@@ -501,42 +540,29 @@ export default function TradingAccountsPage() {
     }
 
     // ========================================================
-    // DEFAULT ACCOUNT FALLBACK
+    // NO EXPLICIT SELECTION YET
     // ========================================================
 
+    // An account is displayed here only because the user chose
+    // it. Being saved, being first or being flagged as the
+    // default is not a choice, so nothing is selected and the
+    // global pointer is left exactly as it was found.
+
     if (!current) {
-      current =
-        accounts.find(
-          (account) =>
-            account.isDefault
-        ) ||
-        accounts[0];
+      setSelectedAccount(null);
+
+      return;
     }
 
     // ========================================================
     // SET CURRENT ACCOUNT
     // ========================================================
 
-    if (current) {
-      const normalized =
-        normalizeTradingAccount(
-          current
-        );
-
-      setSelectedAccount(
-        normalized
-      );
-
-      // Keep global context synchronized.
-      if (
-        String(selectedAccountId) !==
-        String(normalized.id)
-      ) {
-        setSelectedAccountId(
-          normalized.id
-        );
-      }
-    }
+    setSelectedAccount(
+      normalizeTradingAccount(
+        current
+      )
+    );
   }, [
     accounts,
     selectedAccountId,
@@ -566,12 +592,19 @@ useEffect(() => {
       );
 
     setAccounts((previousAccounts) => {
-      const existingIndex =
-        previousAccounts.findIndex(
+      let existingIndex = findAccountIndex(
+        previousAccounts,
+        makeAccountIdentity(normalizedAccount)
+      );
+
+      if (existingIndex < 0) {
+        existingIndex = previousAccounts.findIndex(
           (account) =>
             String(account.id) ===
-            String(normalizedAccount.id)
+              String(normalizedAccount.id) &&
+            !makeAccountIdentity(account).brokerKey
         );
+      }
 
       // ==================================================
       // UPDATE EXISTING MT5 ACCOUNT
@@ -585,6 +618,7 @@ useEffect(() => {
         updatedAccounts[existingIndex] = {
           ...updatedAccounts[existingIndex],
           ...normalizedAccount,
+          id: updatedAccounts[existingIndex].id,
         };
 
         return updatedAccounts;
@@ -601,16 +635,13 @@ useEffect(() => {
     });
 
     // ==================================================
-    // SELECT THIS MT5 ACCOUNT
+    // THE EVENT IS DATA, NOT A CHOICE
     // ==================================================
 
-    setSelectedAccount(
-      normalizedAccount
-    );
-
-    setSelectedAccountId(
-      normalizedAccount.id
-    );
+    // Which account EdgeFlo works on is decided by a click on a row, so the
+    // account the terminal happens to be on is recorded and announced and no
+    // more. The effect that keeps the displayed account valid re-reads it from
+    // the selection the user last made.
 
     console.log(
       "✅ MT5 ACCOUNT ADDED/UPDATED IN TRADING ACCOUNTS:",
@@ -629,7 +660,7 @@ useEffect(() => {
       handleMT5AccountUpdate
     );
   };
-}, [setSelectedAccountId]);
+}, []);
 
   // ==========================================================
   // cTRADER ACCOUNT UPDATE EVENT
@@ -683,7 +714,7 @@ useEffect(() => {
 
             connectionStatus:
               brokerAccount.connectionStatus ??
-              "connected",
+              "authenticating",
 
             lastSynced:
               new Date().toISOString(),
@@ -691,16 +722,10 @@ useEffect(() => {
 
         setAccounts(
           (previousAccounts) => {
-            const existingIndex =
-              previousAccounts.findIndex(
-                (account) =>
-                  String(
-                    account.brokerAccountId
-                  ) ===
-                  String(
-                    brokerAccountId
-                  )
-              );
+            const existingIndex = findAccountIndex(
+              previousAccounts,
+              makeAccountIdentity(normalizedAccount)
+            );
 
             // ==================================================
             // UPDATE EXISTING
@@ -741,11 +766,16 @@ useEffect(() => {
           }
         );
 
-        // Immediately make this account
-        // the global selected account.
-        handleSelectAccount(
-          normalizedAccount
-        );
+        // ==================================================
+        // THE EVENT IS DATA, NOT A CHOICE
+        // ==================================================
+
+        // Which account EdgeFlo works on is decided by a click on a row, so the
+        // account the cTrader service happens to report is merged into storage
+        // and no more. Calling handleSelectAccount here would move the global
+        // pointer to whatever the last announcement named, and the effect above
+        // that keeps the displayed account valid re-reads the selection the
+        // user actually made.
       };
 
     window.addEventListener(
@@ -759,7 +789,7 @@ useEffect(() => {
         handleCTraderAccountUpdate
       );
     };
-  }, [handleSelectAccount]);
+  }, []);
 
   // ==========================================================
   // DELETE ACCOUNT
@@ -809,26 +839,27 @@ useEffect(() => {
           return;
         }
 
-        // ====================================================
-        // SELECT FALLBACK
-        // ====================================================
-
-        const nextAccount =
-          updated.find(
-            (account) =>
-              account.isDefault
-          ) ||
-          updated[0];
-
         setAccounts(updated);
 
-        handleSelectAccount(
-          nextAccount
-        );
+        // ====================================================
+        // DROP ONLY THE POINTER THE DELETED ACCOUNT HELD
+        // ====================================================
+
+        // Which account takes over is the user's decision, so
+        // an account left in the list is never selected here.
+
+        if (
+          String(selectedAccountId) ===
+          String(id)
+        ) {
+          setSelectedAccount(null);
+
+          setSelectedAccountId(null);
+        }
       },
       [
         accounts,
-        handleSelectAccount,
+        selectedAccountId,
         setSelectedAccountId,
       ]
     );
@@ -853,26 +884,13 @@ useEffect(() => {
             })
           );
 
-        const selected =
-          updated.find(
-            (account) =>
-              String(
-                account.id
-              ) ===
-              String(id)
-          );
-
         setAccounts(updated);
 
-        if (selected) {
-          handleSelectAccount(
-            selected
-          );
-        }
+        // Setting the default changes a preference, not the working account:
+        // the global selection moves only when the user clicks a row.
       },
       [
         accounts,
-        handleSelectAccount,
       ]
     );
 
@@ -900,6 +918,17 @@ useEffect(() => {
         return;
       }
 
+      const { brokerKey } =
+        makeAccountIdentity(selectedAccount);
+
+      if (!brokerKey) {
+        alert(
+          "This account has no identified broker connection to sync."
+        );
+
+        return;
+      }
+
       try {
         setIsSyncing(true);
 
@@ -907,6 +936,23 @@ useEffect(() => {
           "🔄 REQUESTING BROKER ACCOUNT SYNC:",
           selectedAccount
         );
+
+        if (brokerKey === "mt5") {
+          window.dispatchEvent(
+            new CustomEvent("requestMT5AccountSync", {
+              detail: {
+                accountId: selectedAccount.id,
+                account: selectedAccount,
+              },
+            })
+          );
+
+          setTimeout(() => {
+            setIsSyncing(false);
+          }, 800);
+
+          return;
+        }
 
         // ====================================================
         // REQUEST cTRADER SYNC
@@ -974,29 +1020,50 @@ useEffect(() => {
   // CONNECT cTRADER
   // ==========================================================
 
-  const handleConnectBroker = () => {
+  const handleConnectBroker = (requestedBrokerKey = null) => {
     if (!selectedAccount) {
       alert(
         "Please select a trading account first."
       );
       return;
     }
-  
-    console.log(
-      "🔵 OPEN MT5 CONNECTION MODAL:",
-      {
-        accountId:
-          selectedAccount.id,
-        accountName:
-          selectedAccount.accountName,
-        mt5Login:
-          selectedAccount.mt5Login,
-        mt5Server:
-          selectedAccount.mt5Server,
+
+    const selectedIdentity =
+      makeAccountIdentity(selectedAccount);
+
+    const brokerKey =
+      requestedBrokerKey ?? selectedIdentity.brokerKey;
+
+    if (
+      selectedIdentity.brokerKey &&
+      selectedIdentity.brokerKey !== brokerKey
+    ) {
+      alert(
+        "This account is already linked to a different broker."
+      );
+      return;
+    }
+
+    if (brokerKey === "mt5") {
+      setShowMT5Modal(true);
+      return;
+    }
+
+    if (brokerKey === "ctrader") {
+      const connectUrl = ctraderConnectUrl();
+
+      if (!connectUrl) {
+        alert(BACKEND_URL_NOT_CONFIGURED_MESSAGE);
+        return;
       }
+
+      window.location.href = connectUrl;
+      return;
+    }
+
+    alert(
+      "Choose MT5 or cTrader explicitly before connecting this account."
     );
-  
-    setShowMT5Modal(true);
   };
 
   const handleMT5Connected = useCallback(
@@ -1042,6 +1109,9 @@ useEffect(() => {
     },
     [setSelectedAccountId]
   );
+
+  const selectedBrokerKey =
+    makeAccountIdentity(selectedAccount).brokerKey;
 
   // ==========================================================
   // RENDER
@@ -1121,32 +1191,53 @@ useEffect(() => {
     Add Trading Account
   </button>
 
-  {/* MT5 CONNECTION */}
-  <button
-    onClick={
-      handleConnectBroker
-    }
-    className="
-      border
-      border-violet-200
-      text-violet-700
-      hover:bg-violet-50
-      px-4
-      py-2.5
-      rounded-xl
-      flex
-      items-center
-      gap-2
-      transition
-    "
-  >
-    <Link2 size={18} />
+  {(!selectedBrokerKey || selectedBrokerKey === "mt5") && (
+    <button
+      onClick={() => handleConnectBroker("mt5")}
+      className="
+        border
+        border-violet-200
+        text-violet-700
+        hover:bg-violet-50
+        px-4
+        py-2.5
+        rounded-xl
+        flex
+        items-center
+        gap-2
+        transition
+      "
+    >
+      <Link2 size={18} />
+      {selectedBrokerKey === "mt5" && selectedAccount?.isBrokerAccount
+        ? "Manage MT5"
+        : "Connect MT5"}
+    </button>
+  )}
 
-    {selectedAccount?.isBrokerAccount ||
-    selectedAccount?.mt5Connected
-      ? "Manage Connection"
-      : "Connect MT5"}
-  </button>
+  {(!selectedBrokerKey || selectedBrokerKey === "ctrader") && (
+    <button
+      onClick={() => handleConnectBroker("ctrader")}
+      className="
+        border
+        border-violet-200
+        text-violet-700
+        hover:bg-violet-50
+        px-4
+        py-2.5
+        rounded-xl
+        flex
+        items-center
+        gap-2
+        transition
+      "
+    >
+      <Link2 size={18} />
+      {selectedBrokerKey === "ctrader" && selectedAccount?.isBrokerAccount
+        ? "Manage cTrader"
+        : "Connect cTrader"}
+    </button>
+  )}
 
   {/* SYNC */}
   {selectedAccount?.isBrokerAccount && (
@@ -1306,9 +1397,7 @@ useEffect(() => {
                     </button>
 
                     <button
-                      onClick={
-                        handleConnectBroker
-                      }
+                      onClick={() => handleConnectBroker("mt5")}
                       className="
                         border
                         border-gray-300
@@ -1320,7 +1409,23 @@ useEffect(() => {
                         transition
                       "
                     >
-                      Connect Broker
+                      Connect MT5
+                    </button>
+
+                    <button
+                      onClick={() => handleConnectBroker("ctrader")}
+                      className="
+                        border
+                        border-gray-300
+                        hover:bg-gray-50
+                        text-gray-700
+                        px-5
+                        py-2.5
+                        rounded-xl
+                        transition
+                      "
+                    >
+                      Connect cTrader
                     </button>
                   </div>
                 </div>
@@ -1390,7 +1495,8 @@ useEffect(() => {
                   >
                     {/* CONNECTED STATUS */}
 
-                    {selectedAccount.isBrokerAccount && (
+                    {selectedAccount.isBrokerAccount &&
+                      selectedAccount.connectionStatus === "connected" && (
                       <div
                         className="
                           mb-5

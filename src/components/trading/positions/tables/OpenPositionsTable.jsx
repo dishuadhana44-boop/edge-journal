@@ -1,102 +1,94 @@
+import PositionsTableShell from "./PositionsTableShell";
 import OpenPositionRow from "../rows/OpenPositionRow";
-import { useTrade } from "../../../../context/TradeContext";
+import ExpandedDetailsRow from "../rows/ExpandedDetailsRow";
 
-export default function OpenPositionsTable({ demo = false }) {
-  // ==========================================================
-  // GET REAL POSITIONS FROM TRADE CONTEXT
-  // ==========================================================
+// ============================================================
+// OPEN POSITIONS TABLE
+// Presentational wrapper around the shared shell. All data,
+// filtering and broker actions come from PositionTerminal.
+// ============================================================
 
-  const { openTrades = [] } = useTrade();
+export default function OpenPositionsTable({
+  columns = [],
+  visibleKeys = new Set(),
+  sort = null,
+  onSortChange,
+  rows = [],
+  totalRows = 0,
+  loading = false,
+  error = null,
+  onRetry,
+  hasActiveFilters = false,
+  onClearFilters,
+  allSelected = false,
+  someSelected = false,
+  onToggleSelectAll,
+  selectedKeys = new Set(),
+  onToggleSelect,
+  expandedKeys = new Set(),
+  onToggleExpand,
+  onAction,
+  currency = "USD",
+  nowMs = null,
+}) {
+  const columnCount = columns.filter((column) =>
+    visibleKeys.has(column.key)
+  ).length;
 
-  // Debug
-  console.log("📊 OPEN POSITIONS TABLE:", openTrades);
+  const renderRow = (row) => {
+    const expanded = expandedKeys.has(row.key);
+
+    const nodes = [
+      <OpenPositionRow
+        key={row.key}
+        row={row}
+        columns={columns}
+        visibleKeys={visibleKeys}
+        selected={selectedKeys.has(row.key)}
+        onToggleSelect={onToggleSelect}
+        expanded={expanded}
+        onToggleExpand={onToggleExpand}
+        onAction={onAction}
+        currency={currency}
+        nowMs={nowMs}
+      />,
+    ];
+
+    if (expanded) {
+      nodes.push(
+        <ExpandedDetailsRow
+          key={`${row.key}-details`}
+          row={row}
+          tab="open"
+          columnCount={columnCount}
+          currency={currency}
+          nowMs={nowMs}
+        />
+      );
+    }
+
+    return nodes;
+  };
 
   return (
-    <div className="h-[340px] overflow-y-auto overflow-x-hidden">
-      <table className="w-full min-w-[1100px] text-sm">
-        {/* ==================================================
-            TABLE HEADER
-        ================================================== */}
-
-        <thead className="bg-gray-50 border-b border-gray-200">
-          <tr>
-            <th className="w-[110px] px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Instrument
-            </th>
-
-            <th className="w-[80px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Side
-            </th>
-
-            <th className="w-[80px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Lots
-            </th>
-
-            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Entry
-            </th>
-
-            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Current
-            </th>
-
-            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Take Profit
-            </th>
-
-            <th className="w-[100px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Stop Loss
-            </th>
-
-            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              P/L
-            </th>
-
-            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Margin
-            </th>
-
-            <th className="w-[110px] py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Duration
-            </th>
-
-            <th className="w-[100px] py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-
-        {/* ==================================================
-            TABLE BODY
-        ================================================== */}
-
-        <tbody className="bg-white">
-          {openTrades.length > 0 ? (
-            openTrades.map((trade, index) => (
-              <OpenPositionRow
-                key={
-                  trade.positionId ??
-                  trade.brokerPositionId ??
-                  trade.ticket ??
-                  trade.id ??
-                  index
-                }
-                trade={trade}
-                demo={demo}
-              />
-            ))
-          ) : (
-            <tr>
-              <td
-                colSpan={11}
-                className="py-12 text-center text-gray-500"
-              >
-                No open positions
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    <PositionsTableShell
+      columns={columns}
+      visibleKeys={visibleKeys}
+      sort={sort}
+      onSortChange={onSortChange}
+      rows={rows}
+      totalRows={totalRows}
+      loading={loading}
+      error={error}
+      onRetry={onRetry}
+      hasActiveFilters={hasActiveFilters}
+      onClearFilters={onClearFilters}
+      allSelected={allSelected}
+      someSelected={someSelected}
+      onToggleSelectAll={onToggleSelectAll}
+      renderRow={renderRow}
+      emptyLabel="No open positions"
+      emptyHint="Positions from your connected broker account appear here."
+    />
   );
 }

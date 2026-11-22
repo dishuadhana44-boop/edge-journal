@@ -1,647 +1,240 @@
 import {
-    MoreVertical,
-    Pencil,
-    ShieldAlert,
-    Target,
-    XCircle,
-    Check,
-  } from "lucide-react";
-  
-  import {
-    useEffect,
-    useRef,
-    useState,
-  } from "react";
-  
-  export default function PendingOrderRow({
-    order,
-    demo = false,
-    onCancel,
-    onModifyEntry,
-    onModifyStopLoss,
-    onModifyTakeProfit,
-  }) {
-    const [menuOpen, setMenuOpen] =
-      useState(false);
-  
-    const [editMode, setEditMode] =
-      useState(null);
-  
-    const [editValue, setEditValue] =
-      useState("");
-  
-    const menuRef =
-      useRef(null);
-  
-    // ==========================================================
-    // CLOSE MENU WHEN CLICKING OUTSIDE
-    // ==========================================================
-  
-    useEffect(() => {
-      const handleOutsideClick = (
-        event
-      ) => {
-        if (
-          menuRef.current &&
-          !menuRef.current.contains(
-            event.target
-          )
-        ) {
-          setMenuOpen(false);
-        }
-      };
-  
-      document.addEventListener(
-        "mousedown",
-        handleOutsideClick
-      );
-  
-      return () => {
-        document.removeEventListener(
-          "mousedown",
-          handleOutsideClick
-        );
-      };
-    }, []);
-  
-    // ==========================================================
-    // NORMALIZE VALUES
-    // ==========================================================
-  
-    const symbol =
-      String(
-        order?.symbol ||
-          order?.instrument ||
-          "EURUSD"
-      ).toUpperCase();
-  
-    const type =
-      String(
-        order?.orderType ||
-          order?.type ||
-          "Limit"
-      );
-  
-    const quantity =
-      Number(
-        order?.quantity ??
-          order?.lots ??
-          order?.volume ??
-          0
-      );
-  
-    const entry =
-      Number(
-        order?.entry ??
-          order?.entryPrice ??
-          order?.price ??
-          0
-      );
-  
-    const currentPrice =
-      Number(
-        order?.currentPrice ??
-          order?.markPrice ??
-          0
-      );
-  
-    const takeProfit =
-      Number(
-        order?.takeProfit ??
-          order?.tp ??
-          0
-      );
-  
-    const stopLoss =
-      Number(
-        order?.stopLoss ??
-          order?.sl ??
-          0
-      );
-  
-    const margin =
-      Number(
-        order?.margin ??
-          order?.usedMargin ??
-          0
-      );
-  
-    const orderId =
-      order?.orderId ??
-      order?.brokerOrderId ??
-      order?.ticket ??
-      order?.id;
-  
-    // ==========================================================
-    // FORMAT PRICE
-    // ==========================================================
-  
-    const formatPrice = (
-      value
-    ) => {
-      const number =
-        Number(value);
-  
-      if (
-        !Number.isFinite(number) ||
-        number <= 0
-      ) {
-        return "—";
-      }
-  
-      if (number >= 100) {
-        return number.toFixed(3);
-      }
-  
-      return number.toFixed(5);
-    };
-  
-    // ==========================================================
-    // FORMAT MONEY
-    // ==========================================================
-  
-    const formatMoney = (
-      value
-    ) => {
-      const number =
-        Number(value);
-  
-      if (
-        !Number.isFinite(number)
-      ) {
-        return "—";
-      }
-  
-      return number.toFixed(2);
-    };
-  
-    // ==========================================================
-    // TYPE COLOR
-    // ==========================================================
-  
-    const normalizedType =
-      type.toLowerCase();
-  
-    const isBuy =
-      normalizedType.includes(
-        "buy"
-      );
-  
-    const isSell =
-      normalizedType.includes(
-        "sell"
-      );
-  
-    const typeClass =
-      isBuy
-        ? "text-green-600 bg-green-50"
-        : isSell
-        ? "text-red-600 bg-red-50"
-        : "text-blue-600 bg-blue-50";
-  
-    // ==========================================================
-    // START EDIT
-    // ==========================================================
-  
-    const startEdit = (
-      field
-    ) => {
-      let value = "";
-  
-      if (
-        field === "entry"
-      ) {
-        value =
-          entry > 0
-            ? String(entry)
-            : "";
-      }
-  
-      if (
-        field === "stopLoss"
-      ) {
-        value =
-          stopLoss > 0
-            ? String(stopLoss)
-            : "";
-      }
-  
-      if (
-        field === "takeProfit"
-      ) {
-        value =
-          takeProfit > 0
-            ? String(takeProfit)
-            : "";
-      }
-  
-      setEditValue(value);
-      setEditMode(field);
-      setMenuOpen(false);
-    };
-  
-    // ==========================================================
-    // CANCEL EDIT
-    // ==========================================================
-  
-    const cancelEdit = () => {
-      setEditMode(null);
-      setEditValue("");
-    };
-  
-    // ==========================================================
-    // SAVE EDIT
-    // ==========================================================
-  
-    const saveEdit = () => {
-      const value =
-        Number(editValue);
-  
-      if (
-        !Number.isFinite(value) ||
-        value <= 0
-      ) {
-        return;
-      }
-  
-      // --------------------------------------------------------
-      // ENTRY
-      // --------------------------------------------------------
-  
-      if (
-        editMode === "entry"
-      ) {
-        if (
-          typeof onModifyEntry ===
-          "function"
-        ) {
-          onModifyEntry(
-            order,
-            value
-          );
-        }
-      }
-  
-      // --------------------------------------------------------
-      // STOP LOSS
-      // --------------------------------------------------------
-  
-      if (
-        editMode ===
-        "stopLoss"
-      ) {
-        if (
-          typeof onModifyStopLoss ===
-          "function"
-        ) {
-          onModifyStopLoss(
-            order,
-            value
-          );
-        }
-      }
-  
-      // --------------------------------------------------------
-      // TAKE PROFIT
-      // --------------------------------------------------------
-  
-      if (
-        editMode ===
-        "takeProfit"
-      ) {
-        if (
-          typeof onModifyTakeProfit ===
-          "function"
-        ) {
-          onModifyTakeProfit(
-            order,
-            value
-          );
-        }
-      }
-  
-      setEditMode(null);
-      setEditValue("");
-    };
-  
-    // ==========================================================
-    // CANCEL PENDING ORDER
-    // ==========================================================
-  
-    const handleCancelOrder = () => {
-      console.log("🔍 FULL PENDING ORDER FOR CANCEL:", order);
-    
-      setMenuOpen(false);
-    
-      if (typeof onCancel === "function") {
-        onCancel(order);
-        return;
-      }
-    
-      console.log(
-        "🟠 PENDING ORDER CANCEL:",
-        order
-      );
-    };
-  
-    // ==========================================================
-    // EDIT CELL
-    // ==========================================================
-  
-    const renderEditableCell = (
-      field,
-      value,
-      align = "right"
-    ) => {
-      if (
-        editMode !== field
-      ) {
+  ChevronDown,
+  Move,
+  Shield,
+  Target,
+  XCircle,
+} from "lucide-react";
+
+import {
+  formatDurationText,
+  formatLots,
+  formatMoney,
+  formatPrice,
+} from "../shared";
+
+import RowActionMenu from "./RowActionMenu";
+
+// ============================================================
+// PENDING ORDER ROW
+// Pure presentation from the derived row model. Editing and
+// cancellation are delegated upward through onAction so the
+// shared dialogs can verify real broker success.
+// ============================================================
+
+function alignClass(align) {
+  if (align === "left") return "text-left";
+  if (align === "right") return "text-right tabular-nums";
+  return "text-center";
+}
+
+// Cells that own their own click target must not also toggle the row.
+const STOP_PROPAGATION_KEYS = new Set(["expand", "actions"]);
+
+function brokerBadge(broker) {
+  const upper = String(broker || "").toUpperCase();
+
+  const tone =
+    upper === "MT5"
+      ? "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+      : upper === "CTRADER"
+      ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
+      : upper
+      ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+      : "";
+
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+        tone || "text-gray-400 dark:text-gray-500"
+      }`}
+    >
+      {upper || "—"}
+    </span>
+  );
+}
+
+export default function PendingOrderRow({
+  row,
+  columns = [],
+  visibleKeys = new Set(),
+  expanded = false,
+  onToggleExpand,
+  onAction,
+  currency = "USD",
+  nowMs = null,
+}) {
+  const visibleColumns = columns.filter((column) =>
+    visibleKeys.has(column.key)
+  );
+
+  const ageLabel =
+    row.durationLabel ||
+    (row.createdAtMs && nowMs
+      ? formatDurationText(Math.max(0, (nowMs - row.createdAtMs) / 1000))
+      : "—");
+
+  const typeTone =
+    row.typeKind.startsWith("buy")
+      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+      : row.typeKind.startsWith("sell")
+      ? "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400"
+      : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+
+  const renderCell = (column) => {
+    switch (column.key) {
+      case "expand":
         return (
-          <td
-            className={`w-[110px] py-4 ${
-              align === "right"
-                ? "text-right"
-                : "text-center"
-            } text-sm text-gray-700`}
+          <button
+            type="button"
+            onClick={() => onToggleExpand?.(row.key)}
+            title={expanded ? "Hide details" : "Show details"}
+            className={`
+              rounded-md
+              p-1
+              text-gray-400
+              transition
+              hover:bg-gray-200
+              hover:text-gray-600
+              dark:hover:bg-gray-700
+              ${
+                expanded
+                  ? "rotate-180 text-violet-600 dark:text-violet-400"
+                  : ""
+              }
+            `}
           >
-            {formatPrice(value)}
-          </td>
+            <ChevronDown size={14} />
+          </button>
         );
-      }
-  
-      return (
-        <td className="w-[110px] py-2 text-right">
-          <div className="flex items-center justify-end gap-1">
-            <input
-              autoFocus
-              type="number"
-              step="0.00001"
-              value={editValue}
-              onChange={(event) =>
-                setEditValue(
-                  event.target.value
-                )
-              }
-              onKeyDown={(event) => {
-                if (
-                  event.key ===
-                  "Enter"
-                ) {
-                  saveEdit();
-                }
-  
-                if (
-                  event.key ===
-                  "Escape"
-                ) {
-                  cancelEdit();
-                }
-              }}
-              className="w-[82px] px-2 py-1.5 text-right text-sm border border-gray-300 rounded-md outline-none focus:border-gray-500"
-            />
-  
-            <button
-              type="button"
-              onClick={
-                saveEdit
-              }
-              className="p-1.5 rounded-md text-green-600 hover:bg-green-50"
-              title="Save"
-            >
-              <Check
-                size={15}
-              />
-            </button>
-          </div>
-        </td>
-      );
-    };
-  
-    // ==========================================================
-    // RENDER
-    // ==========================================================
-  
-    return (
-      <tr className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-        {/* ====================================================
-            INSTRUMENT
-            ==================================================== */}
-  
-        <td className="w-[110px] px-6 py-4">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-600">
-              {symbol.slice(
-                0,
-                2
-              )}
-            </div>
-  
-            <div className="font-medium text-gray-900">
-              {symbol}
-            </div>
-          </div>
-        </td>
-  
-        {/* ====================================================
-            TYPE
-            ==================================================== */}
-  
-        <td className="w-[80px] py-4 text-center">
-          <span
-            className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${typeClass}`}
-          >
-            {type}
+
+      case "ticket":
+        return (
+          <span className="font-mono text-[11px] font-medium text-gray-600 dark:text-gray-400">
+            {row.ticket || "—"}
           </span>
-        </td>
-  
-        {/* ====================================================
-            LOTS
-            ==================================================== */}
-  
-        <td className="w-[80px] py-4 text-center text-sm text-gray-700">
-          {Number.isFinite(
-            quantity
-          )
-            ? quantity.toFixed(2)
-            : "0.00"}
-        </td>
-  
-        {/* ====================================================
-            ENTRY
-            ==================================================== */}
-  
-        {renderEditableCell(
-          "entry",
-          entry
-        )}
-  
-        {/* ====================================================
-            CURRENT
-            ==================================================== */}
-  
-        <td className="w-[100px] py-4 text-right text-sm text-gray-700">
-          {formatPrice(
-            currentPrice
-          )}
-        </td>
-  
-        {/* ====================================================
-            TAKE PROFIT
-            ==================================================== */}
-  
-        {renderEditableCell(
-          "takeProfit",
-          takeProfit
-        )}
-  
-        {/* ====================================================
-            STOP LOSS
-            ==================================================== */}
-  
-        {renderEditableCell(
-          "stopLoss",
-          stopLoss
-        )}
-  
-        {/* ====================================================
-            MARGIN
-            ==================================================== */}
-  
-        <td className="w-[110px] py-4 text-right text-sm text-gray-700">
-          {margin > 0
-            ? `$${formatMoney(
-                margin
-              )}`
-            : "—"}
-        </td>
-  
-        {/* ====================================================
-            DURATION
-            ==================================================== */}
-  
-        <td className="w-[110px] py-4 text-right text-sm text-gray-500">
-          {order?.duration ||
-            "—"}
-        </td>
-  
-        {/* ====================================================
-            ACTIONS
-            ==================================================== */}
-  
-        <td className="w-[100px] py-4 text-center">
-          <div
-            className="relative inline-block"
-            ref={menuRef}
+        );
+
+      case "symbol":
+        return (
+          <span className="font-semibold text-gray-900 dark:text-gray-100">
+            {row.symbol}
+          </span>
+        );
+
+      case "type":
+        return (
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${typeTone}`}
           >
-            <button
-              type="button"
-              onClick={() =>
-                setMenuOpen(
-                  (prev) =>
-                    !prev
-                )
-              }
-              className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-              title="Order actions"
-            >
-              <MoreVertical
-                size={18}
-              />
-            </button>
-  
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-[210px] rounded-xl border border-gray-200 bg-white shadow-lg py-1 text-left">
-                {/* ------------------------------------------
-                    MODIFY ENTRY
-                    ------------------------------------------ */}
-  
-                <button
-                  type="button"
-                  onClick={() =>
-                    startEdit(
-                      "entry"
-                    )
-                  }
-                  className="w-full px-3 py-2.5 flex items-center gap-3 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  <Pencil
-                    size={16}
-                  />
-  
-                  <span>
-                    Modify Entry
-                  </span>
-                </button>
-  
-                {/* ------------------------------------------
-                    MODIFY SL
-                    ------------------------------------------ */}
-  
-                <button
-                  type="button"
-                  onClick={() =>
-                    startEdit(
-                      "stopLoss"
-                    )
-                  }
-                  className="w-full px-3 py-2.5 flex items-center gap-3 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  <ShieldAlert
-                    size={16}
-                  />
-  
-                  <span>
-                    Modify Stop Loss
-                  </span>
-                </button>
-  
-                {/* ------------------------------------------
-                    MODIFY TP
-                    ------------------------------------------ */}
-  
-                <button
-                  type="button"
-                  onClick={() =>
-                    startEdit(
-                      "takeProfit"
-                    )
-                  }
-                  className="w-full px-3 py-2.5 flex items-center gap-3 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  <Target
-                    size={16}
-                  />
-  
-                  <span>
-                    Modify Take Profit
-                  </span>
-                </button>
-  
-                <div className="my-1 border-t border-gray-100" />
-  
-                {/* ------------------------------------------
-                    CANCEL
-                    ------------------------------------------ */}
-  
-                <button
-                  type="button"
-                  onClick={
-                    handleCancelOrder
-                  }
-                  className="w-full px-3 py-2.5 flex items-center gap-3 text-sm text-red-600 hover:bg-red-50"
-                >
-                  <XCircle
-                    size={16}
-                  />
-  
-                  <span>
-                    Cancel Pending Order
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
+            {row.typeLabel || "—"}
+          </span>
+        );
+
+      case "lots":
+        return formatLots(row.lots);
+
+      case "entry":
+        return formatPrice(row.entry);
+
+      case "current":
+        return formatPrice(row.current);
+
+      case "takeProfit":
+        return (
+          <span className="text-emerald-600 dark:text-emerald-400">
+            {formatPrice(row.takeProfit)}
+          </span>
+        );
+
+      case "stopLoss":
+        return (
+          <span className="text-red-600 dark:text-red-400">
+            {formatPrice(row.stopLoss)}
+          </span>
+        );
+
+      case "margin":
+        return row.margin > 0
+          ? formatMoney(row.margin, currency)
+          : "—";
+
+      case "duration":
+        return ageLabel;
+
+      case "broker":
+        return brokerBadge(row.broker);
+
+      case "actions":
+        return (
+          <RowActionMenu
+            items={[
+              {
+                label: "Modify Entry",
+                icon: <Move size={14} />,
+                onClick: () => onAction?.("pendingEntry", row),
+              },
+              {
+                label: "Modify Stop Loss",
+                icon: <Shield size={14} />,
+                onClick: () => onAction?.("pendingSl", row),
+              },
+              {
+                label: "Modify Take Profit",
+                icon: <Target size={14} />,
+                onClick: () => onAction?.("pendingTp", row),
+              },
+              {
+                label: "Cancel Order",
+                icon: <XCircle size={14} />,
+                danger: true,
+                onClick: () => onAction?.("cancelPending", row),
+              },
+            ]}
+          />
+        );
+
+      default:
+        return "—";
+    }
+  };
+
+  return (
+    <tr
+      onClick={() => onToggleExpand?.(row.key)}
+      title={expanded ? "Hide order details" : "Show order details"}
+      className={`
+        cursor-pointer
+        border-b
+        border-gray-100
+        transition
+        hover:bg-gray-50
+        dark:border-gray-800
+        dark:hover:bg-gray-800/50
+      `}
+    >
+      {visibleColumns.map((column) => (
+        <td
+          key={column.key}
+          onClick={
+            STOP_PROPAGATION_KEYS.has(column.key)
+              ? (event) => event.stopPropagation()
+              : undefined
+          }
+          className={`
+            whitespace-nowrap
+            px-3
+            py-2.5
+            text-xs
+            text-gray-700
+            dark:text-gray-300
+            ${column.width}
+            ${alignClass(column.align)}
+          `}
+        >
+          {renderCell(column)}
         </td>
-      </tr>
-    );
-  }
+      ))}
+    </tr>
+  );
+}

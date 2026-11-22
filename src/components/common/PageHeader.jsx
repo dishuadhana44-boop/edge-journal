@@ -32,11 +32,12 @@ import {
     title,
     subtitle,
     icon = "ai",
+    spaced = true,
   }) {
     const Icon = icons[icon] || Brain;
   
     return (
-      <div className="flex items-center gap-3 mb-4">
+      <div className={`flex items-center gap-3 ${spaced ? "mb-4" : ""}`}>
   
         {/* Logo */}
         <div className="

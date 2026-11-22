@@ -1,6 +1,13 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Play } from "lucide-react";
 
+import {
+  MAX_MT5_CANDLES,
+  SOURCES,
+  TIMEFRAMES,
+} from "../../../services/backtest/historicalData";
+import { listSymbols } from "../../../services/backtest/symbolSpecs";
+
 export default function CreateBacktestSession({
   open,
   onClose,
@@ -11,14 +18,24 @@ export default function CreateBacktestSession({
 
     const form = new FormData(e.currentTarget);
 
+    const source = form.get("source");
+    const balance = Number(form.get("balance"));
+    const riskPercent = Number(form.get("riskPercent"));
+
     const session = {
-      name: form.get("name"),
+      sessionName: form.get("name"),
       symbol: form.get("symbol"),
-      balance: Number(form.get("balance")),
-      startDate: form.get("startDate"),
-      endDate: form.get("endDate"),
+      balance,
+      startDate: form.get("startDate") || "",
+      endDate: form.get("endDate") || "",
       interval: form.get("interval"),
-      randomize: form.get("randomize") === "on",
+      source,
+      count: Math.min(MAX_MT5_CANDLES, Math.max(50, Number(form.get("count")) || MAX_MT5_CANDLES)),
+      settings: {
+        initialBalance: balance,
+        riskMode: "percent",
+        riskPercent,
+      },
     };
 
     onCreate(session);
@@ -94,6 +111,28 @@ export default function CreateBacktestSession({
                   />
                 </div>
 
+                {/* DATA SOURCE */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data Source
+                  </label>
+
+                  <select
+                    name="source"
+                    defaultValue={SOURCES.MT5}
+                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-white outline-none focus:border-violet-500"
+                  >
+                    <option value={SOURCES.MT5}>MT5 bridge — real broker history</option>
+                    <option value={SOURCES.TWELVE_DATA}>Twelve Data — real history by date range</option>
+                    <option value={SOURCES.IMPORT}>Import CSV — your own real candles</option>
+                  </select>
+
+                  <p className="mt-2 text-xs text-gray-500">
+                    Backtesting only replays candles from the selected source. No price data is
+                    generated, and orders never reach a live account.
+                  </p>
+                </div>
+
                 {/* SYMBOL + TIMEFRAME */}
                 <div className="grid grid-cols-2 gap-4">
 
@@ -107,13 +146,11 @@ export default function CreateBacktestSession({
                       defaultValue="EURUSD"
                       className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-white outline-none focus:border-violet-500"
                     >
-                      <option value="EURUSD">EURUSD</option>
-                      <option value="GBPUSD">GBPUSD</option>
-                      <option value="USDJPY">USDJPY</option>
-                      <option value="GBPJPY">GBPJPY</option>
-                      <option value="XAUUSD">XAUUSD</option>
-                      <option value="BTCUSD">BTCUSD</option>
-                      <option value="ETHUSD">ETHUSD</option>
+                      {listSymbols().map((symbol) => (
+                        <option key={symbol} value={symbol}>
+                          {symbol}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -127,37 +164,54 @@ export default function CreateBacktestSession({
                       defaultValue="15m"
                       className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-white outline-none focus:border-violet-500"
                     >
-                      <option value="1m">1 Minute</option>
-                      <option value="5m">5 Minutes</option>
-                      <option value="15m">15 Minutes</option>
-                      <option value="30m">30 Minutes</option>
-                      <option value="1h">1 Hour</option>
-                      <option value="4h">4 Hours</option>
-                      <option value="1day">1 Day</option>
+                      {TIMEFRAMES.map((timeframe) => (
+                        <option key={timeframe} value={timeframe}>
+                          {timeframe}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
                 </div>
 
-                {/* BALANCE */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Starting Balance
-                  </label>
+                {/* BALANCE + RISK */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Starting Balance
+                    </label>
 
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                      $
-                    </span>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                        $
+                      </span>
+
+                      <input
+                        name="balance"
+                        type="number"
+                        min="1"
+                        step="0.01"
+                        defaultValue="100000"
+                        required
+                        className="w-full rounded-xl border border-gray-200 pl-8 pr-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Risk Per Trade (%)
+                    </label>
 
                     <input
-                      name="balance"
+                      name="riskPercent"
                       type="number"
-                      min="1"
-                      step="0.01"
-                      defaultValue="100000"
+                      min="0.1"
+                      max="10"
+                      step="0.1"
+                      defaultValue="1"
                       required
-                      className="w-full rounded-xl border border-gray-200 pl-8 pr-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                     />
                   </div>
                 </div>
@@ -173,7 +227,6 @@ export default function CreateBacktestSession({
                     <input
                       name="startDate"
                       type="date"
-                      required
                       className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-violet-500"
                     />
                   </div>
@@ -186,33 +239,33 @@ export default function CreateBacktestSession({
                     <input
                       name="endDate"
                       type="date"
-                      required
                       className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-violet-500"
                     />
                   </div>
 
                 </div>
 
-                {/* RANDOMIZE */}
-                <label className="flex items-center justify-between rounded-xl border border-gray-200 p-4 cursor-pointer hover:bg-gray-50 transition">
-
-                  <div>
-                    <div className="text-sm font-medium text-gray-800">
-                      Randomize Historical Data
-                    </div>
-
-                    <div className="text-xs text-gray-500 mt-1">
-                      Randomly select the starting point for practice.
-                    </div>
-                  </div>
+                {/* CANDLE COUNT */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Candles To Replay
+                  </label>
 
                   <input
-                    name="randomize"
-                    type="checkbox"
-                    className="h-4 w-4 accent-violet-600"
+                    name="count"
+                    type="number"
+                    min="50"
+                    max={MAX_MT5_CANDLES}
+                    step="50"
+                    defaultValue={MAX_MT5_CANDLES}
+                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                   />
 
-                </label>
+                  <p className="mt-2 text-xs text-gray-500">
+                    The MT5 bridge serves at most {MAX_MT5_CANDLES} of the most recent candles for a
+                    timeframe. Dates narrow whatever history is loaded.
+                  </p>
+                </div>
 
               </div>
 
