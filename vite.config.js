@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
     // Qoder project runs on 5174 (original Cursor copy uses 5173)
     server: {
       host: true,
+      allowedHosts: ["sb-5anceupqex1g.vercel.run"],
       port: 5174,
       strictPort: true,
     },
