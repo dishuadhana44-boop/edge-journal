@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import {
   BrowserRouter,
   Routes,
   Route,
   Navigate,
 } from "react-router-dom";
+import { supabase } from "./lib/supabase";
 
 import AppLayout from "./layouts/AppLayout";
 
@@ -26,6 +28,8 @@ import NoteEditor from "./pages/NoteEditor";
 import BrokerCallback from "./pages/BrokerCallback";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
+import AuthCallbackPage from "./pages/AuthCallbackPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 import { JournalProvider } from "./context/JournalContext";
 import { DashboardFilterProvider } from "./context/DashboardFilterContext";
@@ -44,30 +48,44 @@ import CurrencyCorrelation from "./pages/Tools/components/CurrencyCorrelation";
    AUTH CHECK
 ========================================================= */
 
-function isAuthenticated() {
-  try {
-    const currentUser = localStorage.getItem(
-      "edgeflo_current_user"
+function ProtectedRoute({ children }) {
+  const [session, setSession] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, nextSession) => {
+        if (isMounted) {
+          setSession(nextSession);
+          setCheckingSession(false);
+        }
+      }
     );
 
-    if (!currentUser) {
-      return false;
-    }
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (isMounted) {
+        setSession(error ? null : data.session);
+        setCheckingSession(false);
+      }
+    });
 
-    const user = JSON.parse(currentUser);
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
-    return Boolean(user?.id && user?.email);
-  } catch {
-    return false;
+  if (checkingSession) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <p role="status" className="text-sm text-gray-400">Checking your session…</p>
+      </main>
+    );
   }
-}
 
-/* =========================================================
-   PROTECTED ROUTE
-========================================================= */
-
-function ProtectedRoute({ children }) {
-  if (!isAuthenticated()) {
+  if (!session?.user) {
     return <Navigate to="/login" replace />;
   }
 
@@ -103,6 +121,16 @@ function App() {
                 <Route
                   path="/login"
                   element={<LoginPage />}
+                />
+
+                <Route
+                  path="/auth/callback"
+                  element={<AuthCallbackPage />}
+                />
+
+                <Route
+                  path="/reset-password"
+                  element={<ResetPasswordPage />}
                 />
 
                 {/* =================================================
