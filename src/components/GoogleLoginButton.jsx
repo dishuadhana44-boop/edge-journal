@@ -52,6 +52,16 @@ function GoogleLoginButton({ onError }) {
     inFlightRef.current = true;
     setLoading(true);
 
+    const authWindow = window.open("about:blank", "_blank");
+
+    if (!authWindow) {
+      finish();
+      onError("Allow pop-ups for this site to continue with Google sign-in.");
+      return;
+    }
+
+    authWindow.opener = null;
+
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -69,8 +79,9 @@ function GoogleLoginButton({ onError }) {
         throw new Error("Google sign-in could not be started.");
       }
 
-      window.location.assign(data.url);
+      authWindow.location.replace(data.url);
     } catch (signInError) {
+      authWindow.close();
       finish();
       const message = signInError?.message?.toLowerCase() || "";
       onError(
