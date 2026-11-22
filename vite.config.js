@@ -1,3 +1,4 @@
+import process from "node:process";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -8,9 +9,11 @@ export default defineConfig(({ mode }) => {
   const API_KEY = env.TE_API_KEY;
 
   return {
+    envPrefix: ["VITE_", "NEXT_PUBLIC_"],
     // Qoder project runs on 5174 (original Cursor copy uses 5173)
     server: {
       host: true,
+      allowedHosts: ["sb-5anceupqex1g.vercel.run"],
       port: 5174,
       strictPort: true,
     },

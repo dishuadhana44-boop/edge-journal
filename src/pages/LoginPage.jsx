@@ -1,6 +1,7 @@
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 import {
   Eye,
   EyeOff,
@@ -27,7 +28,6 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -45,17 +45,41 @@ function LoginPage() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   };
 
-  const getStoredUsers = () => {
-    try {
-      return JSON.parse(localStorage.getItem("edgeflo_users") || "[]");
-    } catch {
-      return [];
+  const getAuthRedirectUrl = () =>
+    import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
+    `${window.location.origin}/auth/callback`;
+
+  const getAuthErrorMessage = (authError, action) => {
+    const code = authError?.code;
+    const message = authError?.message?.toLowerCase() || "";
+
+    if (code === "invalid_credentials" || code === "user_not_found") {
+      return "Invalid email or password.";
     }
+
+    if (code === "email_not_confirmed") {
+      return "Confirm your email using the link we sent before signing in.";
+    }
+
+    if (code === "weak_password") {
+      return "Choose a stronger password and try again.";
+    }
+
+    if (code === "over_email_send_rate_limit" || code === "rate_limit_exceeded") {
+      return "Too many attempts. Wait a little while and try again.";
+    }
+
+    if (message.includes("provider is not enabled") || code === "provider_disabled") {
+      return "Google sign-in is not enabled for this project yet.";
+    }
+
+    return action === "signup"
+      ? "We couldn't create your account. Check your details and try again."
+      : "We couldn't sign you in. Please try again.";
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
     setError("");
     setSuccess("");
 
@@ -83,9 +107,7 @@ function LoginPage() {
       }
 
       if (!passwordStrong) {
-        setError(
-          "Password must include uppercase, lowercase, and a number."
-        );
+        setError("Password must include uppercase, lowercase, and a number.");
         return;
       }
 
@@ -98,82 +120,74 @@ function LoginPage() {
     setLoading(true);
 
     try {
-      const users = getStoredUsers();
-
       if (isLogin) {
-        const existingUser = users.find(
-          (user) => user.email === cleanEmail
-        );
-
-        if (!existingUser) {
-          throw new Error(
-            "No account found with this email. Please sign up first."
-          );
-        }
-
-        if (existingUser.password !== password) {
-          throw new Error("Incorrect password. Please try again.");
-        }
-
-        const session = {
-          id: existingUser.id,
-          name: existingUser.name,
-          email: existingUser.email,
-          loggedInAt: new Date().toISOString(),
-        };
-
-        localStorage.setItem(
-          "edgeflo_current_user",
-          JSON.stringify(session)
-        );
-
-        if (rememberMe) {
-          localStorage.setItem(
-            "edgeflo_remember_email",
-            cleanEmail
-          );
-        } else {
-          localStorage.removeItem("edgeflo_remember_email");
-        }
-
-        setSuccess("Login successful. Redirecting...");
-
-        setTimeout(() => {
-          navigate("/dashboard", { replace: true });
-        }, 500);
-      } else {
-        const alreadyExists = users.some(
-          (user) => user.email === cleanEmail
-        );
-
-        if (alreadyExists) {
-          throw new Error(
-            "An account with this email already exists. Please login."
-          );
-        }
-
-        const newUser = {
-          id: `user-${Date.now()}`,
-          name: name.trim(),
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password,
-          createdAt: new Date().toISOString(),
-        };
+        });
 
-        localStorage.setItem(
-          "edgeflo_users",
-          JSON.stringify([...users, newUser])
-        );
+        if (signInError) {
+          throw signInError;
+        }
 
-        setMode("login");
+        setSuccess("Signed in successfully. Redirecting...");
+        navigate("/dashboard", { replace: true });
+      } else {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+          options: {
+            emailRedirectTo: getAuthRedirectUrl(),
+            data: { full_name: name.trim() },
+          },
+        });
+
+        if (signUpError) {
+          throw signUpError;
+        }
+
         setPassword("");
         setConfirmPassword("");
-        setSuccess("Account created successfully. Please login.");
+
+        if (data.session) {
+          setSuccess("Account created. Redirecting...");
+          navigate("/dashboard", { replace: true });
+        } else {
+          setSuccess("Check your email for a confirmation link to finish creating your account.");
+        }
       }
     } catch (submitError) {
-      setError(
-        submitError?.message || "Something went wrong. Please try again."
+      setError(getAuthErrorMessage(submitError, isLogin ? "login" : "signup"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+    setError("");
+    setSuccess("");
+
+    if (!validateEmail(cleanEmail)) {
+      setError("Enter your email address first, then request a password reset.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        cleanEmail,
+        { redirectTo: getAuthRedirectUrl() }
       );
+
+      if (resetError) {
+        throw resetError;
+      }
+
+      setSuccess("If an account exists for that address, a password reset link is on its way.");
+    } catch {
+      setError("We couldn't send a password reset email. Please try again later.");
     } finally {
       setLoading(false);
     }
@@ -185,31 +199,6 @@ function LoginPage() {
     setSuccess("");
     setPassword("");
     setConfirmPassword("");
-  };
-
-  const handleGoogleSuccess = (profile) => {
-    setError("");
-
-    const session = {
-      id: `google-${profile.sub}`,
-      name:
-        profile.name ||
-        profile.given_name ||
-        profile.email.split("@")[0],
-      email: profile.email.toLowerCase(),
-      loggedInAt: new Date().toISOString(),
-    };
-
-    localStorage.setItem(
-      "edgeflo_current_user",
-      JSON.stringify(session)
-    );
-
-    setSuccess("Login successful. Redirecting...");
-
-    setTimeout(() => {
-      navigate("/dashboard", { replace: true });
-    }, 500);
   };
 
   const handleGoogleError = (message) => {
@@ -330,11 +319,12 @@ function LoginPage() {
               {/* NAME */}
               {!isLogin && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="full-name" className="block text-sm font-medium text-gray-300 mb-2">
                     Full Name
                   </label>
 
                   <input
+                    id="full-name"
                     type="text"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
@@ -347,11 +337,12 @@ function LoginPage() {
 
               {/* EMAIL */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="email-address" className="block text-sm font-medium text-gray-300 mb-2">
                   Email Address
                 </label>
 
                 <input
+                  id="email-address"
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -363,12 +354,13 @@ function LoginPage() {
 
               {/* PASSWORD */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
                   Password
                 </label>
 
                 <div className="relative">
                   <input
+                    id="password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
@@ -411,12 +403,13 @@ function LoginPage() {
               {/* CONFIRM PASSWORD */}
               {!isLogin && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-300 mb-2">
                     Confirm Password
                   </label>
 
                   <div className="relative">
                     <input
+                      id="confirm-password"
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(event) =>
@@ -447,26 +440,12 @@ function LoginPage() {
 
               {/* LOGIN OPTIONS */}
               {isLogin && (
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(event) => setRememberMe(event.target.checked)}
-                      className="w-4 h-4 accent-purple-600"
-                    />
-
-                    <span className="text-sm text-gray-400">
-                      Remember me
-                    </span>
-                  </label>
-
+                <div className="flex justify-end">
                   <button
                     type="button"
-                    onClick={() =>
-                      setError("Password recovery requires backend authentication.")
-                    }
-                    className="text-sm text-purple-400 hover:text-purple-300"
+                    onClick={handlePasswordReset}
+                    disabled={loading}
+                    className="text-sm text-purple-400 hover:text-purple-300 disabled:opacity-50"
                   >
                     Forgot password?
                   </button>
@@ -518,10 +497,7 @@ function LoginPage() {
             </div>
 
             {/* GOOGLE SIGN-IN */}
-            <GoogleLoginButton
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-            />
+            <GoogleLoginButton onError={handleGoogleError} />
 
             <div className="flex items-center gap-4 my-7">
               <div className="h-px flex-1 bg-white/10" />

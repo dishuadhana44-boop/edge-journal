@@ -1,48 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
-const GSI_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
-
-let scriptPromise = null;
-
-function loadGoogleIdentityScript() {
-  if (window.google?.accounts?.oauth2) {
-    return Promise.resolve();
-  }
-
-  if (!scriptPromise) {
-    scriptPromise = new Promise((resolve, reject) => {
-      const existing = document.querySelector(
-        `script[src="${GSI_SCRIPT_SRC}"]`
-      );
-
-      const script = existing || document.createElement("script");
-
-      const handleLoad = () => resolve();
-
-      const handleError = () => {
-        scriptPromise = null;
-        reject(
-          new Error(
-            "Could not load Google Sign-In. Check your connection and try again."
-          )
-        );
-      };
-
-      script.addEventListener("load", handleLoad);
-      script.addEventListener("error", handleError);
-
-      if (!existing) {
-        script.src = GSI_SCRIPT_SRC;
-        script.async = true;
-        script.defer = true;
-        document.head.appendChild(script);
-      }
-    });
-  }
-
-  return scriptPromise;
-}
+const getAuthRedirectUrl = () =>
+  import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
+  `${window.location.origin}/auth/callback`;
 
 function GoogleIcon() {
   return (
@@ -73,15 +34,9 @@ function GoogleIcon() {
   );
 }
 
-function GoogleLoginButton({ onSuccess, onError }) {
+function GoogleLoginButton({ onError }) {
   const [loading, setLoading] = useState(false);
   const inFlightRef = useRef(false);
-
-  useEffect(() => {
-    if (GOOGLE_CLIENT_ID) {
-      loadGoogleIdentityScript().catch(() => {});
-    }
-  }, []);
 
   const finish = () => {
     inFlightRef.current = false;
@@ -94,89 +49,46 @@ function GoogleLoginButton({ onSuccess, onError }) {
     }
 
     onError("");
-
-    if (!GOOGLE_CLIENT_ID) {
-      onError(
-        "Google sign-in is not configured. Add VITE_GOOGLE_CLIENT_ID to your .env.local file and restart the dev server."
-      );
-      return;
-    }
-
     inFlightRef.current = true;
     setLoading(true);
 
-    try {
-      await loadGoogleIdentityScript();
-    } catch (loadError) {
+    const authWindow = window.open("about:blank", "_blank");
+
+    if (!authWindow) {
       finish();
-      onError(loadError.message);
+      onError("Allow pop-ups for this site to continue with Google sign-in.");
       return;
     }
 
+    authWindow.opener = null;
+
     try {
-      const tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: "openid email profile",
-        callback: async (response) => {
-          if (response?.error) {
-            finish();
-
-            onError(
-              response.error === "access_denied"
-                ? "Google sign-in was cancelled."
-                : `Google sign-in failed: ${response.error}`
-            );
-
-            return;
-          }
-
-          try {
-            const profileResponse = await fetch(
-              "https://www.googleapis.com/oauth2/v3/userinfo",
-              {
-                headers: {
-                  Authorization: `Bearer ${response.access_token}`,
-                },
-              }
-            );
-
-            if (!profileResponse.ok) {
-              throw new Error("userinfo request failed");
-            }
-
-            const profile = await profileResponse.json();
-
-            if (!profile?.email || !profile?.sub) {
-              throw new Error("incomplete profile");
-            }
-
-            finish();
-            onSuccess(profile);
-          } catch {
-            finish();
-            onError(
-              "Could not retrieve your Google account details. Please try again."
-            );
-          }
-        },
-        error_callback: (popupError) => {
-          finish();
-
-          if (
-            popupError?.type === "popup_closed" ||
-            popupError?.type === "popup_failed_to_open"
-          ) {
-            onError("Google sign-in window was closed before completing.");
-          } else {
-            onError("Google sign-in could not be started. Please try again.");
-          }
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: getAuthRedirectUrl(),
+          skipBrowserRedirect: true,
         },
       });
 
-      tokenClient.requestAccessToken({ prompt: "select_account" });
-    } catch {
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.url) {
+        throw new Error("Google sign-in could not be started.");
+      }
+
+      authWindow.location.replace(data.url);
+    } catch (signInError) {
+      authWindow.close();
       finish();
-      onError("Google sign-in could not be started. Please try again.");
+      const message = signInError?.message?.toLowerCase() || "";
+      onError(
+        message.includes("provider is not enabled") || signInError?.code === "provider_disabled"
+          ? "Google sign-in is not enabled for this project yet."
+          : "Google sign-in could not be started. Please try again."
+      );
     }
   };
 
