@@ -1,6 +1,5 @@
-
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import {
   Eye,
   EyeOff,
@@ -15,9 +14,11 @@ import {
 } from "lucide-react";
 import logo from "../assets/logo.png";
 import GoogleLoginButton from "../components/GoogleLoginButton";
+import { useAuth } from "../context/AuthContext";
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   const [mode, setMode] = useState("login");
   const [showPassword, setShowPassword] = useState(false);
@@ -45,13 +46,13 @@ function LoginPage() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   };
 
-  const getStoredUsers = () => {
-    try {
-      return JSON.parse(localStorage.getItem("edgeflo_users") || "[]");
-    } catch {
-      return [];
+  useEffect(() => {
+    const saved = localStorage.getItem("edgeflo_remember_email");
+    if (saved) {
+      setEmail(saved);
+      setRememberMe(true);
     }
-  };
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -98,40 +99,20 @@ function LoginPage() {
     setLoading(true);
 
     try {
-      const users = getStoredUsers();
-
       if (isLogin) {
-        const existingUser = users.find(
-          (user) => user.email === cleanEmail
-        );
+        const { data, error: signInError } =
+          await useAuthSignInWithPassword(cleanEmail, password);
 
-        if (!existingUser) {
+        if (signInError) {
           throw new Error(
-            "No account found with this email. Please sign up first."
+            signInError.message === "Invalid login credentials"
+              ? "Incorrect email or password. Please try again."
+              : signInError.message
           );
         }
-
-        if (existingUser.password !== password) {
-          throw new Error("Incorrect password. Please try again.");
-        }
-
-        const session = {
-          id: existingUser.id,
-          name: existingUser.name,
-          email: existingUser.email,
-          loggedInAt: new Date().toISOString(),
-        };
-
-        localStorage.setItem(
-          "edgeflo_current_user",
-          JSON.stringify(session)
-        );
 
         if (rememberMe) {
-          localStorage.setItem(
-            "edgeflo_remember_email",
-            cleanEmail
-          );
+          localStorage.setItem("edgeflo_remember_email", cleanEmail);
         } else {
           localStorage.removeItem("edgeflo_remember_email");
         }
@@ -142,33 +123,29 @@ function LoginPage() {
           navigate("/dashboard", { replace: true });
         }, 500);
       } else {
-        const alreadyExists = users.some(
-          (user) => user.email === cleanEmail
+        const { data, error: signUpError } = await useAuthSignUp(
+          cleanEmail,
+          password,
+          { full_name: name.trim() }
         );
 
-        if (alreadyExists) {
-          throw new Error(
-            "An account with this email already exists. Please login."
-          );
+        if (signUpError) {
+          throw new Error(signUpError.message);
         }
 
-        const newUser = {
-          id: `user-${Date.now()}`,
-          name: name.trim(),
-          email: cleanEmail,
-          password,
-          createdAt: new Date().toISOString(),
-        };
-
-        localStorage.setItem(
-          "edgeflo_users",
-          JSON.stringify([...users, newUser])
-        );
-
-        setMode("login");
-        setPassword("");
-        setConfirmPassword("");
-        setSuccess("Account created successfully. Please login.");
+        if (data?.user && !data?.session) {
+          setMode("login");
+          setPassword("");
+          setConfirmPassword("");
+          setSuccess(
+            "Account created successfully. Please sign in with your credentials."
+          );
+        } else if (data?.session) {
+          setSuccess("Account created. Redirecting...");
+          setTimeout(() => {
+            navigate("/dashboard", { replace: true });
+          }, 500);
+        }
       }
     } catch (submitError) {
       setError(
@@ -187,38 +164,24 @@ function LoginPage() {
     setConfirmPassword("");
   };
 
-  const handleGoogleSuccess = (profile) => {
-    setError("");
-
-    const session = {
-      id: `google-${profile.sub}`,
-      name:
-        profile.name ||
-        profile.given_name ||
-        profile.email.split("@")[0],
-      email: profile.email.toLowerCase(),
-      loggedInAt: new Date().toISOString(),
-    };
-
-    localStorage.setItem(
-      "edgeflo_current_user",
-      JSON.stringify(session)
-    );
-
-    setSuccess("Login successful. Redirecting...");
-
-    setTimeout(() => {
-      navigate("/dashboard", { replace: true });
-    }, 500);
-  };
-
   const handleGoogleError = (message) => {
     setError(message);
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-black text-white flex">
-      {/* LEFT SIDE */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden items-center justify-center border-r border-white/10">
         <div className="absolute w-[500px] h-[500px] bg-purple-600/20 blur-[150px] rounded-full" />
         <div className="absolute w-[350px] h-[350px] bg-blue-600/15 blur-[130px] rounded-full -bottom-20 -right-20" />
@@ -271,7 +234,6 @@ function LoginPage() {
         </div>
       </div>
 
-      {/* RIGHT SIDE */}
       <div className="w-full lg:w-1/2 flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-md">
           <div className="flex justify-center lg:hidden mb-8">
@@ -299,7 +261,6 @@ function LoginPage() {
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-[#0b0b0b] p-7 shadow-2xl">
-            {/* TABS */}
             <div className="grid grid-cols-2 gap-2 rounded-xl bg-white/[0.04] p-1 mb-7">
               <button
                 type="button"
@@ -327,7 +288,6 @@ function LoginPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* NAME */}
               {!isLogin && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -345,7 +305,6 @@ function LoginPage() {
                 </div>
               )}
 
-              {/* EMAIL */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Email Address
@@ -361,7 +320,6 @@ function LoginPage() {
                 />
               </div>
 
-              {/* PASSWORD */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Password
@@ -408,7 +366,6 @@ function LoginPage() {
                 )}
               </div>
 
-              {/* CONFIRM PASSWORD */}
               {!isLogin && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -445,7 +402,6 @@ function LoginPage() {
                 </div>
               )}
 
-              {/* LOGIN OPTIONS */}
               {isLogin && (
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -464,7 +420,9 @@ function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      setError("Password recovery requires backend authentication.")
+                      setError(
+                        "Password recovery requires backend authentication."
+                      )
                     }
                     className="text-sm text-purple-400 hover:text-purple-300"
                   >
@@ -473,7 +431,6 @@ function LoginPage() {
                 </div>
               )}
 
-              {/* ERROR */}
               {error && (
                 <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm text-red-400">
                   <AlertCircle size={17} className="mt-0.5 shrink-0" />
@@ -481,7 +438,6 @@ function LoginPage() {
                 </div>
               )}
 
-              {/* SUCCESS */}
               {success && (
                 <div className="flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-400">
                   <CheckCircle2 size={17} className="mt-0.5 shrink-0" />
@@ -489,7 +445,6 @@ function LoginPage() {
                 </div>
               )}
 
-              {/* SUBMIT */}
               <button
                 type="submit"
                 disabled={loading}
@@ -510,18 +465,13 @@ function LoginPage() {
               </button>
             </form>
 
-            {/* OR DIVIDER */}
             <div className="flex items-center gap-4 my-6">
               <div className="h-px flex-1 bg-white/10" />
               <span className="text-xs text-gray-600">OR</span>
               <div className="h-px flex-1 bg-white/10" />
             </div>
 
-            {/* GOOGLE SIGN-IN */}
-            <GoogleLoginButton
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-            />
+            <GoogleLoginButton onError={handleGoogleError} />
 
             <div className="flex items-center gap-4 my-7">
               <div className="h-px flex-1 bg-white/10" />
@@ -536,12 +486,12 @@ function LoginPage() {
           </div>
 
           <div className="text-center mt-7">
-            <Link
-              to="/"
+            <a
+              href="/"
               className="text-sm text-gray-500 hover:text-white transition"
             >
-              ← Back to EdgeFinder
-            </Link>
+              &larr; Back to EdgeFinder
+            </a>
           </div>
         </div>
       </div>
