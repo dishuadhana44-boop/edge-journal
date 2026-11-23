@@ -18,7 +18,8 @@ import { useAuth } from "../context/AuthContext";
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, signInWithPassword, signUp } =
+    useAuth();
 
   const [mode, setMode] = useState("login");
   const [showPassword, setShowPassword] = useState(false);
@@ -101,7 +102,7 @@ function LoginPage() {
     try {
       if (isLogin) {
         const { data, error: signInError } =
-          await useAuthSignInWithPassword(cleanEmail, password);
+          await signInWithPassword(cleanEmail, password);
 
         if (signInError) {
           throw new Error(
@@ -123,7 +124,7 @@ function LoginPage() {
           navigate("/dashboard", { replace: true });
         }, 500);
       } else {
-        const { data, error: signUpError } = await useAuthSignUp(
+        const { data, error: signUpError } = await signUp(
           cleanEmail,
           password,
           { full_name: name.trim() }

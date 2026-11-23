@@ -1,8 +1,10 @@
+import { useState } from "react";
 import logo from "../assets/logo.png";
 
 import { useNavigate } from "react-router-dom";
 
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 import {
   LayoutDashboard,
@@ -22,10 +24,17 @@ import {
   Moon,
   Settings,
   User,
+  LogOut,
 } from "lucide-react";
 
 function Sidebar({ collapsed, setCollapsed }) {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/login", { replace: true });
+  };
 
   /* ==========================================================
      THEME
@@ -542,6 +551,31 @@ function Sidebar({ collapsed, setCollapsed }) {
           >
             <User size={18} />
             {!collapsed && "Profile"}
+          </div>
+
+          {/* LOGOUT */}
+
+          <div
+            onClick={handleSignOut}
+            className={`
+              flex
+              items-center
+              text-sm
+              font-medium
+              cursor-pointer
+              transition-all
+              duration-300
+              hover:text-purple-600
+              dark:hover:text-purple-400
+              ${
+                collapsed
+                  ? "justify-center"
+                  : "gap-3"
+              }
+            `}
+          >
+            <LogOut size={18} />
+            {!collapsed && "Sign Out"}
           </div>
 
         </div>
